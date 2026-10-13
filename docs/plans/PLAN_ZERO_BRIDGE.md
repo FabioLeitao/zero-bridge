@@ -374,6 +374,10 @@ Separate module tree from `bridge/` (plugin manifest + tool binaries). Layout fo
 | `zero daemon serve-remote`: TLS-only opt-in bridge; bearer via `$ZERO_DAEMON_REMOTE_TOKEN` or `_FILE`; optional `--bundle-dir`; `link`, `run --remote`, `attach --remote` | `upstream/main` `internal/cli/daemon.go` `writeDaemonUsage` ~51–75; `internal/cli/completions.go` ~41 |
 | TUI `/attach` types into a running interactive terminal session (not remote control plane) | `upstream/main` `internal/tui/commands.go` ~146–149 |
 | No upstream Discussion proposing web UI or remote control; 17 discussions listed; nearest is #735 “Zero Desktop” (Show and tell) | `gh api graphql` `repository.discussions` on `Twigpine/zero` (2026-10-13) |
+| Open WebUI custom license with branding clause 4 (no more than 50 end users in 30 days, inclusive) | `gh api repos/open-webui/open-webui/contents/LICENSE`; [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md) |
+| Tool approval resolve: `call_id`, approve/reject/answer, 409 when call not in progress | `backend/open_webui/utils/tool_approval.py`; [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md) |
+| Chat SSE client uses `eventsource-parser` dependency | `package.json` in open-webui/open-webui; [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md) |
+| `WEBUI_AUTH` default true; session cookie SameSite default `lax`, Secure default false | `backend/open_webui/env.py` ~757, ~775–776; [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md) |
 
 **NAO VERIFICADO**
 
@@ -381,3 +385,5 @@ Separate module tree from `bridge/` (plugin manifest + tool binaries). Layout fo
 - Hermes `acp_adapter` full method parity with Zero.
 - deepseek-harness `packages/acp` wire details beyond package listing.
 - Whether `daemon serve-remote` workers (`zero exec` / stream-json) surface permission prompts to the remote client.
+- Effective `CORS_ALLOW_ORIGIN` at runtime (`backend/open_webui/config.py` ~2152 documents `*`; `main.py` middleware order not traced).
+- Whether S5 should show token usage via a bridge-only SSE field (see [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md) NAO VERIFICADO).

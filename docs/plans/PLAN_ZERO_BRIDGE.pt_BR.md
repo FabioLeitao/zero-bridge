@@ -355,6 +355,10 @@ Escopo de componentes (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../researc
 | `zero daemon serve-remote`: ponte opt-in só TLS; bearer em `$ZERO_DAEMON_REMOTE_TOKEN` ou `_FILE`; `--bundle-dir` opcional; `link`, `run --remote`, `attach --remote` | `upstream/main` `internal/cli/daemon.go` `writeDaemonUsage` ~51–75; `internal/cli/completions.go` ~41 |
 | TUI `/attach` digita em sessão de terminal interativa em execução (não é plano de controle remoto) | `upstream/main` `internal/tui/commands.go` ~146–149 |
 | Sem Discussion upstream de web UI ou controle remoto; 17 listadas; mais próxima #735 “Zero Desktop” (Show and tell) | `gh api graphql` `repository.discussions` em `Twigpine/zero` (2026-10-13) |
+| Licença própria Open WebUI com cláusula 4 de marca (até 50 usuários finais inclusive em 30 dias) | `gh api repos/open-webui/open-webui/contents/LICENSE`; [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md) |
+| Aprovação de tool: `call_id`, approve/reject/answer, 409 se chamada não está em progresso | `backend/open_webui/utils/tool_approval.py`; [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md) |
+| Cliente SSE do chat usa dependência `eventsource-parser` | `package.json` em open-webui/open-webui; [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md) |
+| `WEBUI_AUTH` true por padrão; cookie de sessão SameSite padrão `lax`, Secure padrão false | `backend/open_webui/env.py` ~757, ~775–776; [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md) |
 
 **NAO VERIFICADO**
 
@@ -362,3 +366,5 @@ Escopo de componentes (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../researc
 - Paridade completa Hermes `acp_adapter` vs Zero ACP.
 - Detalhes de wire em `packages/acp` do deepseek-harness além da listagem.
 - Se workers `zero exec` / stream-json em `daemon serve-remote` expõem pedidos de permissão ao cliente remoto.
+- `CORS_ALLOW_ORIGIN` efetivo em runtime (`backend/open_webui/config.py` ~2152 documenta `*`; ordem no `main.py` não rastreada).
+- Se S5 deve mostrar uso de tokens via campo SSE só da ponte (ver NAO VERIFICADO em [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md)).
