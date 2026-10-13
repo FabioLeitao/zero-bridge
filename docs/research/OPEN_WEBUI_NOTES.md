@@ -34,8 +34,8 @@ Wire `session/update` discriminators on `upstream/main` are defined in `internal
 | `Messages/Markdown`, `CodeBlock`, `DiffBlock` | Chunks above + `tool_call` / `tool_call_update` content (render as plain text nodes, not HTML) | S5 |
 | `ResponseMessage/TaskList`, `StatusHistory` | `tool_call`, `tool_call_update` | S5 |
 | `ResponseMessage/FollowUps` | No dedicated ACP `session/update` kind today | Not in S5 |
-| `ResponseMessage` usage / cost line | `git grep -i usage upstream/main -- internal/acp` is empty; fork `main` persists usage via `03d618be` (#1118); **no** `session/update` usage on the wire on upstream or fork at plan time | S5 usage line only if bridge adds its own SSE field — **NAO VERIFICADO** |
-| Plan / task list UI | `session/update` `plan` (`update_plan` in `OnToolResult` ~577–578; `emitPlan` ~670) | S5 |
+| `ResponseMessage` usage / cost line | `upstream/main`: `git grep -i usage upstream/main -- internal/acp` empty; fork `main` persists via `03d618be` (#1118); no `session/update` usage on the wire on either | S5 (optional usage line — see NAO VERIFICADO) |
+| Plan / task list UI | `session/update` `plan` (`update_plan` in `OnToolResult` ~577–579; `emitPlan` ~670) | S5 |
 | `MessageInput`, send | Bridge `POST …/prompt` (not ACP on browser) | S3, S5 |
 | `ModelSelector` | ACP `session/set_mode`, `session/set_config_option`, `_zero/set_model` (not streamed as chat) | S6+ (config); S5 may show mode from `current_mode_update` |
 | Tool approval UI (`tool_approval.py`) | ACP RPC `session/request_permission` (agent → client); bridge HTTP in S4 | S4, S5 |
@@ -56,14 +56,17 @@ Wire `session/update` discriminators on `upstream/main` are defined in `internal
 | `ask_user` single-call rules, 1–3 questions | `backend/open_webui/utils/ask_user.py` |
 | Ask-user UI component | `src/lib/components/chat/AskUserCard.svelte` |
 | Elicitation form from JSON schema | `src/lib/components/chat/ElicitationDialog.svelte` |
-| `WEBUI_AUTH` defaults true; session cookie SameSite default `lax`, Secure default false | `backend/open_webui/env.py` (~757, ~775–776; auth cookie ~777–778) |
+| `WEBUI_AUTH` defaults true | `backend/open_webui/env.py` ~757 |
+| Session cookie SameSite default `lax`, Secure default false | `backend/open_webui/env.py` ~775–776 (`WEBUI_SESSION_COOKIE_*`) |
+| Auth cookie SameSite/Secure defaults | `backend/open_webui/env.py` ~777–778 (`WEBUI_AUTH_COOKIE_*`, inherits session) |
 | `eventsource-parser` dependency | `package.json` |
 | ACP `session/update` kinds | `upstream/main` `internal/acp/types.go` ~33–40 |
-| Plan notification from `update_plan` | `upstream/main` `internal/acp/agent.go` ~577–578, `emitPlan` ~670; `translate.go` `planUpdate` |
+| Plan notification from `update_plan` | `upstream/main` `internal/acp/agent.go` ~577–579, `emitPlan` ~670; `translate.go` `planUpdate` |
 | Permission forward to client | `upstream/main` `internal/acp/agent.go` comment ~647–649, `requestPermission` ~650 |
 
 ## NAO VERIFICADO
 
+- Whether S5 should surface token usage via a bridge-invented SSE field (no ACP `session/update` for usage today).
 - Default `CORS_ALLOW_ORIGIN` at runtime if env unset (documented as `*` in `backend/open_webui/config.py` ~2152; not traced through `main.py` middleware order).
 - Whether Open WebUI exposes token usage in the chat SSE payload in all configurations.
 - Exact DOM structure of `DiffBlock.svelte` vs Zero edit tools (bridge may show diff as plain text only in S5).

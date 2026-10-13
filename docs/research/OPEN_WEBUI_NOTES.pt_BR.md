@@ -34,8 +34,8 @@ Discriminadores `session/update` em `upstream/main` estão em `internal/acp/type
 | `Markdown`, `CodeBlock`, `DiffBlock` | Chunks + `tool_call` / `tool_call_update` (texto em nós DOM, sem HTML) | S5 |
 | `TaskList`, `StatusHistory` | `tool_call`, `tool_call_update` | S5 |
 | `FollowUps` | Sem kind ACP dedicado hoje | Fora de S5 |
-| Linha de uso/custo | `git grep -i usage upstream/main -- internal/acp` vazio; fork `main` persiste via `03d618be` (#1118); **sem** `session/update` de usage no fio no upstream nem no fork | S5 só se a ponte acrescentar campo SSE — **NAO VERIFICADO** |
-| UI de plano/tarefas | `plan` (`update_plan` em `OnToolResult` ~577–578; `emitPlan` ~670) | S5 |
+| Linha de uso/custo | `upstream/main`: `git grep -i usage upstream/main -- internal/acp` vazio; fork `main` persiste via `03d618be` (#1118); sem `session/update` de usage no fio em nenhum dos dois | S5 (linha de uso opcional — ver NAO VERIFICADO) |
+| UI de plano/tarefas | `plan` (`update_plan` em `OnToolResult` ~577–579; `emitPlan` ~670) | S5 |
 | `MessageInput` | `POST …/prompt` na ponte (não ACP no browser) | S3, S5 |
 | `ModelSelector` | `session/set_mode`, `session/set_config_option`, `_zero/set_model` | S6+; S5 pode mostrar `current_mode_update` |
 | Aprovação (`tool_approval.py`) | RPC `session/request_permission`; HTTP S4 | S4, S5 |
@@ -56,14 +56,17 @@ Discriminadores `session/update` em `upstream/main` estão em `internal/acp/type
 | Regras `ask_user` | `backend/open_webui/utils/ask_user.py` |
 | Componente AskUser | `src/lib/components/chat/AskUserCard.svelte` |
 | Elicitation por schema | `src/lib/components/chat/ElicitationDialog.svelte` |
-| `WEBUI_AUTH` true por padrão; cookie de sessão SameSite padrão `lax`, Secure padrão false | `backend/open_webui/env.py` (~757, ~775–776; cookie de auth ~777–778) |
+| `WEBUI_AUTH` true por padrão | `backend/open_webui/env.py` ~757 |
+| Cookie de sessão SameSite padrão `lax`, Secure padrão false | `backend/open_webui/env.py` ~775–776 (`WEBUI_SESSION_COOKIE_*`) |
+| Cookie de auth SameSite/Secure | `backend/open_webui/env.py` ~777–778 (`WEBUI_AUTH_COOKIE_*`, herda sessão) |
 | Dependência `eventsource-parser` | `package.json` |
 | Kinds `session/update` | `upstream/main` `internal/acp/types.go` ~33–40 |
-| Plano via `update_plan` | `upstream/main` `internal/acp/agent.go` ~577–578, `emitPlan` ~670; `translate.go` `planUpdate` |
+| Plano via `update_plan` | `upstream/main` `internal/acp/agent.go` ~577–579, `emitPlan` ~670; `translate.go` `planUpdate` |
 | Permissão ao cliente | `upstream/main` `internal/acp/agent.go` comentário ~647–649, `requestPermission` ~650 |
 
 ## NAO VERIFICADO
 
+- Se S5 deve mostrar uso de tokens via campo SSE inventado pela ponte (hoje não há `session/update` de usage no ACP).
 - `CORS_ALLOW_ORIGIN` efetivo em runtime (`config.py` ~2152 documenta `*`; ordem no `main.py` não rastreada).
 - Uso de tokens no payload SSE do chat em todas as configurações.
 - Equivalência exata `DiffBlock` vs tools de edição do Zero (S5 pode mostrar diff só como texto).
