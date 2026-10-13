@@ -1,6 +1,11 @@
 # Binaries
 /bin/
+bridge/bin/
 *.exe
+*.test
+
+# Local agent tooling (not part of this repo)
+.remember/
 
 # Local env (never commit secrets)
 .env
