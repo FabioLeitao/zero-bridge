@@ -166,12 +166,14 @@ Módulo `bridge/go.mod`.
 
 ### S2 — C0 probe
 
-**Caminho:** `bridge/go.mod`, `bridge/cmd/acpprobe/`.
+**Caminho:** `bridge/go.mod`, `bridge/internal/acpclient/`, `bridge/cmd/acpprobe/`.
+
+**Passos:** `acpclient` sobe `zero acp` (ndjson em stdio); `initialize` → `session/new` (workspace temporário) → `session/prompt` com modelo local/`:free`; log `->` / `<-` e notificações `session/update`. O filho pode definir `ZERO_PROVIDER=granite-local` só se o Ollama listar `granite4.2:3b-cpu-ctx16k`; senão herda o perfil ativo (sem editar config persistente).
 
 **Aceite**
 
 - Em `bridge/`: `go run ./cmd/acpprobe` → código de saída **0**.
-- `docs/plans/evidence/S2-acpprobe-transcript.txt` com provedor/modelo e métodos não observados.
+- Transcrição: [evidence/S2-acpprobe-transcript.txt](evidence/S2-acpprobe-transcript.txt) (provedor/modelo, `stopReason`, métodos não observados).
 - Modelo zero-custo documentado na transcrição.
 
 **Parada:** `zero acp` não sobe → registrar na transcrição; não iniciar S3.

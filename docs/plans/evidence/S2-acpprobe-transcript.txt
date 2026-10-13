@@ -1,0 +1,51 @@
+S2 acpprobe transcript — 2026-10-13 19:19:44 -03 (local)
+
+Bridge commit (HEAD at run):
+  9e71d83 fix(bridge): acpclient call race, EOF handling and stderr capture
+
+Command:
+  cd bridge && go run ./cmd/acpprobe
+Exit code: 0
+Close: saída limpa (defer client.Close() sem erro; stderr sem signal: killed)
+
+zero --version (from initialize agentInfo):
+  zero 0.9.0+up.30.eebb3846.databoar.9bba95e7.hdrtimeout.scanignore.acpusage.rmodel.sbxcompanion
+
+Zero-cost provider/model:
+  Provider: openrouter (activeProvider in ~/.config/zero/config.json; read-only, not modified)
+  Model: openrouter/free (preferences.recentModels[0]; :free tier)
+  Child env: ZERO_PROVIDER not set (Ollama GET /api/tags did not list granite4.2:3b-cpu-ctx16k; probe inherited active profile)
+
+Client capabilities advertised:
+  fs.readTextFile=false, fs.writeTextFile=false, terminal=false
+
+Workspace (session/new cwd):
+  /tmp/user/1000/zbridge-acpprobe-492277915 (MkdirTemp)
+
+Prompt:
+  Reply with exactly: OK
+
+stopReason (session/prompt result):
+  end_turn
+
+Wire excerpt (truncated; MCP warning chunks omitted):
+  -> initialize
+  <- initialize result protocolVersion=1
+  -> session/new
+  <- sessionId zero_20261013221944_1791929984958187310_1
+  -> session/prompt
+  <- session/update sessionUpdate=agent_thought_chunk (many chunks)
+  <- session/update sessionUpdate=agent_message_chunk text=OK
+  <- session/prompt result stopReason=end_turn
+
+Methods / events NOT observed in this run:
+  authenticate
+  session/request_permission (inbound to client)
+  fs/read_text_file, fs/write_text_file (inbound to client)
+  session/update: tool_call, tool_call_update, plan, current_mode_update, available_commands_update, user_message_chunk
+  session/cancel
+  usage on wire (no session/update usage kind)
+  _zero/set_model, session/set_mode, session/set_config_option
+
+Notes:
+  Agent emitted MCP unavailable warnings as agent_message_chunk text before the turn; not a separate ACP kind.

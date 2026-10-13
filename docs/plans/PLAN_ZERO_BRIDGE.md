@@ -181,14 +181,14 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 ### S2 — C0 spike (stdio only)
 
-**Path:** `bridge/go.mod`, `bridge/cmd/acpprobe/`.
+**Path:** `bridge/go.mod`, `bridge/internal/acpclient/`, `bridge/cmd/acpprobe/`.
 
-**Steps:** `exec.Command` → `zero acp`; `initialize` → `session/new` → `session/prompt` with a **local / `:free`** model configured in Zero; print `session/update` lines.
+**Steps:** `acpclient` spawns `zero acp` (stdio ndjson); `initialize` → `session/new` (temp workspace) → `session/prompt` with a **local / `:free`** model; log `->` / `<-` lines and `session/update` notifications. Child env may set `ZERO_PROVIDER=granite-local` only when Ollama lists `granite4.2:3b-cpu-ctx16k`; otherwise the active profile is inherited (no persistent config edits).
 
 **Acceptance**
 
 - From `bridge/`: `go run ./cmd/acpprobe` exits 0.
-- Transcript in `docs/plans/evidence/S2-acpprobe-transcript.txt` lists provider and model (no keys) and methods not observed.
+- Transcript: [evidence/S2-acpprobe-transcript.txt](evidence/S2-acpprobe-transcript.txt) (provider/model, `stopReason`, methods not observed).
 - Zero-cost rule satisfied (document how model was selected).
 
 **Stop:** If `zero acp` cannot start, document blocker; do not start S3.
