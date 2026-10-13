@@ -347,16 +347,11 @@ Separate module tree from `bridge/` (plugin manifest + tool binaries). Layout fo
 | `feat/acp-usage-events` = `11482096`, acp patch ≡ `03d618be` | `git diff 03d618be 11482096 -- internal/acp/` empty |
 | Branch 1 ahead / 27 behind `upstream/main` | `git rev-list` on fork clone |
 | `upstream/main` no `OnUsage` in acp agent at plan time | `git show upstream/main:internal/acp/agent.go` |
-| `feat/acp-usage-on-fork-main` not for upstream PR | operator audit + branch name role |
+| `feat/acp-usage-on-fork-main` not ahead of fork `main` | `git log --oneline origin/main..origin/feat/acp-usage-on-fork-main` empty; tip `03d618be`; merge-base with `origin/main` is `03d618be` |
+| ACP test files present | `git ls-files 'internal/acp/*_test.go'` includes `agent_test.go`, `usage_test.go`, `jsonrpc_test.go` |
 
 **NAO VERIFICADO**
 
 - Exact file:line registering `zero acp` in CLI.
 - Hermes `acp_adapter` full method parity with Zero.
 - deepseek-harness `packages/acp` wire details beyond package listing.
-
----
-
-## S2 transcript placeholder
-
-Create `docs/plans/evidence/S2-acpprobe-transcript.txt` when S2 is implemented.
