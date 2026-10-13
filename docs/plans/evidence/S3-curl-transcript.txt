@@ -1,0 +1,54 @@
+S3 live curl transcript — 2026-10-13 20:50:44 -03
+
+Bridge commit (HEAD at run):
+  89023ed fix(bridge): server concurrency, shutdown and header parsing
+
+Commands:
+  mkdir -p /tmp/zbridge-test
+  tmux new-session -d -s zbridge-s3 \
+    "cd bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765 > /tmp/zbridge-s3-server.log 2>&1"
+  curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/health
+  curl -sI http://127.0.0.1:8765/health
+  curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ws
+  curl -sf -X POST http://127.0.0.1:8765/v1/sessions \
+    -H 'Content-Type: application/json' -d '{"workspace":"/tmp/zbridge-test"}'
+  curl -sf -X POST http://127.0.0.1:8765/v1/sessions/$SID/prompt \
+    -H 'Content-Type: application/json' -d '{"text":"Reply with exactly: OK"}'
+  timeout 90 curl -sf -N http://127.0.0.1:8765/v1/sessions/$SID/events
+  rg -i 'sk-|authorization:' /tmp/zbridge-s3-server.log
+  tmux kill-session -t zbridge-s3
+
+HTTP:
+  GET /health → 200
+  GET /ws → 404
+  POST /v1/sessions → 200 {"sessionId":"zero_20261013235045_1791935445346392923_1"}
+  POST .../prompt → 202 {"ok":true}
+
+curl -sI /health (no Access-Control-Allow-Origin):
+  HTTP/1.1 200 OK
+  Cache-Control: no-store
+  Content-Security-Policy: default-src 'self'
+  Content-Type: application/json
+  X-Content-Type-Options: nosniff
+
+SSE data: lines (truncated; thought chunks omitted after the first):
+  data: {"seq":1,"type":"session/update", ... MCP fetch warning ...}
+  data: {"seq":13,"type":"session/update","params":{..."text":"OK"...}}
+  data: {"seq":14,"stopReason":"end_turn","type":"stop"}
+  : keepalive
+
+Secret scan:
+  rg -i 'sk-|authorization:' on the server log → no matches
+  Log lines are method, path, status, duration only.
+
+Zero-cost provider/model:
+  Provider: openrouter (activeProvider; config not modified)
+  Model: openrouter/free (preferences.recentModels[0])
+  Child env: ZERO_PROVIDER unset (Ollama does not list granite4.2:3b-cpu-ctx16k)
+
+Drop policy (not exercised in this run):
+  Per-session ring of 1000 events. Per-subscriber queue of 256 frames.
+  Overflow drops the newest frame for that subscriber and later emits {"type":"dropped","count":N}.
+
+After tmux kill-session:
+  no `zero` process left; TCP 8765 closed.

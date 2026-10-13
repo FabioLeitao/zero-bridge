@@ -206,9 +206,13 @@ UI patterns (SSE-only, no WebSocket): see [OPEN_WEBUI_NOTES.md](../research/OPEN
 **Acceptance**
 
 - Start: `cd bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765` (port fixed in slice commit or flag).
-- `curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/health` prints **200**.
-- `curl -sf -X POST http://127.0.0.1:8765/v1/sessions -H 'Content-Type: application/json' -d '{"workspace":"/tmp/zbridge-test"}'` returns JSON with `sessionId`.
-- `curl -sf -N .../events` receives at least one SSE `data:` line after prompt POST; prompt body uses zero-cost model only. **No WebSocket** endpoint is registered (`curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ws` → **404** or connection refused).
+- Live transcript: [evidence/S3-curl-transcript.txt](evidence/S3-curl-transcript.txt) (HEAD `89023ed`, HTTP codes, SSE `data:` lines, secret scan).
+- `curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/health` prints **200** while the child is up; **503** `{"ok":false,"agent":"down"}` if the child died. S3 does **not** restart the child.
+- `POST /v1/sessions` requires `Content-Type: application/json` (415 otherwise). Body `{"workspace":"/abs/dir"}`: the path must be absolute, exist, and be a directory. The client chooses the workspace; the bridge does not pin a root.
+- `Host` must be `127.0.0.1:<port>` or `localhost:<port>` (403 otherwise). If `Origin` is set, it must be the same host and port (403 otherwise). Responses never send `Access-Control-Allow-Origin`.
+- `curl -sf -N .../events` receives at least one SSE `data:` line after prompt POST; prompt body uses zero-cost model only. **No WebSocket** endpoint is registered (`curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ws` → **404**).
+- Each session keeps a ring of the last **1000** events (late subscribers replay it). Each subscriber queue holds **256** frames; if it overflows, the **newest** frame for that subscriber is dropped and a `{"type":"dropped","count":N}` event is sent when there is room.
+- The in-memory session map is not pruned (no `DELETE` in S3). Acceptable for a single local operator.
 - Browser client uses **fetch + ReadableStream** to parse SSE (`data:` lines) in plain JS; no `eventsource-parser` npm dependency in `bridge/web/`.
 - `curl -sI http://127.0.0.1:8765/health` includes restrictive `Content-Security-Policy` (default-src 'self'), `X-Content-Type-Options: nosniff`, and does **not** include `Access-Control-Allow-Origin: *`.
 - Bridge log file or stderr from one prompt: `rg -i 'sk-|authorization:'` returns no matches.

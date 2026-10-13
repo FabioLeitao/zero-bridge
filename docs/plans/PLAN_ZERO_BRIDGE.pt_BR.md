@@ -191,9 +191,13 @@ Padrões de UI (só SSE, sem WebSocket): [OPEN_WEBUI_NOTES.pt_BR.md](../research
 **Aceite**
 
 - `cd bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765`.
-- `curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/health` → **200**.
-- `POST /v1/sessions` com workspace absoluto → JSON com `sessionId`.
-- `GET .../events` recebe ao menos uma linha SSE `data:` após prompt (modelo zero-custo). **Sem WebSocket** (`curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ws` → **404** ou conexão recusada).
+- Transcrição ao vivo: [evidence/S3-curl-transcript.txt](evidence/S3-curl-transcript.txt) (HEAD `89023ed`, códigos HTTP, linhas SSE `data:`, varredura de segredos).
+- `GET /health` → **200** com o filho vivo; **503** `{"ok":false,"agent":"down"}` se o filho morreu. A S3 **não** reinicia o filho.
+- `POST /v1/sessions` exige `Content-Type: application/json` (senão 415). Corpo `{"workspace":"/abs/dir"}`: caminho absoluto, existente e diretório. O cliente escolhe o workspace; a ponte não fixa uma raiz.
+- `Host` tem de ser `127.0.0.1:<porta>` ou `localhost:<porta>` (senão 403). Se houver `Origin`, só o mesmo host e porta (senão 403). Respostas nunca enviam `Access-Control-Allow-Origin`.
+- `GET .../events` recebe ao menos uma linha SSE `data:` após o prompt (modelo zero-custo). **Sem WebSocket** (`GET /ws` → **404**).
+- Cada sessão guarda um anel dos últimos **1000** eventos (assinante tardio recebe o replay). A fila de cada assinante tem **256** frames; se estourar, descarta o frame **mais novo** daquele assinante e emite `{"type":"dropped","count":N}` quando houver espaço.
+- O mapa de sessões em memória não é podado (sem `DELETE` na S3). Aceitável para um operador local.
 - Cliente no browser usa **fetch + ReadableStream** para SSE em JS puro; sem dependência `eventsource-parser` em `bridge/web/`.
 - `curl -sI http://127.0.0.1:8765/health` traz `Content-Security-Policy` restritiva (`default-src 'self'`), `X-Content-Type-Options: nosniff`, sem `Access-Control-Allow-Origin: *`.
 - Log de um prompt: `rg -i 'sk-|authorization:'` sem correspondências.
