@@ -201,13 +201,16 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 **Upstream decision:** [#622](https://github.com/Twigpine/zero/issues/622) closed with no HTTP control plane in current upstream scope, so this HTTP surface lives **only in zero-bridge** and must not become an upstream issue, PR, or Discussion. Security posture follows the remote-daemon precedent: opt-in, never open by default, secrets from environment or file (not argv).
 
+UI patterns (SSE-only, no WebSocket): see [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md).
+
 **Acceptance**
 
 - Start: `cd bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765` (port fixed in slice commit or flag).
 - `curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/health` prints **200**.
 - `curl -sf -X POST http://127.0.0.1:8765/v1/sessions -H 'Content-Type: application/json' -d '{"workspace":"/tmp/zbridge-test"}'` returns JSON with `sessionId`.
-- `curl -sf -N .../events` receives at least one SSE `data:` line after prompt POST; prompt body uses zero-cost model only.
-- Response headers for API routes do not include `Access-Control-Allow-Origin: *`.
+- `curl -sf -N .../events` receives at least one SSE `data:` line after prompt POST; prompt body uses zero-cost model only. **No WebSocket** endpoint is registered (`curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ws` → **404** or connection refused).
+- Browser client uses **fetch + ReadableStream** to parse SSE (`data:` lines) in plain JS; no `eventsource-parser` npm dependency in `bridge/web/`.
+- `curl -sI http://127.0.0.1:8765/health` includes restrictive `Content-Security-Policy` (default-src 'self'), `X-Content-Type-Options: nosniff`, and does **not** include `Access-Control-Allow-Origin: *`.
 - Bridge log file or stderr from one prompt: `rg -i 'sk-|authorization:'` returns no matches.
 
 **Stop:** If SSE queue is unbounded, cap depth and document drops; do not bind beyond loopback until **S13** exists in the Zero binary you target.
@@ -218,11 +221,17 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 **Path:** `bridge/internal/permissions/`.
 
+Approval UX reference: [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md) (`tool_approval.py` pattern).
+
 **Acceptance** (use a prompt that triggers `session/request_permission`, zero-cost model):
 
+- Each pending permission has a stable `reqId` in the URL path.
 - `curl -sf -X POST http://127.0.0.1:8765/v1/sessions/{id}/permissions/{reqId} -H 'Content-Type: application/json' -d '{"decision":"allow"}'` → HTTP **200**, body `{"ok":true}`; ACP turn records allow.
 - Same URL with `"decision":"deny"` → HTTP **200**; turn ends with deny outcome (no tool run).
-- No POST within configured timeout (default 60s) → bridge sends **deny** to ACP; HTTP caller may get **408** or **200** with `{"ok":false,"reason":"timeout"}` (pick one in implementation; document in slice commit).
+- Repeat POST with the same `{reqId}` after it is resolved → HTTP **409**, body mentions already resolved.
+- POST with unknown `{reqId}` → HTTP **404**.
+- No POST within configured timeout (default 60s) → bridge sends **deny** to ACP; HTTP **408** or **200** with `{"ok":false,"reason":"timeout"}` (document choice in slice commit); S5 UI shows **expired** for that card.
+- At most **one** pending permission exposed in `GET /v1/sessions/{id}/permissions/pending` (or SSE event); the next appears only after the previous closes.
 - Permission request with no HTTP decision before turn ends → **deny** (default).
 
 **Stop:** If Zero changes `session/request_permission` params, fix adapter; pause until S2 probe passes again.
@@ -233,11 +242,15 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 **Path:** `bridge/web/index.html`, `bridge/web/app.js`; served as static files from the binary.
 
+Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md). **In scope:** message list with streaming, tool-call status, permission card, plain-text edit/diff lines, plan/task list, optional usage line if bridge adds SSE metadata. **Out of scope:** RAG, memory, voice, artifacts, multi-user accounts.
+
 **Acceptance**
 
 - Open `http://127.0.0.1:8765/` in a browser; send a message; assistant text appears from SSE (zero-cost model).
 - View source: no `process.env`, no embedded API keys; `fetch` targets same origin only.
-- Deny-by-default permission UI wired to S4 endpoints; clicking Allow triggers allow path from S4.
+- Model and tool output render via `textContent` or `document.createTextNode` only — **never** `innerHTML` on untrusted strings. Automated check: inject assistant SSE payload containing `<img src=x onerror="window.__xss=1">`; after render, `window.__xss` is **undefined**.
+- Deny-by-default permission card wired to S4; only one pending card visible; Allow/Deny call S4; timeout shows **expired** per S4.
+- Plan entries appear when SSE carries ACP `sessionUpdate: "plan"` (see research mapping table).
 
 **Stop:** If UI requires a framework or CDN, reject scope creep; stay HTML+JS only.
 

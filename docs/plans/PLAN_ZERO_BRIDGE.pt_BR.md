@@ -184,13 +184,16 @@ Módulo `bridge/go.mod`.
 
 **Decisão do upstream:** #622 fechada sem plano de control plane HTTP no escopo atual do upstream; esta superfície HTTP vive **só no zero-bridge** e não deve virar issue, PR ou Discussion no upstream. Postura de segurança segue o precedente do daemon remoto: opt-in, nunca aberta por padrão, segredo por variável de ambiente ou arquivo (não argv).
 
+Padrões de UI (só SSE, sem WebSocket): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md).
+
 **Aceite**
 
 - `cd bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765`.
 - `curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/health` → **200**.
 - `POST /v1/sessions` com workspace absoluto → JSON com `sessionId`.
-- `GET .../events` recebe ao menos uma linha SSE `data:` após prompt (modelo zero-custo).
-- Sem `Access-Control-Allow-Origin: *` nas rotas API.
+- `GET .../events` recebe ao menos uma linha SSE `data:` após prompt (modelo zero-custo). **Sem WebSocket** (`curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/ws` → **404** ou conexão recusada).
+- Cliente no browser usa **fetch + ReadableStream** para SSE em JS puro; sem dependência `eventsource-parser` em `bridge/web/`.
+- `curl -sI http://127.0.0.1:8765/health` traz `Content-Security-Policy` restritiva (`default-src 'self'`), `X-Content-Type-Options: nosniff`, sem `Access-Control-Allow-Origin: *`.
 - Log de um prompt: `rg -i 'sk-|authorization:'` sem correspondências.
 
 **Parada:** fila SSE ilimitada → cap documentado; não bind além de loopback até **S13** no Zero alvo.
@@ -201,11 +204,17 @@ Módulo `bridge/go.mod`.
 
 **Caminho:** `bridge/internal/permissions/`.
 
+Referência de UX: [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md) (padrão `tool_approval.py`).
+
 **Aceite** (prompt que dispara permissão, modelo zero-custo):
 
+- Cada pedido pendente tem `reqId` estável na URL.
 - `POST .../permissions/{reqId}` com `{"decision":"allow"}` → HTTP **200**, `{"ok":true}`; turno ACP permite.
 - Com `"decision":"deny"` → HTTP **200**; turno nega execução da tool.
-- Sem POST no timeout (padrão 60s) → bridge envia **deny** ao ACP; resposta HTTP **408** ou **200** com `timeout` (fixar na implementação e documentar no commit da fatia).
+- Segundo POST no mesmo `{reqId}` já resolvido → HTTP **409**, corpo indica já resolvido.
+- `{reqId}` desconhecido → HTTP **404**.
+- Sem POST no timeout (padrão 60s) → bridge envia **deny** ao ACP; HTTP **408** ou **200** com `timeout` (documentar no commit da fatia); UI S5 mostra **expirado**.
+- No máximo **uma** permissão pendente em `GET .../permissions/pending` (ou evento SSE); a seguinte só após fechar a anterior.
 - Sem decisão HTTP antes do fim do turno → **deny** (padrão).
 
 **Parada:** mudança no wire de permissão → corrigir adaptador; pausar até S2 passar de novo.
@@ -216,11 +225,15 @@ Módulo `bridge/go.mod`.
 
 **Caminho:** `bridge/web/index.html`, `bridge/web/app.js`.
 
+Escopo de componentes (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md). **No escopo:** lista com streaming, status de tools, cartão de permissão, diff/edição em texto, plano/tarefas, linha de uso opcional via metadado SSE. **Fora:** RAG, memória, voz, artifacts, multiusuário.
+
 **Aceite**
 
 - `http://127.0.0.1:8765/` envia mensagem; texto do assistente via SSE (zero-custo).
 - Código-fonte sem `process.env` nem chaves; `fetch` só mesma origem.
-- UI Allow/Deny ligada aos endpoints S4; Deny padrão até ação do usuário.
+- Saída do modelo/tools só com `textContent` ou `createTextNode` — **nunca** `innerHTML` em strings não confiáveis. Teste: payload SSE com `<img src=x onerror="window.__xss=1">`; após render, `window.__xss` é **undefined**.
+- Cartão de permissão ligado à S4; um pendente visível; timeout mostra **expirado** conforme S4.
+- Entradas de plano quando SSE traz `sessionUpdate: "plan"` (tabela no doc de pesquisa).
 
 **Parada:** exigência de framework/CDN → rejeitar; só HTML+JS.
 
