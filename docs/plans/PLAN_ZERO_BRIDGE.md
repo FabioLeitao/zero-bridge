@@ -161,43 +161,80 @@ After upstream merges that touch `internal/acp`, run the **S2** probe binary (on
 
 ### S3 — C1 stdio → HTTP (loopback)
 
+**Path:** `bridge/cmd/zero-bridge/` (or equivalent main), `bridge/internal/server/`.
+
 **Acceptance**
 
-- `POST /v1/sessions`, `POST /v1/sessions/{id}/prompt` (body max enforced), `GET /v1/sessions/{id}/events` (SSE).
-- `curl` health → 200; no `Access-Control-Allow-Origin: *`.
-- Prompt uses zero-cost model only; logs contain no `sk-` / `Authorization:` from bodies.
+- Start: `cd bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765` (port fixed in slice commit or flag).
+- `curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/health` prints **200**.
+- `curl -sf -X POST http://127.0.0.1:8765/v1/sessions -H 'Content-Type: application/json' -d '{"workspace":"/tmp/zbridge-test"}'` returns JSON with `sessionId`.
+- `curl -sf -N .../events` receives at least one SSE `data:` line after prompt POST; prompt body uses zero-cost model only.
+- Response headers for API routes do not include `Access-Control-Allow-Origin: *`.
+- Bridge log file or stderr from one prompt: `rg -i 'sk-|authorization:'` returns no matches.
 
-**Stop:** If SSE back-pressure is unbounded, cap queue length until **S13** lands in Zero; do not bind beyond loopback.
+**Stop:** If SSE queue is unbounded, cap depth and document drops; do not bind beyond loopback until **S13** exists in the Zero binary you target.
 
-**Unlocks:** S4 permissions.
+**Unlocks:** S4 permission HTTP API.
 
 ### S4 — C2 permissions
 
-**Acceptance:** `POST .../permissions/{reqId}` allow/deny; default and timeout ⇒ deny.
+**Path:** `bridge/internal/permissions/`.
 
-**Unlocks:** S5 UI.
+**Acceptance** (use a prompt that triggers `session/request_permission`, zero-cost model):
+
+- `curl -sf -X POST http://127.0.0.1:8765/v1/sessions/{id}/permissions/{reqId} -H 'Content-Type: application/json' -d '{"decision":"allow"}'` → HTTP **200**, body `{"ok":true}`; ACP turn records allow.
+- Same URL with `"decision":"deny"` → HTTP **200**; turn ends with deny outcome (no tool run).
+- No POST within configured timeout (default 60s) → bridge sends **deny** to ACP; HTTP caller may get **408** or **200** with `{"ok":false,"reason":"timeout"}` (pick one in implementation; document in slice commit).
+- Permission request with no HTTP decision before turn ends → **deny** (default).
+
+**Stop:** If Zero changes `session/request_permission` params, fix adapter; pause until S2 probe passes again.
+
+**Unlocks:** S5 UI can offer Allow/Deny controls.
 
 ### S5 — C3 static web UI
 
-**Path:** `bridge/web/` — HTML + JS only.
+**Path:** `bridge/web/index.html`, `bridge/web/app.js`; served as static files from the binary.
 
-**Acceptance:** Same-origin chat over SSE; zero-cost prompts; no env leak in JS.
+**Acceptance**
 
-**Unlocks:** S6 session admin HTTP.
+- Open `http://127.0.0.1:8765/` in a browser; send a message; assistant text appears from SSE (zero-cost model).
+- View source: no `process.env`, no embedded API keys; `fetch` targets same origin only.
+- Deny-by-default permission UI wired to S4 endpoints; clicking Allow triggers allow path from S4.
+
+**Stop:** If UI requires a framework or CDN, reject scope creep; stay HTML+JS only.
+
+**Unlocks:** S6 session management in the UI.
 
 ### S6 — C4 session list / load / resume
 
-**Acceptance:** HTTP maps to `session/list`, `load`, `resume`; prompt works after load/resume.
+**Path:** `bridge/internal/server/` session routes.
 
-**Unlocks:** S7 A2A ingress.
+**Acceptance**
+
+- `curl -sf http://127.0.0.1:8765/v1/sessions` returns JSON array including a session created earlier in the same workspace.
+- `curl -sf -X POST .../v1/sessions/{id}/load` → **200** and `sessionId` matches.
+- `curl -sf -X POST .../v1/sessions/{id}/resume` → **200**; subsequent prompt POST (zero-cost) streams SSE events.
+- Restart only the bridge process (keep Zero data dir); `load` still works for the same id.
+
+**Stop:** If `session/list` filtering disagrees with Zero TUI, file upstream issue; bridge documents workspace filter rules.
+
+**Unlocks:** S7 can target stable session ids from A2A.
 
 ### S7 — C5 A2A ingress
 
 **Path:** `bridge/a2a/`.
 
-**Acceptance:** Agent Card; `message/send` → `session/prompt`; non-loopback requires bearer token; body limits.
+**Acceptance**
 
-**Unlocks:** External agents via A2A.
+- `curl -sf http://127.0.0.1:8765/.well-known/agent-card.json` → **200**, JSON with `name` field.
+- JSON-RPC `message/send` on loopback with valid payload → **200** and task id; bridge issues `session/prompt` with zero-cost model.
+- Start with `--listen 0.0.0.0:8765` without `BRIDGE_TOKEN` (or equivalent) → process exits non-zero **or** listens only on 127.0.0.1 (document which; must not expose unauthenticated wide bind).
+- With token configured, non-loopback bind requires `Authorization: Bearer <token>`; missing header → **401**.
+- POST body larger than configured max → **413**.
+
+**Stop:** Do not implement full A2A task surface in one slice; `message/send` + Agent Card only.
+
+**Unlocks:** External A2A clients can reach Zero through the bridge.
 
 ---
 
@@ -207,21 +244,46 @@ Separate module tree from `bridge/` (plugin manifest + tool binaries). Layout fo
 
 ### S8 — B1 `a2a_discover`
 
-**Acceptance:** Tool listed; `permission: prompt`; HTTP only to declared URL host.
+**Path:** `plugin/a2a/plugin.json`, `plugin/a2a/tools/a2a_discover/` (Go main).
 
-**Unlocks:** S9.
+**Acceptance**
+
+- With plugin copied to a test project `.zero/plugins/zero-bridge-a2a/`: `zero tools list` output contains `a2a_discover`.
+- `zero plugins validate` (or project diagnostics) reports no schema errors for this plugin.
+- `go test ./plugin/a2a/tools/a2a_discover/ -count=1`: httptest peer on `127.0.0.1`; tool stdin `{"url":"http://127.0.0.1:<port>"}` → exit **0**; stdout JSON includes capability fields from mock Agent Card.
+- Same test: URL host `http://evil.example/` when allowlist only contains `127.0.0.1` → exit **non-zero**, stderr mentions host not allowed (no network dial).
+
+**Stop:** If plugin must live in user global dir only, document install path; do not merge into `bridge/`.
+
+**Unlocks:** S9 `a2a_call` can assume discover shape.
 
 ### S9 — B2 `a2a_call`
 
-**Acceptance:** Call configured peer; permission prompt; errors without secrets.
+**Path:** `plugin/a2a/tools/a2a_call/`.
 
-**Unlocks:** S10.
+**Acceptance**
+
+- `zero tools list` contains `a2a_call`.
+- Manual: first invocation in a session triggers Zero permission **prompt** (manifest `permission: prompt`).
+- `go test ./plugin/a2a/tools/a2a_call/ -count=1` with httptest mock peer: stdin `{"peer":"test","message":"hi"}` → exit **0**, stdout JSON with reply field; simulated 500 from peer → exit **non-zero**, stderr without token substrings.
+
+**Stop:** Do not implement `a2a_orchestrate` or fan-out.
+
+**Unlocks:** S10 list tool.
 
 ### S10 — B3 `a2a_list`
 
-**Acceptance:** Lists peers from plugin config; clean plugin diagnostics.
+**Path:** `plugin/a2a/peers.json` (example), `plugin/a2a/tools/a2a_list/`.
 
-**Unlocks:** Zero agent outbound A2A.
+**Acceptance**
+
+- `zero tools list` contains `a2a_list`.
+- Tool stdin `{}` → exit **0**; stdout JSON array length matches `peers.json` entries.
+- `zero plugins` diagnostics: no `kind: schema` errors for this plugin.
+
+**Stop:** If multi-peer config churns, ship read-only list of a single peer for v1 and document.
+
+**Unlocks:** Operator can use Zero agent to call configured A2A peers.
 
 ---
 
