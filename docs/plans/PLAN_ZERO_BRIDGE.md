@@ -349,9 +349,14 @@ Separate module tree from `bridge/` (plugin manifest + tool binaries). Layout fo
 | `upstream/main` no `OnUsage` in acp agent at plan time | `git show upstream/main:internal/acp/agent.go` |
 | `feat/acp-usage-on-fork-main` not ahead of fork `main` | `git log --oneline origin/main..origin/feat/acp-usage-on-fork-main` empty; tip `03d618be`; merge-base with `origin/main` is `03d618be` |
 | ACP test files present | `git ls-files 'internal/acp/*_test.go'` includes `agent_test.go`, `usage_test.go`, `jsonrpc_test.go` |
+| #622 HTTP/OpenAPI + JS SDK closed as out of current scope (2026-08-29); maintainer comments (2026-07-29, 2026-08-12) framed auth/bind/browser access and a narrow read-only local events idea | `gh issue view 622 -R Twigpine/zero --json state,closedAt,comments` |
+| `zero daemon serve-remote`: TLS-only opt-in bridge; bearer via `$ZERO_DAEMON_REMOTE_TOKEN` or `_FILE`; optional `--bundle-dir`; `link`, `run --remote`, `attach --remote` | `upstream/main` `internal/cli/daemon.go` `writeDaemonUsage` ~51–75; `internal/cli/completions.go` ~41 |
+| TUI `/attach` types into a running interactive terminal session (not remote control plane) | `upstream/main` `internal/tui/commands.go` ~146–149 |
+| No upstream Discussion proposing web UI or remote control; 17 discussions listed; nearest is #735 “Zero Desktop” (Show and tell) | `gh api graphql` `repository.discussions` on `Twigpine/zero` (2026-10-13) |
 
 **NAO VERIFICADO**
 
 - Exact file:line registering `zero acp` in CLI.
 - Hermes `acp_adapter` full method parity with Zero.
 - deepseek-harness `packages/acp` wire details beyond package listing.
+- Whether `daemon serve-remote` workers (`zero exec` / stream-json) surface permission prompts to the remote client.
