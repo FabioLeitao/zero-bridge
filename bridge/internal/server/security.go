@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -72,5 +73,9 @@ func checkHostOrigin(r *http.Request, allowed []string) bool {
 
 func requireJSONContentType(r *http.Request) bool {
 	ct := r.Header.Get("Content-Type")
-	return strings.HasPrefix(ct, "application/json")
+	mediaType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		return false
+	}
+	return mediaType == "application/json"
 }

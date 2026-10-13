@@ -4,9 +4,11 @@ package acptest
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -14,6 +16,8 @@ import (
 func Main() {
 	runAgent(os.Stdin, os.Stdout)
 }
+
+var nextSessionID atomic.Int64
 
 func runAgent(r io.Reader, w io.Writer) {
 	reader := bufio.NewReader(r)
@@ -46,20 +50,30 @@ func runAgent(r io.Reader, w io.Writer) {
 				os.Exit(0)
 			}
 		case "session/new":
-			writeResp(w, env.ID, map[string]any{"sessionId": "sess-acptest-1"})
+			n := nextSessionID.Add(1)
+			writeResp(w, env.ID, map[string]any{"sessionId": fmt.Sprintf("sess-acptest-%d", n)})
 		case "session/prompt":
+			sid := "sess-acptest-1"
+			var req struct {
+				Params struct {
+					SessionID string `json:"sessionId"`
+				} `json:"params"`
+			}
+			if json.Unmarshal(line, &req) == nil && req.Params.SessionID != "" {
+				sid = req.Params.SessionID
+			}
 			if ms := slowMillis(); ms > 0 {
 				time.Sleep(time.Duration(ms) * time.Millisecond)
 			}
 			notify(w, "session/update", map[string]any{
-				"sessionId": "sess-acptest-1",
+				"sessionId": sid,
 				"update": map[string]any{
 					"sessionUpdate": "agent_message_chunk",
 					"content":       map[string]string{"type": "text", "text": "one"},
 				},
 			})
 			notify(w, "session/update", map[string]any{
-				"sessionId": "sess-acptest-1",
+				"sessionId": sid,
 				"update": map[string]any{
 					"sessionUpdate": "agent_message_chunk",
 					"content":       map[string]string{"type": "text", "text": "two"},

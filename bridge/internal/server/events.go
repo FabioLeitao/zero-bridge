@@ -34,6 +34,7 @@ func newSessionHub(logCap, subQueue int) *sessionHub {
 }
 
 type subscriber struct {
+	mu          sync.Mutex
 	ch          chan []byte
 	pendingDrop int
 }
@@ -108,16 +109,18 @@ func (h *sessionHub) appendLog(frame []byte) {
 }
 
 func (s *subscriber) deliver(frame []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	select {
 	case s.ch <- frame:
-		s.flushDropped()
+		s.flushDroppedLocked()
 	default:
 		s.pendingDrop++
-		s.flushDropped()
+		s.flushDroppedLocked()
 	}
 }
 
-func (s *subscriber) flushDropped() {
+func (s *subscriber) flushDroppedLocked() {
 	for s.pendingDrop > 0 {
 		msg := map[string]any{"type": "dropped", "count": s.pendingDrop}
 		b, _ := json.Marshal(msg)

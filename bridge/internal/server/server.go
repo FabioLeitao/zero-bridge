@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,10 +35,13 @@ type Server struct {
 	listen   string
 	allowed  []string
 	acp      *acpclient.Client
-	acpMu    sync.Mutex
+	acpMu    sync.RWMutex
 	sessions map[string]*sessionHub
 	mu       sync.RWMutex
 	httpSrv  *http.Server
+
+	serveCtx    context.Context
+	serveCancel context.CancelFunc
 }
 
 // New builds a Server; call Boot before serving.
@@ -59,11 +63,14 @@ func New(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	serveCtx, serveCancel := context.WithCancel(context.Background())
 	return &Server{
-		cfg:      cfg,
-		listen:   listen,
-		allowed:  allowed,
-		sessions: make(map[string]*sessionHub),
+		cfg:         cfg,
+		listen:      listen,
+		allowed:     allowed,
+		sessions:    make(map[string]*sessionHub),
+		serveCtx:    serveCtx,
+		serveCancel: serveCancel,
 	}, nil
 }
 
@@ -82,7 +89,9 @@ func (s *Server) Boot(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	s.acpMu.Lock()
 	s.acp = client
+	s.acpMu.Unlock()
 	initParams := map[string]any{
 		"protocolVersion": 1,
 		"clientCapabilities": map[string]any{
@@ -102,13 +111,22 @@ func (s *Server) Boot(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) acpCall(ctx context.Context, method string, params any, result any) error {
-	s.acpMu.Lock()
-	defer s.acpMu.Unlock()
-	if s.acp == nil {
-		return errors.New("agent not started")
+func (s *Server) acpClient() (*acpclient.Client, error) {
+	s.acpMu.RLock()
+	c := s.acp
+	s.acpMu.RUnlock()
+	if c == nil {
+		return nil, errors.New("agent not started")
 	}
-	return s.acp.Call(ctx, method, params, result)
+	return c, nil
+}
+
+func (s *Server) acpCall(ctx context.Context, method string, params any, result any) error {
+	c, err := s.acpClient()
+	if err != nil {
+		return err
+	}
+	return c.Call(ctx, method, params, result)
 }
 
 func (s *Server) agentUp() bool {
@@ -170,23 +188,37 @@ func (s *Server) Handler() http.Handler {
 
 // ListenAndServe blocks until the server stops.
 func (s *Server) ListenAndServe() error {
-	s.httpSrv = &http.Server{
+	s.httpSrv = s.newHTTPServer()
+	return s.httpSrv.ListenAndServe()
+}
+
+func (s *Server) newHTTPServer() *http.Server {
+	return &http.Server{
 		Addr:              s.listen,
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		MaxHeaderBytes:    16 << 10,
+		BaseContext: func(net.Listener) context.Context {
+			return s.serveCtx
+		},
 	}
-	return s.httpSrv.ListenAndServe()
 }
 
 // Shutdown stops HTTP and closes the acp child.
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.serveCancel != nil {
+		s.serveCancel()
+	}
 	var err error
 	if s.httpSrv != nil {
 		err = s.httpSrv.Shutdown(ctx)
 	}
-	if s.acp != nil {
-		if cerr := s.acp.Close(); err == nil {
+	s.acpMu.Lock()
+	c := s.acp
+	s.acp = nil
+	s.acpMu.Unlock()
+	if c != nil {
+		if cerr := c.Close(); err == nil {
 			err = cerr
 		}
 	}

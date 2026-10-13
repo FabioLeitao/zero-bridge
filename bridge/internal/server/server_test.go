@@ -44,7 +44,7 @@ func startTestServer(t *testing.T, extraEnv []string) (*Server, string, func()) 
 	if err := srv.Boot(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	httpSrv := &http.Server{Handler: srv.Handler()}
+	httpSrv := srv.newHTTPServer()
 	go httpSrv.Serve(ln)
 	return srv, "http://" + addr, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -335,6 +335,87 @@ func collectSSE(t *testing.T, url string, timeout time.Duration) []string {
 		}
 	}
 	return lines
+}
+
+func TestConcurrentSessionsWhileSlowPrompt(t *testing.T) {
+	_, base, cleanup := startTestServer(t, []string{"ZB_FAKE_AGENT_SLOW_MS=800"})
+	defer cleanup()
+	dir := t.TempDir()
+	sidA := createSession(t, base, dir)
+	postPromptAsync(base, sidA, "a")
+	time.Sleep(50 * time.Millisecond)
+	start := time.Now()
+	sidB := createSession(t, base, dir)
+	if time.Since(start) > time.Second {
+		t.Fatalf("session B blocked for %s", time.Since(start))
+	}
+	res, err := http.Post(base+"/v1/sessions/"+sidB+"/prompt", "application/json", strings.NewReader(`{"text":"b"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("prompt B status %d", res.StatusCode)
+	}
+	time.Sleep(2 * time.Second)
+	for _, sid := range []string{sidA, sidB} {
+		lines := collectSSE(t, base+"/v1/sessions/"+sid+"/events", 2*time.Second)
+		if !sseContainsType(lines, "stop") {
+			t.Fatalf("session %s missing stop: %v", sid, lines)
+		}
+	}
+}
+
+func TestShutdownUnblocksSSE(t *testing.T) {
+	srv, base, _ := startTestServer(t, nil)
+	dir := t.TempDir()
+	sid := createSession(t, base, dir)
+	done := make(chan struct{})
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/sessions/"+sid+"/events", nil)
+		res, err := http.DefaultClient.Do(req)
+		if err == nil {
+			_, _ = io.Copy(io.Discard, res.Body)
+			res.Body.Close()
+		}
+		close(done)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("sse handler still running")
+	}
+}
+
+func TestJSONContentTypeExact(t *testing.T) {
+	_, base, cleanup := startTestServer(t, nil)
+	defer cleanup()
+	dir := t.TempDir()
+	body := `{"workspace":"` + dir + `"}`
+	ok, err := http.Post(base+"/v1/sessions", "application/json; charset=utf-8", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok.Body.Close()
+	if ok.StatusCode != http.StatusOK {
+		t.Fatalf("charset status %d", ok.StatusCode)
+	}
+	bad, err := http.Post(base+"/v1/sessions", "application/jsonx", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("jsonx status %d", bad.StatusCode)
+	}
 }
 
 func sseContainsType(lines []string, typ string) bool {

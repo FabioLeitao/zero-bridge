@@ -52,7 +52,7 @@ type Client struct {
 	notify    NotifyFunc
 	inbound   InboundHandler
 	readDone  chan struct{}
-	readErr  error
+	readErr   error
 
 	ctx    context.Context
 	cancel context.CancelFunc
