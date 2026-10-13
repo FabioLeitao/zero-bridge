@@ -68,7 +68,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 ---
 
-## Linear sequence (S1…S13)
+## Linear sequence (S1…S13, plus S5a/S5b)
 
 | ID | Track | Repo / path | Unlocks | External block |
 | --- | --- | --- | --- | --- |
@@ -76,7 +76,8 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S2** | C0 | `zero-bridge` → `bridge/` (`go.mod` + `cmd/acpprobe/`) | Stdio ACP contract before HTTP | — |
 | **S3** | C1 | `zero-bridge` → `bridge/` | HTTP+SSE session/prompt | — |
 | **S4** | C2 | `zero-bridge` → `bridge/` | Permission endpoints | — |
-| **S5** | C3 | `zero-bridge` → `bridge/web/` | Static chat UI | — |
+| **S5a** | C3a | `zero-bridge` → `bridge/web/` | Minimal streaming chat (depends on S3 only) | — |
+| **S5b** | C3b | `zero-bridge` → `bridge/web/` | Permission card, plan, tool UI (depends on S4) | — |
 | **S6** | C4 | `zero-bridge` → `bridge/` | list/load/resume | — |
 | **S7** | C5 | `zero-bridge` → `bridge/a2a/` | A2A ingress + token gate | — |
 | **S8** | B1 | `zero-bridge` → `plugin/a2a/` | `a2a_discover` tool | — |
@@ -240,23 +241,35 @@ Approval UX reference: [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md) (`
 
 **Stop:** If Zero changes `session/request_permission` params, fix adapter; pause until S2 probe passes again.
 
-**Unlocks:** S5 UI can offer Allow/Deny controls.
+**Unlocks:** S5b permission cards.
 
-### S5 — C3 static web UI
+### S5a — C3a minimal chat
 
-**Path:** `bridge/web/index.html`, `bridge/web/app.js`; served as static files from the binary.
+**Path:** `bridge/web/index.html`, `bridge/web/app.js`, `bridge/web/style.css`, `bridge/web/embed.go`. Depends only on S3. Permissions stay deny-by-default; no approval UI.
 
-Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md). **In scope:** message list with streaming, tool-call status, permission card, plain-text edit/diff lines, plan/task list, optional usage line if bridge adds SSE metadata. **Out of scope:** RAG, memory, voice, artifacts, multi-user accounts.
+Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md). **In scope:** message list with streaming. **Out of scope:** permission cards, plan/tool chrome beyond plain text lines, RAG, memory, voice, artifacts, multi-user accounts.
 
 **Acceptance**
 
 - Open `http://127.0.0.1:8765/` in a browser; send a message; assistant text appears from SSE (zero-cost model).
 - View source: no `process.env`, no embedded API keys; `fetch` targets same origin only.
-- Model and tool output render via `textContent` or `document.createTextNode` only — **never** `innerHTML` on untrusted strings. Automated check: inject assistant SSE payload containing `<img src=x onerror="window.__xss=1">`; after render, `window.__xss` is **undefined**.
-- Deny-by-default permission card wired to S4; only one pending card visible; Allow/Deny call S4; timeout shows **expired** per S4.
-- Plan entries appear when SSE carries ACP `sessionUpdate: "plan"` (see research mapping table).
+- Model and tool output render via `textContent` or `document.createTextNode` only — **never** `innerHTML` on untrusted strings. Automated sink check fails the build if forbidden APIs appear. Browser check with a fake agent: SSE payload `<img src=x onerror="window.__xss=1">` renders as text and `window.__xss` stays **undefined**.
 
 **Stop:** If UI requires a framework or CDN, reject scope creep; stay HTML+JS only.
+
+**Unlocks:** S5b can add controls on the same page.
+
+### S5b — C3b approval UI
+
+**Path:** `bridge/web/` (same files). Depends on S4.
+
+**Acceptance**
+
+- Deny-by-default permission card wired to S4; only one pending card visible; Allow/Deny call S4; timeout shows **expired** per S4.
+- Plan entries appear when SSE carries ACP `sessionUpdate: "plan"` (see research mapping table).
+- Tool-call status and plain-text edit/diff lines render without HTML injection.
+
+**Stop:** Do not start S5b before S4 permission HTTP exists.
 
 **Unlocks:** S6 session management in the UI.
 

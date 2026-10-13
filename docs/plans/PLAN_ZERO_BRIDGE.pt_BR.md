@@ -59,7 +59,7 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 
 ---
 
-## Sequência linear (S1…S13)
+## Sequência linear (S1…S13, mais S5a/S5b)
 
 | ID | Trilha | Repo / caminho | Destrava | Bloqueio |
 | --- | --- | --- | --- | --- |
@@ -67,7 +67,8 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 | **S2** | C0 | `bridge/go.mod` + `cmd/acpprobe/` | Contrato stdio | — |
 | **S3** | C1 | `bridge/` | HTTP+SSE | — |
 | **S4** | C2 | `bridge/` | Permissões | — |
-| **S5** | C3 | `bridge/web/` | UI estática | — |
+| **S5a** | C3a | `bridge/web/` | Chat mínimo em streaming (só depende da S3) | — |
+| **S5b** | C3b | `bridge/web/` | Cartão de permissão, plano e tools (depende da S4) | — |
 | **S6** | C4 | `bridge/` | list/load/resume | — |
 | **S7** | C5 | `bridge/a2a/` | A2A entrada | — |
 | **S8** | B1 | `plugin/a2a/` | `a2a_discover` | — |
@@ -225,23 +226,35 @@ Referência de UX: [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_B
 
 **Parada:** mudança no wire de permissão → corrigir adaptador; pausar até S2 passar de novo.
 
-**Destrava:** S5.
+**Destrava:** S5b.
 
-### S5 — C3 UI estática
+### S5a — C3a chat mínimo
 
-**Caminho:** `bridge/web/index.html`, `bridge/web/app.js`.
+**Caminho:** `bridge/web/index.html`, `bridge/web/app.js`, `bridge/web/style.css`, `bridge/web/embed.go`. Depende só da S3. Permissões continuam negadas por padrão; sem UI de aprovação.
 
-Escopo de componentes (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md). **No escopo:** lista com streaming, status de tools, cartão de permissão, diff/edição em texto, plano/tarefas, linha de uso opcional via metadado SSE. **Fora:** RAG, memória, voz, artifacts, multiusuário.
+Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md). **No escopo:** lista com streaming. **Fora:** cartão de permissão, chrome de plano/tool além de linhas de texto, RAG, memória, voz, artifacts, multiusuário.
 
 **Aceite**
 
 - `http://127.0.0.1:8765/` envia mensagem; texto do assistente via SSE (zero-custo).
 - Código-fonte sem `process.env` nem chaves; `fetch` só mesma origem.
-- Saída do modelo/tools só com `textContent` ou `createTextNode` — **nunca** `innerHTML` em strings não confiáveis. Teste: payload SSE com `<img src=x onerror="window.__xss=1">`; após render, `window.__xss` é **undefined**.
-- Cartão de permissão ligado à S4; um pendente visível; timeout mostra **expirado** conforme S4.
-- Entradas de plano quando SSE traz `sessionUpdate: "plan"` (tabela no doc de pesquisa).
+- Saída do modelo/tools só com `textContent` ou `createTextNode`. Teste automatizado de sinks proibidos. No navegador, com agente falso, o payload `<img src=x onerror="window.__xss=1">` aparece como texto e `window.__xss` fica **undefined**.
 
 **Parada:** exigência de framework/CDN → rejeitar; só HTML+JS.
+
+**Destrava:** S5b na mesma página.
+
+### S5b — C3b UI de aprovação
+
+**Caminho:** `bridge/web/` (mesmos arquivos). Depende da S4.
+
+**Aceite**
+
+- Cartão de permissão ligado à S4; um pendente visível; timeout mostra **expirado** conforme S4.
+- Entradas de plano quando SSE traz `sessionUpdate: "plan"` (tabela no doc de pesquisa).
+- Status de tool e diff/edição em texto, sem injeção de HTML.
+
+**Parada:** não iniciar S5b antes da API HTTP de permissão da S4.
 
 **Destrava:** S6.
 
