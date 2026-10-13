@@ -51,6 +51,8 @@ Referências somente leitura: Hermes `plugins/platforms/a2a`, `web/`, `acp_adapt
 
 Antes de fatias **C** que sobem `zero acp`: `zero acp --help`. Após mudanças em `internal/acp`, repetir o probe **S2**.
 
+A única ideia no formato upstream que o mantenedor considerou razoável em #622 é um endpoint local **somente leitura** de estado/eventos de sessão, e só depois de uma Discussion em Ideas; isso **não** está no escopo deste plano.
+
 ## Tipos A2A (B vs C)
 
 Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se necessário (fora de S1–S13).
@@ -160,6 +162,8 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 
 Módulo `bridge/go.mod`.
 
+**Transporte não adotado:** `zero daemon serve-remote` com `zero exec` (workers stream-json) é o caminho remoto opt-in do upstream; este plano mantém **`zero acp` em stdio** porque sessão, permissão e list/load/resume já estão no ACP.
+
 ### S2 — C0 probe
 
 **Caminho:** `bridge/go.mod`, `bridge/cmd/acpprobe/`.
@@ -177,6 +181,8 @@ Módulo `bridge/go.mod`.
 ### S3 — C1 HTTP (loopback)
 
 **Caminho:** `bridge/cmd/zero-bridge/`, `bridge/internal/server/`.
+
+**Decisão do upstream:** #622 fechada sem plano de control plane HTTP no escopo atual do upstream; esta superfície HTTP vive **só no zero-bridge** e não deve virar issue, PR ou Discussion no upstream. Postura de segurança segue o precedente do daemon remoto: opt-in, nunca aberta por padrão, segredo por variável de ambiente ou arquivo (não argv).
 
 **Aceite**
 
@@ -238,6 +244,8 @@ Módulo `bridge/go.mod`.
 ### S7 — C5 A2A entrada
 
 **Caminho:** `bridge/a2a/`.
+
+**Precedente e pergunta aberta:** exposição fora de loopback no upstream (`daemon serve-remote`) é **só TLS** com bearer em `$ZERO_DAEMON_REMOTE_TOKEN` ou `_FILE` (nunca argv). O aceite de S7 hoje exige só bearer fora de loopback. **Pergunta aberta:** S7 também deve exigir TLS fora de loopback? Até decidir, bind fora de loopback continua **não suportado** (aceite inalterado).
 
 **Aceite**
 

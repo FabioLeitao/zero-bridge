@@ -59,6 +59,8 @@ zero acp --help
 
 After upstream merges that touch `internal/acp`, run the **S2** probe binary (once it exists) or repeat the manual JSON-RPC steps from S2 acceptance. Failure mode: fix the bridge adapter first; only then consider a fork patch if the wire contract changed.
 
+The only upstream-shaped idea the maintainer called reasonable on #622 is a **read-only** local endpoint for session state/events, and only after an Ideas Discussion first; that endpoint is **not** in this plan’s scope.
+
 ## Shared A2A types (B vs C)
 
 - **Default:** duplicate the minimum JSON shapes in `plugin/a2a/` (outbound) and `bridge/` (inbound).
@@ -175,6 +177,8 @@ After upstream merges that touch `internal/acp`, run the **S2** probe binary (on
 
 `bridge/` is its own Go module (`bridge/go.mod`) so the ponte can be built and versioned separately from `plugin/a2a/`.
 
+**Transport not adopted:** `zero daemon serve-remote` plus `zero exec` (stream-json workers) is an upstream opt-in remote path; this plan keeps **`zero acp` over stdio** because session, permission, and list/load/resume are already mapped on the ACP surface.
+
 ### S2 — C0 spike (stdio only)
 
 **Path:** `bridge/go.mod`, `bridge/cmd/acpprobe/`.
@@ -194,6 +198,8 @@ After upstream merges that touch `internal/acp`, run the **S2** probe binary (on
 ### S3 — C1 stdio → HTTP (loopback)
 
 **Path:** `bridge/cmd/zero-bridge/` (or equivalent main), `bridge/internal/server/`.
+
+**Upstream decision:** [#622](https://github.com/Twigpine/zero/issues/622) closed with no HTTP control plane in current upstream scope, so this HTTP surface lives **only in zero-bridge** and must not become an upstream issue, PR, or Discussion. Security posture follows the remote-daemon precedent: opt-in, never open by default, secrets from environment or file (not argv).
 
 **Acceptance**
 
@@ -255,6 +261,8 @@ After upstream merges that touch `internal/acp`, run the **S2** probe binary (on
 ### S7 — C5 A2A ingress
 
 **Path:** `bridge/a2a/`.
+
+**Precedent and open question:** Upstream non-loopback exposure (`daemon serve-remote`) is **TLS-only** with a bearer token from `$ZERO_DAEMON_REMOTE_TOKEN` or `_FILE` (never argv). S7 acceptance today requires only a bearer token outside loopback. **Open question:** should S7 also require TLS for non-loopback bind? Until decided, non-loopback bind stays **unsupported** (acceptance unchanged).
 
 **Acceptance**
 
