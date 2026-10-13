@@ -32,6 +32,7 @@ Reference patterns (read-only, no code copy): Hermes `plugins/platforms/a2a`, `w
 2. **Sequence:** one linear order **S1…S13**; only one active slice; next slice starts after the previous **acceptance** passes.
 3. **External block:** slices that need upstream triage/merge are marked **BLOQUEADA-EXTERNA**; execution skips to the next slice that does not depend on them (order in this doc is fixed).
 4. **Zero-cost prompts:** any slice that sends a real `session/prompt` (probe, HTTP, permissions, UI) must use a **local** model (Ollama) or a **`:free`** variant; never a paid provider. Transcripts and evidence must record provider/model only (never keys).
+5. **Never close unmerged PRs from this workstream:** if upstream lands overlapping work, merge `upstream/main` into the topic branch, shrink the PR to the remaining delta, and **stop for the operator** to decide next steps. Do not close open PRs without merge and do not close upstream issues from here.
 
 ## Security posture (local bridge)
 
@@ -89,7 +90,7 @@ After upstream merges that touch `internal/acp`, run the **S2** probe binary (on
 
 ## Track A — ACP fixes (fork `FabioLeitao/zero`)
 
-**Branch rule:** topic work branches from `upstream/main`. PR **first** to `FabioLeitao/zero`, then `Twigpine/zero`. Fork `main` integration uses `patch-labels.tsv` only in the operator’s local build flow.
+**Branch rule:** `git fetch upstream && git switch -c <branch> upstream/main`. PR **first** to `FabioLeitao/zero`, then `Twigpine/zero`. Fork `main` integration uses `patch-labels.tsv` only in the operator’s local build flow.
 
 ### S1 — A1 Issue #1118 token usage persistence
 
@@ -98,44 +99,75 @@ After upstream merges that touch `internal/acp`, run the **S2** probe binary (on
 **Branch state (read-only `git` on fork clone):**
 
 - `origin/feat/acp-usage-events` — **use for PR.** Single commit `11482096` (`fix(acp): persist token usage events for ACP sessions`). `internal/acp/` patch is **byte-identical** to `03d618be` on fork `main`. Versus `upstream/main`: **1** commit ahead of merge-base, **27** commits behind (needs merge).
-- `origin/feat/acp-usage-on-fork-main` — integration branch for fork `main`; **not** the PR vehicle.
+- `origin/feat/acp-usage-on-fork-main` — tip `03d618be`; `git log --oneline origin/main..origin/feat/acp-usage-on-fork-main` is **empty** (not ahead of fork `main`); merge-base with `origin/main` is `03d618be`. Not the upstream PR vehicle.
 
-**Work:** On `feat/acp-usage-events`, merge `upstream/main` (signed merge commit), run `go test ./internal/acp/ -run Usage -count=1`, open PR to `FabioLeitao/zero`, then upstream.
+**Work:** Merge `upstream/main` into `feat/acp-usage-events`, run tests below, open PR to fork then upstream.
 
 **Acceptance**
 
-- Tests above pass on the updated branch.
-- Manual (zero-cost model): ACP `session/prompt` → `zero usage report --session <id> --json` shows non-zero tokens when the provider returns usage.
+- `go test ./internal/acp/ -run 'Usage|ACPPromptPersistsProviderUsage' -count=1` passes (tests in `internal/acp/usage_test.go`).
+- Manual zero-cost prompt: `zero usage report --session <id> --json` shows non-zero `totalTokens` when the provider returns usage.
 
-**Stop:** If upstream merges a different fix first, drop duplicate work and close the PR.
+**Stop:** If upstream merges an overlapping fix first, merge `upstream/main` into the branch, reduce the PR to any remaining delta, and **stop for the operator** (no PR close, no issue close from here).
 
-**Unlocks:** S2–S7 can trust usage accounting when exercising real prompts.
+**Unlocks:** S2–S7 usage accounting when debugging real prompts.
 
 ### S11 — A2 Issue #1125 plan/ask mode after restart
 
 **Verified state:** Open; **no** `issue-approved`. **BLOQUEADA-EXTERNA** until the label appears.
 
-**Work (when unblocked):** Persist mode beside `ModelID`; restore on `session/load`/`session/resume`; extend `agent_test.go` restart patterns from the issue.
+**Branch (when unblocked):** `fix/acp-persist-permission-mode` from `upstream/main`.
 
-**Acceptance:** After restart harness, mode set to `plan` remains `plan` on load.
+**Work:** Persist permission mode in session metadata (`internal/sessions/store.go`); restore in `activatePersistedSession` / `registerSession` (`internal/acp/agent.go`). PR first to `FabioLeitao/zero`.
 
-**Stop:** If upstream declares mode client-owned only, document and close without metadata write.
+**Tests:** add `TestACPPermissionModeSurvivesProcessRestart` in `internal/acp/agent_test.go` (pattern: `TestACPModelConfigOptionsCatalogSelectionAndLoad` restart harness + `TestACPSetModeUpdatesSession` mode assertions).
+
+**Acceptance**
+
+- `go test ./internal/acp/ -run TestACPPermissionModeSurvivesProcessRestart -count=1` passes.
+- After `session/set_mode` with `plan`, simulated ACP process restart, `session/load` → response `modes.currentModeId` is `plan` (not `auto`).
+
+**Stop:** If upstream triage says mode is client-owned only, record that decision in this plan under S11 and **stop for the operator** (no PR/issue close from here).
+
+**Unlocks:** Bridge S6 load/resume reflects the mode the user chose.
 
 ### S12 — A3 Issue #664 spec-draft mode
 
 **Verified state:** Open; `issue-approved`.
 
-**Acceptance:** `session/set_mode` accepts `spec-draft`; tests in `internal/acp/`; write tools not advertised in that mode.
+**Branch:** `feat/acp-spec-draft-mode` from `upstream/main`.
 
-**Stop:** Narrow scope if `session/update` kind is contested in review.
+**Work:** `handleSetMode`, `modeState()`, `runTurn`, new `session/update` kind in `internal/acp/types.go` + `translate.go`. PR first to fork.
+
+**Tests:** extend `internal/acp/agent_test.go` (`TestACPSetModeUpdatesSession`, end-to-end prompt with `spec-draft`); notification shape in `internal/acp/translate_test.go`.
+
+**Acceptance**
+
+- `go test ./internal/acp/ -run 'SpecDraft|SetMode' -count=1` passes.
+- `session/set_mode` with `spec-draft` succeeds; a prompt in that mode does not advertise write/shell tools (assert via harness fake registry or tool list in test).
+
+**Stop:** If review rejects the new `session/update` kind, ship mode wiring only, update plan with what was dropped, **stop for the operator**.
+
+**Unlocks:** External editors can use Zero plan-before-build like the TUI.
 
 ### S13 — A4 Issue #923 frame and goroutine limits
 
 **Verified state:** Open; `issue-approved`.
 
-**Acceptance:** Frame budget and concurrency cap with tests; oversized frame rejected without OOM in test.
+**Branch:** `fix/acp-frame-and-concurrency-limits` from `upstream/main`.
 
-**Stop:** If defaults break legitimate editors, safe configurable limits only.
+**Work:** max frame size, max frames per request, per-session concurrency semaphore in ACP read path (`internal/acp/` connection layer; likely `jsonrpc` handling).
+
+**Tests:** `internal/acp/jsonrpc_test.go` — `TestACPRejectsOversizedFrame` (frame over limit → protocol error, connection ends); `internal/acp/agent_test.go` — `TestACPLimitsConcurrentInFlightRequests` (N+1 overlapping requests, one waits or errors without unbounded goroutine growth; use `-race` in slice checklist).
+
+**Acceptance**
+
+- `go test ./internal/acp/ -run 'OversizedFrame|ConcurrentInFlight' -count=1` passes.
+- `go test -race ./internal/acp/ -run ConcurrentInFlight -count=1` passes.
+
+**Stop:** If safe defaults break a known editor, make limits configurable with conservative defaults, document in PR, **stop for the operator** before widening defaults.
+
+**Unlocks:** Bridge can rely on bounded ACP child process under load.
 
 ---
 
