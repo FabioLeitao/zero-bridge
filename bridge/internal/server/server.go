@@ -22,6 +22,7 @@ import (
 type Config struct {
 	Listen        string
 	ZeroBin       string
+	Workspace     string
 	ExtraEnv      []string
 	EventLogCap   int
 	SubQueueDepth int
@@ -42,6 +43,9 @@ type Server struct {
 
 	serveCtx    context.Context
 	serveCancel context.CancelFunc
+
+	workspace      string
+	workspaceOwned bool
 }
 
 // New builds a Server; call Boot before serving.
@@ -174,6 +178,7 @@ func (s *Server) sessionHub(id string) *sessionHub {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
 	mux.HandleFunc("GET /v1/sessions/{id}/events", s.handleEvents)
@@ -222,8 +227,33 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			err = cerr
 		}
 	}
+	if s.workspaceOwned && s.workspace != "" {
+		_ = os.RemoveAll(s.workspace)
+	}
 	return err
 }
+
+// PrepareWorkspace creates a temp directory or checks an explicit one.
+func (s *Server) PrepareWorkspace() error {
+	if s.cfg.Workspace == "" {
+		dir, err := os.MkdirTemp("", "zbridge-workspace-*")
+		if err != nil {
+			return err
+		}
+		s.workspace = dir
+		s.workspaceOwned = true
+		return nil
+	}
+	if err := validateWorkspace(s.cfg.Workspace); err != nil {
+		return err
+	}
+	s.workspace = filepath.Clean(s.cfg.Workspace)
+	s.workspaceOwned = false
+	return nil
+}
+
+// DefaultWorkspace returns the absolute workspace used when the client omits one.
+func (s *Server) DefaultWorkspace() string { return s.workspace }
 
 func (s *Server) withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -257,6 +287,18 @@ func (r *statusRecorder) Flush() {
 	if f, ok := r.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
+	agent := "down"
+	if s.agentUp() {
+		agent = "up"
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"agent":            agent,
+		"defaultWorkspace": s.workspace,
+		"version":          "0",
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

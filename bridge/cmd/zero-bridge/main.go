@@ -20,6 +20,7 @@ func main() {
 func run() int {
 	listen := "127.0.0.1:8765"
 	zeroBin := "zero"
+	workspace := ""
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "--listen":
@@ -29,6 +30,13 @@ func run() int {
 			}
 			i++
 			listen = os.Args[i]
+		case "--workspace":
+			if i+1 >= len(os.Args) {
+				fmt.Fprintln(os.Stderr, "missing value for --workspace")
+				return 2
+			}
+			i++
+			workspace = os.Args[i]
 		case "--zero-bin":
 			if i+1 >= len(os.Args) {
 				fmt.Fprintln(os.Stderr, "missing value for --zero-bin")
@@ -45,12 +53,17 @@ func run() int {
 	}
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	srv, err := server.New(server.Config{
-		Listen:  resolved,
-		ZeroBin: zeroBin,
-		Logger:  logger,
+		Listen:    resolved,
+		ZeroBin:   zeroBin,
+		Workspace: workspace,
+		Logger:    logger,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
+		return 2
+	}
+	if err := srv.PrepareWorkspace(); err != nil {
+		fmt.Fprintf(os.Stderr, "zero-bridge: workspace: %v\n", err)
 		return 2
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -54,6 +54,63 @@ func startTestServer(t *testing.T, extraEnv []string) (*Server, string, func()) 
 	}
 }
 
+func TestInfoAndWorkspace(t *testing.T) {
+	srv, base, cleanup := startTestServer(t, nil)
+	if err := srv.PrepareWorkspace(); err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.Get(base + "/v1/info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var body map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["agent"] != "up" || body["version"] != "0" {
+		t.Fatalf("info %v", body)
+	}
+	ws, _ := body["defaultWorkspace"].(string)
+	if ws == "" || ws != srv.DefaultWorkspace() {
+		t.Fatalf("workspace %q", ws)
+	}
+	st, err := os.Stat(ws)
+	if err != nil || !st.IsDir() {
+		t.Fatal(err)
+	}
+	cleanup()
+	if _, err := os.Stat(ws); !os.IsNotExist(err) {
+		t.Fatalf("temp workspace still present: %v", err)
+	}
+}
+
+func TestExplicitWorkspace(t *testing.T) {
+	dir := t.TempDir()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(Config{Listen: ln.Addr().String(), Workspace: dir, Logger: log.New(io.Discard, "", 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.PrepareWorkspace(); err != nil {
+		t.Fatal(err)
+	}
+	if srv.DefaultWorkspace() != dir {
+		t.Fatalf("got %s", srv.DefaultWorkspace())
+	}
+	_ = ln.Close()
+	missing, err := New(Config{Listen: "127.0.0.1:1", Workspace: dir + "/nope", Logger: log.New(io.Discard, "", 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := missing.PrepareWorkspace(); err == nil {
+		t.Fatal("expected missing workspace error")
+	}
+}
+
 func TestHealthAndSecurityHeaders(t *testing.T) {
 	_, base, cleanup := startTestServer(t, nil)
 	defer cleanup()
