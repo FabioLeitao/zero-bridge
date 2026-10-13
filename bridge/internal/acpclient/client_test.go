@@ -12,7 +12,7 @@ import (
 
 func TestMain(m *testing.M) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
-		RunFakeAgent()
+		runFakeAgent()
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
@@ -147,4 +147,41 @@ func TestCallTimeout(t *testing.T) {
 	}
 	_ = pw.Close()
 	_ = c.Close()
+}
+
+func TestCallEOFError(t *testing.T) {
+	stdoutR, stdoutW := io.Pipe()
+	stdinR, stdinW := io.Pipe()
+	go func() { _, _ = io.Copy(io.Discard, stdinR) }()
+	c := AttachPipes(stdoutR, stdinW, nil)
+	_ = stdoutW.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err := c.Call(ctx, "ping", nil, &struct{}{})
+	if err == nil {
+		t.Fatal("expected error when agent closes stdout without response")
+	}
+	_ = c.Close()
+}
+
+func TestCallRace200Pings(t *testing.T) {
+	c, done := startFakeClient(t)
+	defer done()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for i := 0; i < 200; i++ {
+		if err := c.Call(ctx, "ping", nil, &struct{}{}); err != nil {
+			t.Fatalf("ping %d: %v", i, err)
+		}
+	}
+}
+
+func TestCloseIdempotent(t *testing.T) {
+	c, _ := startFakeClient(t)
+	if err := c.Close(); err != nil {
+		t.Fatalf("first close: %v", err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
 }

@@ -7,13 +7,11 @@ import (
 	"os"
 )
 
-// RunFakeAgent implements a minimal `zero acp` peer for tests (stdio ndjson).
-func RunFakeAgent() {
-	RunFakeAgentIO(os.Stdin, os.Stdout)
+func runFakeAgent() {
+	runFakeAgentIO(os.Stdin, os.Stdout)
 }
 
-// RunFakeAgentIO is the test helper body (newline-delimited JSON-RPC).
-func RunFakeAgentIO(r io.Reader, w io.Writer) {
+func runFakeAgentIO(r io.Reader, w io.Writer) {
 	reader := bufio.NewReader(r)
 	for {
 		line, err := reader.ReadBytes('\n')

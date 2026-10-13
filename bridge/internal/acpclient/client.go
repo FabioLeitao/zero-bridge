@@ -118,7 +118,7 @@ func (c *Client) StderrSnippet() string { return c.stderr.String() }
 
 // Call performs a JSON-RPC request and waits for the matching response.
 func (c *Client) Call(ctx context.Context, method string, params any, result any) error {
-	id := c.registerPending()
+	id, ch := c.registerPending()
 	req := rpcMessage{JSONRPC: jsonRPCVersion, ID: json.RawMessage(idString(id)), Method: method}
 	if params != nil {
 		b, err := json.Marshal(params)
@@ -132,7 +132,10 @@ func (c *Client) Call(ctx context.Context, method string, params any, result any
 		c.dropPending(id)
 		return err
 	}
-	ch := c.pendingChan(id)
+	return c.recvResponse(ctx, ch, id, result)
+}
+
+func (c *Client) recvResponse(ctx context.Context, ch chan rpcMessage, id int64, result any) error {
 	select {
 	case <-ctx.Done():
 		c.dropPending(id)
@@ -141,18 +144,33 @@ func (c *Client) Call(ctx context.Context, method string, params any, result any
 		if !ok {
 			return errors.New("acpclient: connection closed")
 		}
-		if msg.Error != nil {
-			return msg.Error
-		}
-		if result != nil && len(msg.Result) > 0 {
-			if err := json.Unmarshal(msg.Result, result); err != nil {
-				return fmt.Errorf("acpclient: decode result: %w", err)
-			}
-		}
-		return nil
+		return c.finishCall(msg, result)
 	case <-c.readDone:
-		return c.readErr
+		select {
+		case msg, ok := <-ch:
+			if !ok {
+				return errors.New("acpclient: connection closed")
+			}
+			return c.finishCall(msg, result)
+		default:
+			if c.readErr != nil {
+				return c.readErr
+			}
+			return fmt.Errorf("acpclient: agent closed stdout: %w", io.ErrUnexpectedEOF)
+		}
 	}
+}
+
+func (c *Client) finishCall(msg rpcMessage, result any) error {
+	if msg.Error != nil {
+		return msg.Error
+	}
+	if result != nil && len(msg.Result) > 0 {
+		if err := json.Unmarshal(msg.Result, result); err != nil {
+			return fmt.Errorf("acpclient: decode result: %w", err)
+		}
+	}
+	return nil
 }
 
 // Close shuts down the child process and waits for the read loop to finish.
@@ -160,17 +178,34 @@ func (c *Client) Close() error {
 	if c.closed.Swap(true) {
 		return nil
 	}
-	if c.cancel != nil {
-		c.cancel()
-	}
 	_ = c.stdin.Close()
-	err := c.cmd.Wait()
-	<-c.readDone
-	if err != nil && errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("acpclient: zero acp timed out: %w", err)
+
+	if c.cmd == nil {
+		<-c.readDone
+		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("acpclient: zero acp exited: %w", err)
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- c.cmd.Wait()
+	}()
+
+	var waitErr error
+	select {
+	case waitErr = <-waitCh:
+	case <-time.After(2 * time.Second):
+		if c.cancel != nil {
+			c.cancel()
+		}
+		waitErr = <-waitCh
+	}
+	<-c.readDone
+
+	if waitErr != nil && !errors.Is(waitErr, context.Canceled) {
+		if errors.Is(waitErr, context.DeadlineExceeded) {
+			return fmt.Errorf("acpclient: zero acp timed out: %w", waitErr)
+		}
+		return fmt.Errorf("acpclient: zero acp exited: %w", waitErr)
 	}
 	return nil
 }
@@ -189,13 +224,14 @@ func AttachPipes(stdout io.Reader, stdin io.WriteCloser, cmd *exec.Cmd) *Client 
 	return c
 }
 
-func (c *Client) registerPending() int64 {
+func (c *Client) registerPending() (int64, chan rpcMessage) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.nextID++
 	id := c.nextID
-	c.pending[id] = make(chan rpcMessage, 1)
-	return id
+	ch := make(chan rpcMessage, 1)
+	c.pending[id] = ch
+	return id, ch
 }
 
 func (c *Client) dropPending(id int64) {
@@ -205,12 +241,6 @@ func (c *Client) dropPending(id int64) {
 		close(ch)
 		delete(c.pending, id)
 	}
-}
-
-func (c *Client) pendingChan(id int64) chan rpcMessage {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.pending[id]
 }
 
 func (c *Client) deliverResponse(id int64, msg rpcMessage) {
@@ -266,7 +296,9 @@ func (c *Client) readLoop(ctx context.Context, r io.Reader) {
 		}
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
-			if err != io.EOF {
+			if errors.Is(err, io.EOF) {
+				c.readErr = fmt.Errorf("acpclient: agent closed stdout: %w", io.ErrUnexpectedEOF)
+			} else {
 				c.readErr = err
 			}
 			return
@@ -319,11 +351,14 @@ func (c *Client) handleInbound(msg rpcMessage) {
 }
 
 type limitedWriter struct {
+	mu    sync.Mutex
 	limit int
 	buf   bytes.Buffer
 }
 
 func (w *limitedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.buf.Len() < w.limit {
 		remain := w.limit - w.buf.Len()
 		if len(p) > remain {
@@ -334,4 +369,8 @@ func (w *limitedWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (w *limitedWriter) String() string { return w.buf.String() }
+func (w *limitedWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.String()
+}
