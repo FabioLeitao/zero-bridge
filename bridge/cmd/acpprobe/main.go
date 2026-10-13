@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -104,27 +105,31 @@ func run() int {
 // probeProviderEnv sets ZERO_PROVIDER for the child only (no persistent config edits).
 // Prefer granite-local when Ollama is reachable (see internal/config ActiveProviderEnv = ZERO_PROVIDER).
 func probeProviderEnv() []string {
-	if ollamaUp() {
+	tags, err := ollamaTagsBody()
+	if err == nil && strings.Contains(tags, "granite4.2:3b-cpu-ctx16k") {
 		return []string{"ZERO_PROVIDER=granite-local"}
-	}
-	active := strings.TrimSpace(os.Getenv("ZERO_PROVIDER"))
-	if strings.EqualFold(active, "openrouter") || strings.Contains(strings.ToLower(active), "free") {
-		return nil
 	}
 	return nil
 }
 
-func ollamaUp() bool {
+func ollamaTagsBody() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:11434/api/tags", nil)
 	if err != nil {
-		return false
+		return "", err
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return false
+		return "", err
 	}
 	defer res.Body.Close()
-	return res.StatusCode == http.StatusOK
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("ollama status %d", res.StatusCode)
+	}
+	b, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
