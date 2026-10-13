@@ -28,6 +28,11 @@ type Options struct {
 	ZeroBin  string
 	ExtraEnv []string
 	Stderr   io.Writer // optional; defaults to limited capture
+	// Timeout limits the lifetime of the child context; 0 means no timeout.
+	Timeout time.Duration
+	// Notify and Inbound are applied before the read loop starts (avoids races with early notifications).
+	Notify  NotifyFunc
+	Inbound InboundHandler
 }
 
 // Client speaks JSON-RPC 2.0 (newline-delimited) to a `zero acp` child process.
@@ -43,9 +48,10 @@ type Client struct {
 	nextID  int64
 	pending map[int64]chan rpcMessage
 
-	notify   NotifyFunc
-	inbound  InboundHandler
-	readDone chan struct{}
+	handlerMu sync.RWMutex
+	notify    NotifyFunc
+	inbound   InboundHandler
+	readDone  chan struct{}
 	readErr  error
 
 	ctx    context.Context
@@ -57,7 +63,13 @@ func Start(parent context.Context, opts Options) (*Client, error) {
 	if opts.ZeroBin == "" {
 		opts.ZeroBin = "zero"
 	}
-	ctx, cancel := context.WithTimeout(parent, 120*time.Second)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if opts.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(parent, opts.Timeout)
+	} else {
+		ctx, cancel = context.WithCancel(parent)
+	}
 	started := false
 	defer func() {
 		if !started {
@@ -89,29 +101,48 @@ func Start(parent context.Context, opts Options) (*Client, error) {
 	}
 	started = true
 
+	var inbound InboundHandler = DefaultInboundHandler{}
+	if opts.Inbound != nil {
+		inbound = opts.Inbound
+	}
 	c := &Client{
 		cmd:      cmd,
 		stdin:    stdin,
 		stderr:   lw,
 		pending:  make(map[int64]chan rpcMessage),
-		inbound:  DefaultInboundHandler{},
+		inbound:  inbound,
 		readDone: make(chan struct{}),
 		ctx:      ctx,
 		cancel:   cancel,
+	}
+	if opts.Notify != nil {
+		c.handlerMu.Lock()
+		c.notify = opts.Notify
+		c.handlerMu.Unlock()
 	}
 	go c.readLoop(ctx, stdout)
 	return c, nil
 }
 
 // SetNotifyHandler registers a callback for inbound notifications.
-func (c *Client) SetNotifyHandler(fn NotifyFunc) { c.notify = fn }
+// Prefer Options.Notify at Start when notifications may arrive immediately after launch.
+func (c *Client) SetNotifyHandler(fn NotifyFunc) {
+	c.handlerMu.Lock()
+	c.notify = fn
+	c.handlerMu.Unlock()
+}
 
 // SetInboundHandler overrides permission/fs handling (tests may inject).
 func (c *Client) SetInboundHandler(h InboundHandler) {
 	if h != nil {
+		c.handlerMu.Lock()
 		c.inbound = h
+		c.handlerMu.Unlock()
 	}
 }
+
+// Done is closed when the agent stdout reader exits.
+func (c *Client) Done() <-chan struct{} { return c.readDone }
 
 // StderrSnippet returns captured stderr from the child (redacted by caller if needed).
 func (c *Client) StderrSnippet() string { return c.stderr.String() }
@@ -212,13 +243,26 @@ func (c *Client) Close() error {
 
 // AttachPipes connects an existing command's stdio (used by tests with a fake agent).
 func AttachPipes(stdout io.Reader, stdin io.WriteCloser, cmd *exec.Cmd) *Client {
+	return attachPipes(stdout, stdin, cmd, Options{})
+}
+
+func attachPipes(stdout io.Reader, stdin io.WriteCloser, cmd *exec.Cmd, opts Options) *Client {
+	var inbound InboundHandler = DefaultInboundHandler{}
+	if opts.Inbound != nil {
+		inbound = opts.Inbound
+	}
 	c := &Client{
 		cmd:      cmd,
 		stdin:    stdin,
 		stderr:   &limitedWriter{limit: 1 << 20},
 		pending:  make(map[int64]chan rpcMessage),
-		inbound:  DefaultInboundHandler{},
+		inbound:  inbound,
 		readDone: make(chan struct{}),
+	}
+	if opts.Notify != nil {
+		c.handlerMu.Lock()
+		c.notify = opts.Notify
+		c.handlerMu.Unlock()
 	}
 	go c.readLoop(context.Background(), stdout)
 	return c
@@ -314,8 +358,8 @@ func (c *Client) readLoop(ctx context.Context, r io.Reader) {
 		}
 		switch {
 		case msg.isNotify():
-			if c.notify != nil {
-				c.notify(msg.Method, msg.Params)
+			if fn := c.getNotify(); fn != nil {
+				fn(msg.Method, msg.Params)
 			}
 		case msg.isRequest():
 			c.handleInbound(msg)
@@ -328,8 +372,22 @@ func (c *Client) readLoop(ctx context.Context, r io.Reader) {
 	}
 }
 
+func (c *Client) getNotify() NotifyFunc {
+	c.handlerMu.RLock()
+	fn := c.notify
+	c.handlerMu.RUnlock()
+	return fn
+}
+
+func (c *Client) getInbound() InboundHandler {
+	c.handlerMu.RLock()
+	h := c.inbound
+	c.handlerMu.RUnlock()
+	return h
+}
+
 func (c *Client) handleInbound(msg rpcMessage) {
-	result, err := c.inbound.HandleRequest(msg.Method, msg.Params)
+	result, err := c.getInbound().HandleRequest(msg.Method, msg.Params)
 	var resp rpcMessage
 	resp.JSONRPC = jsonRPCVersion
 	resp.ID = msg.ID

@@ -27,6 +27,7 @@ func runFakeAgentIO(r io.Reader, w io.Writer) {
 		}
 		switch msg.Method {
 		case "initialize":
+			notifyFake(w, "session/update", `{"sessionId":"warmup","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"warm"}}}`)
 			writeFake(w, rpcMessage{
 				JSONRPC: jsonRPCVersion,
 				ID:      msg.ID,

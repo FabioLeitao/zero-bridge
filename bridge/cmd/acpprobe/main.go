@@ -4,15 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
 	"zero-bridge/bridge/internal/acpclient"
+	"zero-bridge/bridge/internal/zeroenv"
 )
 
 func main() {
@@ -25,8 +23,11 @@ func run() int {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
-	extraEnv := probeProviderEnv()
-	client, err := acpclient.Start(ctx, acpclient.Options{ZeroBin: "zero", ExtraEnv: extraEnv})
+	client, err := acpclient.Start(ctx, acpclient.Options{
+		ZeroBin:  "zero",
+		ExtraEnv: zeroenv.ProviderEnv(),
+		Timeout:  120 * time.Second,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "acpprobe: cannot start zero acp: %v\n", err)
 		return 2
@@ -100,36 +101,4 @@ func run() int {
 		return 1
 	}
 	return 0
-}
-
-// probeProviderEnv sets ZERO_PROVIDER for the child only (no persistent config edits).
-// Prefer granite-local when Ollama is reachable (see internal/config ActiveProviderEnv = ZERO_PROVIDER).
-func probeProviderEnv() []string {
-	tags, err := ollamaTagsBody()
-	if err == nil && strings.Contains(tags, "granite4.2:3b-cpu-ctx16k") {
-		return []string{"ZERO_PROVIDER=granite-local"}
-	}
-	return nil
-}
-
-func ollamaTagsBody() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:11434/api/tags", nil)
-	if err != nil {
-		return "", err
-	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ollama status %d", res.StatusCode)
-	}
-	b, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
 }

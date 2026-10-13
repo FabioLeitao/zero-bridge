@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -23,6 +24,10 @@ func TestHelperProcess(t *testing.T) {
 }
 
 func startFakeClient(t *testing.T) (*Client, func()) {
+	return startFakeClientOpts(t, Options{})
+}
+
+func startFakeClientOpts(t *testing.T, opts Options) (*Client, func()) {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperProcess$")
 	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
@@ -37,9 +42,32 @@ func startFakeClient(t *testing.T) (*Client, func()) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	c := AttachPipes(stdout, stdin, cmd)
+	c := attachPipes(stdout, stdin, cmd, opts)
 	return c, func() {
 		_ = c.Close()
+	}
+}
+
+func TestNotifyOptionBeforeInitialize(t *testing.T) {
+	var got atomic.Int32
+	c, done := startFakeClientOpts(t, Options{
+		Notify: func(method string, _ json.RawMessage) {
+			if method == "session/update" {
+				got.Add(1)
+			}
+		},
+	})
+	defer done()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.Call(ctx, "initialize", map[string]any{
+		"protocolVersion":    1,
+		"clientCapabilities": map[string]any{"fs": map[string]bool{"readTextFile": false, "writeTextFile": false}},
+	}, &struct{}{}); err != nil {
+		t.Fatal(err)
+	}
+	if got.Load() < 1 {
+		t.Fatalf("expected warmup notification, got %d", got.Load())
 	}
 }
 
