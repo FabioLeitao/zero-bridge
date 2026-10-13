@@ -1,0 +1,15 @@
+# Binaries
+/bin/
+*.exe
+
+# Local env (never commit secrets)
+.env
+.env.*
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
