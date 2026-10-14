@@ -37,15 +37,15 @@ Use um modelo local ou uma variante `:free`. A ponte define `ZERO_PROVIDER=grani
 
 ## Estado
 
-S2–S6 e S14 estão nesta árvore. A S14 é só local e não foi empurrada. O próximo é a S17, depois a pull request da S14. A S11 está bloqueada no #1125 do upstream. A S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
+S2–S6, S14 e S17 estão nesta árvore. S14 e S17 são só locais e não foram empurradas. Próxima ordem de construção: S14b, S19, S16, S18, S6b, S7. A S11 está bloqueada no #1125 do upstream. A S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
 
 | Fatia | Estado |
 | --- | --- |
 | S1 usage (#1118) | em andamento no fork do Zero |
 | S2–S6 ponte e UI web | feita |
 | S14 proxy, token, login | feita localmente ([#1](https://github.com/FabioLeitao/zero-bridge/issues/1)) |
-| S17 gate local | desenhada ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13)); próxima |
-| S14b, S16, S6b, S7 | desenhadas, nessa ordem depois da pull request da S14 ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11), [#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S17 gate local | feita localmente ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13)) |
+| S14b, S19, S16, S18, S6b, S7 | desenhadas, nessa ordem ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11), [#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
 | S8–S10, S12, S15 | desenhadas ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
 | S11 restaurar modo | bloqueada ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), upstream #1125) |
 | S13 limites de frame | acompanhando ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), PR #944) |
@@ -73,7 +73,7 @@ Um clone não instala os ganchos. Rode `make hooks` uma vez. O pre-commit confer
 
 ## Relação com o Zero
 
-A ponte fala a API pública ACP em stdio (`zero acp`). Não vendoriza o Zero.
+A ponte fala ACP em stdio. O Zero do Gitlawb (`zero acp`) é o harness recomendado e de referência, não uma dependência do desenho. O repositório continua `zero-bridge`. A expansão pode mudar neste doc: Z.E.R.O. = Zero-lock-in Edge for Remote Operation. Outras leituras: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. Este projeto não é afiliado nem endossado por Gitlawb ou Twigpine. Não vendoriza o Zero.
 
 Trabalho upstream relacionado, sem promessa de que este repositório vá entregá-lo:
 

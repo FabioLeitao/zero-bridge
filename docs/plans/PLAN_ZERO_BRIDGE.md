@@ -25,7 +25,11 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S14b | designed | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Not built. |
 | S15 | designed | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10). Not built. |
 | S16 | designed | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Not built. |
-| S17 | designed | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). Not built. `make check` becomes the definition of done. |
+| S17 | done | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` is the definition of done. Local only, not pushed. |
+| S18 | designed | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Not built. |
+| S19 | designed | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Not built. |
+
+**Name.** The repository stays `zero-bridge`. The expansion may change in this doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Other readings: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. Gitlawb's Zero is the recommended reference harness, not a dependency of the design. This project is not affiliated with or endorsed by Gitlawb or Twigpine.
 
 ## Purpose
 
@@ -54,12 +58,12 @@ Reference patterns (read-only, no code copy): Hermes `plugins/platforms/a2a`, `w
 ## Global rules
 
 1. **Place:** every slice names repo + path and why.
-2. **Sequence:** one linear order of **20 slices** (S1…S15 plus S5a/S5b, S6b, S14b, S16, and S17). Only one active slice; the next starts after the previous **acceptance** passes. S14 is done locally. Next: **S17, then open the S14 pull request, then S14b → S16 → S6b → S7**. S15 waits on S17.
+2. **Sequence:** one linear order of **22 slices** (S1…S15 plus S5a/S5b, S6b, S14b, S16, S17, S18, and S19). Only one active slice; the next starts after the previous **acceptance** passes. S14 and S17 are done locally. Next build order: **S14b → S19 → S16 → S18 → S6b → S7**. S15 waits on an explicit operator go.
 3. **External block:** slices that need upstream triage/merge are marked **BLOQUEADA-EXTERNA**; execution skips to the next slice that does not depend on them (order in this doc is fixed).
 4. **Zero-cost prompts:** any slice that sends a real `session/prompt` (probe, HTTP, permissions, UI) must use a **local** model (Ollama) or a **`:free`** variant; never a paid provider. Transcripts and evidence must record provider/model only (never keys).
 5. **Never close unmerged PRs from this workstream:** if upstream lands overlapping work, merge `upstream/main` into the topic branch, shrink the PR to the remaining delta, and **stop for the operator** to decide next steps. Do not close open PRs without merge and do not close upstream issues from here.
 6. **Telemetry, from S16 onward:** every new route and every new event ships a span, a metric, and log fields. The core module stays stdlib-only. Export stays off unless the operator turns it on.
-7. **Definition of done:** `make check`, once S17 adds it. Every later slice uses that target. Slices already in the tree passed `gofmt -l`, `go vet`, and `go test -race`.
+7. **Definition of done:** `make check`. Every slice uses that target. `make check-advisory` (deadcode) stays outside it.
 
 ## Security posture (local bridge)
 
@@ -96,7 +100,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 ---
 
-## Linear sequence (20 slices)
+## Linear sequence (22 slices)
 
 | ID | Track | Repo / path | Unlocks | External block |
 | --- | --- | --- | --- | --- |
@@ -119,11 +123,13 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S14b** | C6b | `zero-bridge` → `bridge/` | Audit trail, Bearer limit, finite session lifetimes | — |
 | **S16** | C6c | `zero-bridge` → `bridge/obs/` | OTel traces, metrics, JSON logs | — |
 | **S17** | — | `zero-bridge` repo root | `make check`, hooks, CONTRIBUTING, AGENTS | — |
-| **S15** | — | `zero-bridge` docs | Public checklist and Show and tell | waits on S17, then explicit operator go |
+| **S19** | C6e | `zero-bridge` → `bridge/` | `--agent-cmd`, profiles, capability gate | — |
+| **S18** | C6d | `zero-bridge` container | Image beside the proxy, read-only root | — |
+| **S15** | — | `zero-bridge` docs | Public checklist and Show and tell | waits on explicit operator go |
 
-**Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices through S6 and S14 are in the tree. Next is **S17**, then the S14 pull request, then **S14b → S16 → S6b → S7**. S15 waits on S17. B (S8–S10) does not require the HTTP server. When **S11** is blocked, continue **S12**–**S13**, then return to **S11** after `issue-approved` on #1125.
+**Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices through S6, S14, and S17 are in the tree. Next build order is **S14b → S19 → S16 → S18 → S6b → S7**. S15 waits on an explicit operator go. B (S8–S10) does not require the HTTP server. When **S11** is blocked, continue **S12**–**S13**, then return to **S11** after `issue-approved` on #1125.
 
-Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13).
+Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15).
 
 ---
 
@@ -396,7 +402,7 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 **Stop:** Do not bind `0.0.0.0`. Do not push this slice until the operator asks.
 
-**Unlocks:** S17, then the S14 pull request. S15 waits on S17.
+**Unlocks:** S17, which is done. Next build slice is S14b. S15 waits on an explicit operator go.
 
 ### S14b — auth hardening II
 
@@ -411,7 +417,7 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 **Stop:** Do not accept an infinite lifetime or an unlimited failure window.
 
-**Unlocks:** S16.
+**Unlocks:** S19.
 
 ### S16 — observability
 
@@ -428,16 +434,46 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 **Stop:** Do not put the SDK in the core `go.mod`. Do not export by default.
 
+**Unlocks:** S18.
+
+### S19 — harness-agnostic ACP bridge
+
+**Path:** `bridge/` agent command and profiles. Designed only. Not built. [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Gitlawb's Zero stays the recommended reference harness. It is not a dependency of the design.
+
+**Acceptance**
+
+- `--agent-cmd`, with profiles `zero` and `generic`.
+- A capability gate: a request the agent did not advertise returns **501** with `not supported by agent`.
+- Modes come from `availableModes`.
+- Fake-agent variants, plus one spike against a non-Zero ACP agent.
+- Candidates that exist on this host and are not yet exercised by the bridge: `zero acp`, `hermes acp` (`hermes-acp`), and `dsh --profile acp` (DeepSeek Harness). Claude Code is only reachable through a third-party adapter, is not verified, and stays out of the first spike because it spends quota.
+- Spike rule: isolated `HOME` and config, empty workspace, only `initialize` and `session/new`, no model call. Hermes runs update recovery on startup, so the spike never points at the real checkout or at `~/.hermes`.
+
+**Stop:** Do not call a model. Do not point Hermes at the real checkout or at `~/.hermes`.
+
+**Unlocks:** S16.
+
+### S18 — container image
+
+**Path:** container image for the bridge. Designed only. Not built. [#14](https://github.com/FabioLeitao/zero-bridge/issues/14).
+
+**Acceptance**
+
+- The container shares the proxy's network namespace. The bridge listens on `127.0.0.1` inside that namespace.
+- The Zero binary is mounted read-only. The token file is mode `0600`. The process is not root. The root filesystem is read-only. Capabilities are dropped (`cap_drop ALL`).
+
+**Stop:** Do not run the bridge as root on a writable root filesystem.
+
 **Unlocks:** S6b.
 
 ### S17 — local gate
 
-**Path:** repo root (`Makefile`, `scripts/`, `.githooks/`, CONTRIBUTING, AGENTS, templates). Designed only. Not built. [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). S15 depends on this slice. The S14 pull request waits until the gate is in the tree.
+**Path:** repo root (`Makefile`, `scripts/`, `.githooks/`, CONTRIBUTING, AGENTS, templates). Done locally. Not pushed. [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). S15 waits on an explicit operator go.
 
 **Acceptance**
 
-- `make check` from the repo root runs, inside `bridge/`: fmt-check, vet, build, `test -race`, pinned golangci-lint, deadcode, pinned govulncheck, tidy, and `git diff --check`.
-- A hygiene script rejects personal paths, secret shapes, tracked agent artifacts, broken EN/pt_BR parity, and broken relative links. Commits in the range are signed and have no `Co-authored-by`. The script is part of `make check`.
+- `make check` from the repo root runs fmt-check, vet, build, `test -race`, pinned golangci-lint, pinned govulncheck, tidy-check, hygiene, and `git diff --check`. Deadcode is `make check-advisory`, not part of `make check`.
+- A hygiene script rejects personal paths, secret shapes, tracked agent artifacts, broken EN/pt_BR parity, and broken relative links. Commits in the range are signed, have no co-author trailer, and do not use a closing keyword before an issue number. The script is part of `make check`.
 - `make hooks` points Git at `.githooks/`. pre-push runs `make check` and is not skipped. `--no-verify` is forbidden. A clone does not install the hooks by itself.
 - `make e2e` runs the headless check with and without a token and stops the server by the recorded pid. `make mutate` applies a curated set of auth mutants on a copy and exits non-zero if one survives. Mutate is pre-PR, not pre-commit.
 - CONTRIBUTING and AGENTS exist in English and Portuguese. Pull-request and issue templates exist. This slice adds no GitHub Actions workflow.
@@ -445,7 +481,7 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 **Stop:** Do not add a workflow file. Do not document a way to skip the hooks.
 
-**Unlocks:** The S14 pull request can open. S15 starts only after this gate is in the tree.
+**Unlocks:** S14b. S15 waits on an explicit operator go. The operator opens the pull request that covers S14 and S17.
 
 ### S15 — publication
 

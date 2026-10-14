@@ -25,7 +25,11 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S14b | desenhada | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Não construída. |
 | S15 | desenhada | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10). Depende da S17. Não construída. |
 | S16 | desenhada | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Não construída. |
-| S17 | desenhada | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). Não construída. `make check` vira a definição de pronto. |
+| S17 | feita | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` é a definição de pronto. Só local, sem push. |
+| S18 | desenhada | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Não construída. |
+| S19 | desenhada | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Não construída. |
+
+**Nome.** O repositório continua `zero-bridge`. A expansão pode mudar neste doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Outras leituras: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. O Zero do Gitlawb é o harness recomendado e de referência, não uma dependência do desenho. Este projeto não é afiliado nem endossado por Gitlawb ou Twigpine.
 
 ## Objetivo
 
@@ -54,12 +58,12 @@ Referências somente leitura: Hermes `plugins/platforms/a2a`, `web/`, `acp_adapt
 ## Regras globais
 
 1. **Lugar:** cada fatia declara repo + caminho.
-2. **Sequência:** **20 fatias** (S1…S15 mais S5a/S5b, S6b, S14b, S16 e S17). Uma fatia ativa; aceite antes da seguinte. S14 está feita localmente. Próximo: **S17, depois abrir a PR da S14, depois S14b → S16 → S6b → S7**. A S15 espera a S17.
+2. **Sequência:** **22 fatias** (S1…S15 mais S5a/S5b, S6b, S14b, S16, S17, S18 e S19). Uma fatia ativa; aceite antes da seguinte. S14 e S17 estão feitas localmente. Próxima ordem de construção: **S14b → S19 → S16 → S18 → S6b → S7**. A S15 espera um go explícito do operador.
 3. **Bloqueio externo:** **BLOQUEADA-EXTERNA** pula para a próxima fatia independente.
 4. **Custo zero:** qualquer `session/prompt` real usa modelo **local** (Ollama) ou **`:free`**; nunca provedor pago. Evidências registram provedor/modelo, nunca chaves.
 5. **Nunca fechar PR sem merge:** se o upstream absorver trabalho parecido, fazer merge de `upstream/main` na branch de tópico, reduzir o PR ao delta restante e **parar para o operador**. Não fechar PR aberto sem merge nem fechar issues do upstream daqui.
 6. **Telemetria, a partir da S16:** toda rota nova e todo evento novo entregam um span, uma métrica e campos de log. O módulo do core fica só com a biblioteca padrão. A exportação fica desligada até o operador ligar.
-7. **Definição de pronto:** `make check`, quando a S17 criar o alvo. Toda fatia seguinte usa esse alvo. As fatias já na árvore passaram por `gofmt -l`, `go vet` e `go test -race`.
+7. **Definição de pronto:** `make check`. Toda fatia usa esse alvo. `make check-advisory` (deadcode) fica fora dele.
 
 ## Postura de segurança
 
@@ -87,7 +91,7 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 
 ---
 
-## Sequência linear (20 fatias)
+## Sequência linear (22 fatias)
 
 | ID | Trilha | Repo / caminho | Destrava | Bloqueio |
 | --- | --- | --- | --- | --- |
@@ -110,11 +114,13 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 | **S14b** | C6b | `bridge/` | Trilha de auditoria, limite Bearer, vidas finitas | — |
 | **S16** | C6c | `bridge/obs/` | Traces OTel, métricas, logs JSON | — |
 | **S17** | — | raiz do repo | `make check`, hooks, CONTRIBUTING, AGENTS | — |
-| **S15** | — | docs | checklist de publicação e Show and tell | espera a S17, depois go explícito |
+| **S19** | C6e | `bridge/` | `--agent-cmd`, perfis, gate por capacidade | — |
+| **S18** | C6d | container do `zero-bridge` | Imagem ao lado do proxy, root somente leitura | — |
+| **S15** | — | docs | checklist de publicação e Show and tell | espera go explícito do operador |
 
-**Ordem:** S1 destrava contagem de usage. As fatias C até S6 e S14 estão na árvore. O próximo é a **S17**, depois a PR da S14, depois **S14b → S16 → S6b → S7**. A S15 espera a S17. B (S8–S10) não depende do HTTP. Com S11 bloqueada, seguir S12–S13 e voltar à S11 após `issue-approved` em #1125.
+**Ordem:** S1 destrava contagem de usage. As fatias C até S6, S14 e S17 estão na árvore. A próxima ordem de construção é **S14b → S19 → S16 → S18 → S6b → S7**. A S15 espera um go explícito do operador. B (S8–S10) não depende do HTTP. Com S11 bloqueada, seguir S12–S13 e voltar à S11 após `issue-approved` em #1125.
 
-Mapa de issues deste repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13).
+Mapa de issues deste repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15).
 
 ---
 
@@ -381,7 +387,7 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 **Parada:** não fazer bind em `0.0.0.0`. Não empurrar esta fatia até o operador pedir.
 
-**Destrava:** S17, depois a pull request da S14. A S15 espera a S17.
+**Destrava:** S17, que está feita. A próxima fatia de construção é a S14b. A S15 espera um go explícito do operador.
 
 ### S14b — endurecimento de auth II
 
@@ -396,7 +402,7 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 **Parada:** não aceitar vida infinita nem janela de falha sem limite.
 
-**Destrava:** S16.
+**Destrava:** S19.
 
 ### S16 — observabilidade
 
@@ -413,16 +419,46 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 **Parada:** não colocar o SDK no `go.mod` do core. Não exportar por padrão.
 
+**Destrava:** S18.
+
+### S19 — ponte ACP sem amarrar o harness
+
+**Caminho:** `bridge/`, comando do agente e perfis. Só desenhada. Não construída. [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). O Zero do Gitlawb segue como harness recomendado e de referência. Não é dependência do desenho.
+
+**Aceite**
+
+- `--agent-cmd`, com perfis `zero` e `generic`.
+- Gate por capacidade: um pedido que o agente não anunciou responde **501** com `not supported by agent`.
+- Os modos vêm de `availableModes`.
+- Variantes do agente falso, mais um spike contra um agente ACP que não é o Zero.
+- Candidatos que existem neste host e que a ponte ainda não exercitou: `zero acp`, `hermes acp` (`hermes-acp`) e `dsh --profile acp` (DeepSeek Harness). Claude Code só por adaptador de terceiros, não verificado, e fora do primeiro spike porque gasta cota.
+- Regra do spike: `HOME` e config isolados, workspace vazio, só `initialize` e `session/new`, sem chamada de modelo. O Hermes roda recuperação de update na partida, então o spike nunca aponta para o checkout real nem para `~/.hermes`.
+
+**Parada:** não chamar modelo. Não apontar o Hermes para o checkout real nem para `~/.hermes`.
+
+**Destrava:** S16.
+
+### S18 — imagem de container
+
+**Caminho:** imagem de container da ponte. Só desenhada. Não construída. [#14](https://github.com/FabioLeitao/zero-bridge/issues/14).
+
+**Aceite**
+
+- O container compartilha o namespace de rede do proxy. A ponte escuta em `127.0.0.1` dentro dele.
+- O binário do Zero é montado somente leitura. O arquivo do token fica no modo `0600`. O processo não é root. O sistema de arquivos raiz é somente leitura. As capabilities caem (`cap_drop ALL`).
+
+**Parada:** não rodar a ponte como root num sistema de arquivos raiz gravável.
+
 **Destrava:** S6b.
 
 ### S17 — gate local rigoroso
 
-**Caminho:** raiz do repo (`Makefile`, `scripts/`, `.githooks/`, CONTRIBUTING, AGENTS, templates). Só desenhada. Não construída. [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). A S15 depende desta fatia. A pull request da S14 espera o gate na árvore.
+**Caminho:** raiz do repo (`Makefile`, `scripts/`, `.githooks/`, CONTRIBUTING, AGENTS, templates). Feita localmente. Sem push. [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). A S15 espera um go explícito do operador.
 
 **Aceite**
 
-- `make check` na raiz roda, dentro de `bridge/`: fmt-check, vet, build, `test -race`, golangci-lint pinada, deadcode, govulncheck pinada, tidy e `git diff --check`.
-- Um script de higiene recusa caminhos pessoais, formas de segredo, artefatos de agente rastreados, paridade EN/pt_BR quebrada e links relativos quebrados. Os commits do intervalo são assinados e não têm `Co-authored-by`. O script entra no `make check`.
+- `make check` na raiz roda fmt-check, vet, build, `test -race`, golangci-lint pinada, govulncheck pinada, tidy-check, higiene e `git diff --check`. Deadcode é `make check-advisory`, fora do `make check`.
+- Um script de higiene recusa caminhos pessoais, formas de segredo, artefatos de agente rastreados, paridade EN/pt_BR quebrada e links relativos quebrados. Os commits do intervalo são assinados, não têm trailer de coautor e não usam palavra de fechamento antes de um número de issue. O script entra no `make check`.
 - `make hooks` aponta o Git para `.githooks/`. O pre-push roda `make check` e não é pulado. `--no-verify` é proibido. Um clone não instala os hooks sozinho.
 - `make e2e` roda o check headless com e sem token e derruba o servidor pelo pid registrado. `make mutate` aplica um conjunto curado de mutantes de auth numa cópia e sai diferente de zero se algum sobreviver. Mutate é pré-PR, não pré-commit.
 - CONTRIBUTING e AGENTS existem em inglês e em português. Existem templates de pull request e de issue. Esta fatia não adiciona workflow do GitHub Actions.
@@ -430,7 +466,7 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 **Parada:** não adicionar arquivo de workflow. Não documentar um jeito de pular os hooks.
 
-**Destrava:** a pull request da S14 pode abrir. A S15 só começa depois deste gate na árvore.
+**Destrava:** S14b. A S15 espera um go explícito do operador. O operador abre a pull request que cobre a S14 e a S17.
 
 ### S15 — publicação
 
