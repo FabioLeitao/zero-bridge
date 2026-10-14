@@ -16,7 +16,8 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S7–S10, S12 | desenhada | seções abaixo; não construídas |
 | S11 | bloqueada-externa | [#1125](https://github.com/Twigpine/zero/issues/1125) sem `issue-approved` na época do plano |
 | S13 | acompanhando | [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944) |
-| S14, S15 | desenhada | seções abaixo; não construídas |
+| S14 | feita | [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt); [guia de deploy](../deploy/CADDY.pt_BR.md). Só local, sem push. |
+| S15 | desenhada | seção abaixo; não construída |
 
 ## Objetivo
 
@@ -45,7 +46,7 @@ Referências somente leitura: Hermes `plugins/platforms/a2a`, `web/`, `acp_adapt
 ## Regras globais
 
 1. **Lugar:** cada fatia declara repo + caminho.
-2. **Sequência:** **S1…S15** linear (mais S5a/S5b); uma fatia ativa; aceite antes da seguinte. S14 e S15 estão desenhadas e não são a próxima fatia a construir.
+2. **Sequência:** **S1…S15** linear (mais S5a/S5b); uma fatia ativa; aceite antes da seguinte. S14 está feita localmente. S15 está desenhada e não é a próxima fatia a construir.
 3. **Bloqueio externo:** **BLOQUEADA-EXTERNA** pula para a próxima fatia independente.
 4. **Custo zero:** qualquer `session/prompt` real usa modelo **local** (Ollama) ou **`:free`**; nunca provedor pago. Evidências registram provedor/modelo, nunca chaves.
 5. **Nunca fechar PR sem merge:** se o upstream absorver trabalho parecido, fazer merge de `upstream/main` na branch de tópico, reduzir o PR ao delta restante e **parar para o operador**. Não fechar PR aberto sem merge nem fechar issues do upstream daqui.
@@ -54,8 +55,8 @@ Referências somente leitura: Hermes `plugins/platforms/a2a`, `web/`, `acp_adapt
 
 | Controle | Fatia |
 | --- | --- |
-| Bind padrão `127.0.0.1` | S3, S7 |
-| Sem token ⇒ sem bind fora de loopback | S7 |
+| Bind padrão `127.0.0.1` | S3, S7, S14 |
+| Sem token ⇒ sem bind fora de loopback | S7, S14 |
 | Sem CORS `*` | S3, S4, S5, S7 |
 | Permissões: padrão negar; timeout negar | S4 |
 | Limites de corpo/frame | S3, S7 |
@@ -330,26 +331,20 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 ### S14 — C6 proxy-ready
 
-**Caminho:** config e cabeçalhos SSE em `bridge/`. Só desenhada. Não implementada.
+**Caminho:** config, cookie de login e cabeçalhos SSE em `bridge/`. Feita localmente. Guia: [../deploy/CADDY.pt_BR.md](../deploy/CADDY.pt_BR.md). Evidência: [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt).
 
-**Decisão:** acesso externo só via proxy reverso, o mesmo padrão de Grafana e CouchDB no T14. O processo da ponte continua em loopback.
+**Decisão:** acesso externo só via proxy reverso, o mesmo padrão de Grafana e CouchDB no T14. O processo da ponte continua em loopback (`--listen` fora de loopback continua saindo 2). Sem TLS no processo.
 
 **Aceite**
 
-- Lista de hosts/origins configurável e vazia por padrão. Vazia mantém o check de Host em loopback de hoje.
-- A ponte tem um token de autenticação. Token ausente ou errado é recusado.
-- Respostas SSE incluem `X-Accel-Buffering: no`.
-- A doc traz um exemplo de Caddyfile com `flush_interval -1` e sem `encode` na rota SSE:
+- `--allowed-host` e `--public-origin` são repetíveis e vazios por padrão. Vazio mantém o check de Host em loopback. Qualquer um dos dois sem token sai 2 (`token required when exposed via proxy`).
+- `--token-file` ou `ZERO_BRIDGE_TOKEN`, não os dois. O modo do arquivo é `0600`. A string do token tem pelo menos 32 bytes. Bearer ausente e errado têm o mesmo corpo **401**. `GET /health` sem credencial é só `{"ok":true}`.
+- O cookie do navegador é `zb_session` com `HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`. `Secure` só com `--trust-proxy` e `X-Forwarded-Proto: https`. Sessões em memória.
+- O limite de login é 5 falhas por minuto só em `POST /v1/login`. Com a janela cheia, o token certo também é **429** com `Retry-After` e sem cookie. Pedidos Bearer nas outras rotas `/v1/*` não entram no limite.
+- `--allowed-host` casa só com `Host`. Sem `--public-origin`, `POST /v1/login` com `Origin` `https` é **403**. Se o proxy manda a porta no `Host`, a entrada da lista inclui essa porta.
+- Respostas SSE incluem `X-Accel-Buffering: no`. O exemplo Caddy usa `flush_interval -1`, sem `encode` na rota SSE, e `request_body { max_size 2MB }`.
 
-```caddyfile
-example.com {
-	reverse_proxy 127.0.0.1:8765 {
-		flush_interval -1
-	}
-}
-```
-
-**Parada:** não fazer bind em `0.0.0.0`. Não iniciar esta fatia sem go explícito do operador.
+**Parada:** não fazer bind em `0.0.0.0`. Não empurrar esta fatia até o operador pedir.
 
 **Destrava:** a S15 pode publicar uma ponte segura para ficar atrás de um proxy.
 

@@ -16,7 +16,8 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S7–S10, S12 | designed | sections below; not built |
 | S11 | blocked-external | [#1125](https://github.com/Twigpine/zero/issues/1125) had no `issue-approved` at plan time |
 | S13 | following | [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944) |
-| S14, S15 | designed | sections below; not built |
+| S14 | done | [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt); [deploy guide](../deploy/CADDY.md). Local only, not pushed. |
+| S15 | designed | section below; not built |
 
 ## Purpose
 
@@ -45,7 +46,7 @@ Reference patterns (read-only, no code copy): Hermes `plugins/platforms/a2a`, `w
 ## Global rules
 
 1. **Place:** every slice names repo + path and why.
-2. **Sequence:** one linear order **S1…S15** (plus S5a/S5b); only one active slice; next slice starts after the previous **acceptance** passes. S14 and S15 are designed and are not the next build slice.
+2. **Sequence:** one linear order **S1…S15** (plus S5a/S5b); only one active slice; next slice starts after the previous **acceptance** passes. S14 is done locally. S15 is designed and is not the next build slice.
 3. **External block:** slices that need upstream triage/merge are marked **BLOQUEADA-EXTERNA**; execution skips to the next slice that does not depend on them (order in this doc is fixed).
 4. **Zero-cost prompts:** any slice that sends a real `session/prompt` (probe, HTTP, permissions, UI) must use a **local** model (Ollama) or a **`:free`** variant; never a paid provider. Transcripts and evidence must record provider/model only (never keys).
 5. **Never close unmerged PRs from this workstream:** if upstream lands overlapping work, merge `upstream/main` into the topic branch, shrink the PR to the remaining delta, and **stop for the operator** to decide next steps. Do not close open PRs without merge and do not close upstream issues from here.
@@ -56,8 +57,8 @@ Each item is enforced in a **named slice** as an observable acceptance line.
 
 | Control | Slice |
 | --- | --- |
-| Default bind `127.0.0.1` only | S3, S7 |
-| No token ⇒ never bind non-loopback | S7 |
+| Default bind `127.0.0.1` only | S3, S7, S14 |
+| No token ⇒ never bind non-loopback | S7, S14 |
 | No permissive CORS (`Access-Control-Allow-Origin: *`) | S3, S4, S5, S7 |
 | `session/request_permission` exposed; default **deny**; timeout ⇒ deny | S4 |
 | Max JSON/frame/body size on HTTP and ACP relay | S3, S7 |
@@ -345,26 +346,20 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 ### S14 — C6 proxy-ready
 
-**Path:** `bridge/` config and SSE headers. Designed only. Not implemented.
+**Path:** `bridge/` config, login cookie, and SSE headers. Done locally. Deploy guide: [../deploy/CADDY.md](../deploy/CADDY.md). Evidence: [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt).
 
-**Decision:** external access is only through a reverse proxy, the same pattern as Grafana and CouchDB on the T14. The bridge process stays on loopback.
+**Decision:** external access is only through a reverse proxy, the same pattern as Grafana and CouchDB on the T14. The bridge process stays on loopback (`--listen` outside loopback still exits 2). No TLS in the process.
 
 **Acceptance**
 
-- A host/origin allowlist is configurable and empty by default. Empty keeps today's loopback Host check.
-- The bridge has an authentication token. Missing or wrong token is rejected.
-- SSE responses include `X-Accel-Buffering: no`.
-- The docs include a Caddyfile example with `flush_interval -1` and no `encode` on the SSE route:
+- `--allowed-host` and `--public-origin` are repeatable and empty by default. Empty keeps the loopback Host check. Either flag without a token exits 2 (`token required when exposed via proxy`).
+- `--token-file` or `ZERO_BRIDGE_TOKEN`, not both. The file mode must be `0600`. The token string is at least 32 bytes. Missing and wrong Bearer credentials are the same **401** body. `GET /health` without a credential is only `{"ok":true}`.
+- The browser cookie is `zb_session` with `HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`. `Secure` is set only with `--trust-proxy` and `X-Forwarded-Proto: https`. Sessions are in memory.
+- Login rate limit is 5 failures per minute on `POST /v1/login` only. While the window is full, a correct token is also **429** with `Retry-After` and no cookie. Bearer requests on other `/v1/*` routes are not limited.
+- `--allowed-host` matches `Host` only. Without `--public-origin`, `POST /v1/login` with an `https` `Origin` is **403**. If the proxy sends the port in `Host`, the allowlist entry includes that port.
+- SSE responses include `X-Accel-Buffering: no`. The Caddy example uses `flush_interval -1`, no `encode` on the SSE route, and `request_body { max_size 2MB }`.
 
-```caddyfile
-example.com {
-	reverse_proxy 127.0.0.1:8765 {
-		flush_interval -1
-	}
-}
-```
-
-**Stop:** Do not bind `0.0.0.0`. Do not start this slice without an explicit operator go.
+**Stop:** Do not bind `0.0.0.0`. Do not push this slice until the operator asks.
 
 **Unlocks:** S15 can publish a bridge that is safe to put behind a proxy.
 

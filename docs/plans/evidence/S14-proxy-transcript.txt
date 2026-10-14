@@ -1,0 +1,81 @@
+S14 proxy transcript — 2026-10-14
+
+Bridge commit at the run: dc12412 fix(bridge): reserve login attempts atomically and test auth on every route
+
+The operator's loopback servers on 8765 and 8766 were not used for this run. The test bridge listened on 127.0.0.1:8791. Caddy, in a container, listened on 127.0.0.1:8780 and proxied to 127.0.0.1:8791.
+
+Commands (shown before the run):
+
+  docker pull docker.io/library/caddy:2-alpine
+  docker image inspect --format '{{.Id}}' docker.io/library/caddy:2-alpine
+  docker run --rm caddy:2-alpine caddy version
+
+  umask 077
+  openssl rand -hex 32 > /tmp/zb-s14-ev/token
+  chmod 600 /tmp/zb-s14-ev/token
+  go build -o /tmp/zb-s14-ev/zero-bridge ./cmd/zero-bridge
+
+  # /tmp/zb-s14-ev/Caddyfile
+  # http://bridge.test:8780 {
+  #   bind 127.0.0.1
+  #   request_body { max_size 2MB }
+  #   reverse_proxy 127.0.0.1:8791 { flush_interval -1 }
+  # }
+  # no encode directive
+
+  tmux new-session -d -s zb-s14-bridge \
+    "ZB_FAKE_AGENT=1 ZB_FAKE_PERMISSION=1 /tmp/zb-s14-ev/zero-bridge \
+      --listen 127.0.0.1:8791 --zero-bin /tmp/acpfake --permission-timeout 30s \
+      --token-file /tmp/zb-s14-ev/token \
+      --allowed-host bridge.test:8780 \
+      --public-origin http://bridge.test:8780"
+
+  tmux new-session -d -s zb-caddy-s14 \
+    "docker run --rm --name zb-caddy-s14 --network host \
+      -v /tmp/zb-s14-ev/Caddyfile:/etc/caddy/Caddyfile:ro caddy:2-alpine"
+
+  curl --resolve bridge.test:8780:127.0.0.1 http://bridge.test:8780/v1/info
+  curl --resolve bridge.test:8780:127.0.0.1 -H "Authorization: Bearer <token-file>" http://bridge.test:8780/v1/info
+  curl --resolve bridge.test:8780:127.0.0.1 -H 'Content-Type: application/json' \
+    -d '{"token":"<token-file>"}' http://bridge.test:8780/v1/login
+  curl --resolve bridge.test:8780:127.0.0.1 -b 'zb_session=<cookie>' http://bridge.test:8780/v1/info
+  # six POSTs of {"token":"wrong-token"} to /v1/login
+  curl --resolve bridge.test:8780:127.0.0.1 -H 'Host: bridge.test' -H "Authorization: Bearer <token-file>" http://bridge.test:8780/v1/info
+  curl --resolve bridge.test:8780:127.0.0.1 -H 'Host: bridge.test:9' -H "Authorization: Bearer <token-file>" http://bridge.test:8780/v1/info
+  curl -N --resolve bridge.test:8780:127.0.0.1 -H "Authorization: Bearer <token-file>" \
+    http://bridge.test:8780/v1/sessions/<id>/events
+  # prompt, then deny the permission, timestamps on each SSE line
+
+  docker rm -f zb-caddy-s14
+  # kill only the 8791 process after /proc/<pid>/cmdline showed --listen 127.0.0.1:8791
+
+Image:
+  docker image inspect --format '{{.Id}}' -> sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+  caddy version -> v2.11.7 h1:yj0Y4fYZGPkSvibBJ1sTWE33xC0fxztVyXEW5iIdUT4=
+
+Results through the proxy (curl --resolve bridge.test:8780:127.0.0.1):
+
+  GET /v1/info without a credential -> 401 {"error":"unauthorized"}
+  GET /v1/info with Bearer -> 200 (agent up)
+  POST /v1/login with the token file -> 200 {"ok":true}
+    Set-Cookie: zb_session=<redacted>; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict
+  GET /v1/info with that cookie -> 200
+  POST /v1/login wrong token, same client: 401, 401, 401, 401, 401, then 429 Retry-After: 58
+  GET /v1/info with Bearer after that 429 -> 200 (the limit is only POST /v1/login)
+  Host: bridge.test (no port) -> 403 {"error":"forbidden"}
+  Host: bridge.test:9 -> 403 {"error":"forbidden"}
+  Host: evil.example -> 200 with an empty body from Caddy. That host does not match the site address, so the request never reached the bridge.
+
+SSE of one prompt (fake agent, permission, then deny). Each line stamped as it arrived:
+
+  11:19:26.034 data: {"type":"permission_request",...}
+  11:19:27.204 data: {"type":"stop",...}
+
+The permission event was printed before the stop event. Cost: fake agent only. The token value is not in this file.
+
+After the run, docker rm -f zb-caddy-s14 removed the container. 8791 and 8780 were closed. 8765 and 8766 were restarted without a token, using /tmp/zb-s14-ev/zero-bridge built from this tree:
+
+  8765 --listen 127.0.0.1:8765 (real zero, no --zero-bin) -> GET /health 200 {"agent":"up","ok":true}
+  8766 --listen 127.0.0.1:8766 --zero-bin /tmp/acpfake -> GET /health 200 {"agent":"up","ok":true}
+
+Not covered: a public TLS listener (HSTS is the proxy's job; this run was http on 127.0.0.1), and a malicious X-Forwarded-For. The bridge was not started with --trust-proxy.
