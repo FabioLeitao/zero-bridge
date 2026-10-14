@@ -23,10 +23,23 @@ let sessionCursor = "";
 
 let sessionId = "";
 let authRequired = false;
+let listGen = 0;
+
+function clearSessionList() {
+  listGen += 1;
+  sessionCursor = "";
+  moreSessionsBtn.hidden = true;
+  while (sessionListEl.firstChild) {
+    sessionListEl.removeChild(sessionListEl.firstChild);
+  }
+}
 
 function showLogin(message) {
   abortStream();
   sessionId = "";
+  clearView();
+  clearSessionList();
+  workspaceEl.value = "";
   loginEl.hidden = false;
   logoutBtn.hidden = true;
   loginError.textContent = message || "";
@@ -227,6 +240,7 @@ async function refreshSessions() {
 }
 
 async function pageSessions(more) {
+  const gen = listGen;
   const params = new URLSearchParams();
   if (sessionFilterEl.value === "workspace" && workspaceEl.value.charAt(0) === "/") {
     params.set("cwd", workspaceEl.value);
@@ -235,11 +249,17 @@ async function pageSessions(more) {
     params.set("cursor", sessionCursor);
   }
   const res = await api("/v1/sessions?" + params.toString());
+  if (gen !== listGen) {
+    return;
+  }
   if (!res.ok) {
     note("list failed " + res.status);
     return;
   }
   const data = await res.json();
+  if (gen !== listGen) {
+    return;
+  }
   const sessions = data.sessions || [];
   sessions.forEach(renderSessionItem);
   sessionCursor = data.nextCursor || "";
@@ -867,7 +887,7 @@ sessionFilterEl.addEventListener("change", function () {
   });
 });
 
-loginBtn.addEventListener("click", function () {
+function submitLogin() {
   const token = tokenEl.value;
   loginError.textContent = "";
   api("/v1/login", {
@@ -889,11 +909,18 @@ loginBtn.addEventListener("click", function () {
   }).catch(function (err) {
     loginError.textContent = String(err && err.message ? err.message : err);
   });
+}
+
+loginBtn.addEventListener("click", submitLogin);
+tokenEl.addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    submitLogin();
+  }
 });
 
 logoutBtn.addEventListener("click", function () {
   api("/v1/logout", { method: "POST" }).then(function () {
-    clearView();
     showLogin("");
   }).catch(function (err) {
     note(String(err && err.message ? err.message : err));

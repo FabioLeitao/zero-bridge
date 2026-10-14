@@ -107,8 +107,9 @@ try {
     result.loginWrong = Boolean(wrong);
     if (!wrong) fail("login-wrong", await evalJs("document.getElementById('login-error').textContent"));
     await evalJs(`(function () {
-      document.getElementById('token').value = ${JSON.stringify(e2eToken)};
-      document.getElementById('login-button').click();
+      const el = document.getElementById('token');
+      el.value = ${JSON.stringify(e2eToken)};
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       return true;
     })()`);
   }
@@ -253,6 +254,18 @@ try {
   const viewOnly = await waitFor("document.body.textContent.indexOf('sessao somente leitura') >= 0", 8000);
   result.viewOnly = Boolean(viewOnly);
   if (!viewOnly) fail("view-only", "read-only notice missing");
+
+  if (e2eToken) {
+    await evalJs("document.getElementById('logout').click()");
+    const cleared = await waitFor("document.getElementById('login').hidden === false && document.getElementById('session-list').children.length === 0 && document.getElementById('log').textContent === '' && document.getElementById('workspace').value === ''", 8000);
+    result.logoutClears = Boolean(cleared);
+    if (!cleared) {
+      fail("logout-clear", await evalJs("JSON.stringify({login: document.getElementById('login').hidden, list: document.getElementById('session-list').textContent, log: document.getElementById('log').textContent, cwd: document.getElementById('workspace').value})"));
+    }
+    const stored = await evalJs(`localStorage.length === 0 && sessionStorage.length === 0 && location.href.indexOf(${JSON.stringify(e2eToken)}) < 0`);
+    result.tokenNotStored = stored === true;
+    if (stored !== true) fail("token-storage", stored);
+  }
 
   ws.close();
 } catch (err) {
