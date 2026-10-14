@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -25,19 +26,25 @@ func TestMain(m *testing.M) {
 
 func startTestServer(t *testing.T, extraEnv []string) (*Server, string, func()) {
 	t.Helper()
+	return startConfigured(t, Config{ExtraEnv: extraEnv})
+}
+
+func startConfigured(t *testing.T, cfg Config) (*Server, string, func()) {
+	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	addr := ln.Addr().String()
 	env := []string{"ZB_FAKE_AGENT=1"}
-	env = append(env, extraEnv...)
-	srv, err := New(Config{
-		Listen:   addr,
-		ZeroBin:  os.Args[0],
-		ExtraEnv: env,
-		Logger:   log.New(io.Discard, "", 0),
-	})
+	env = append(env, cfg.ExtraEnv...)
+	cfg.Listen = addr
+	cfg.ZeroBin = os.Args[0]
+	cfg.ExtraEnv = env
+	if cfg.Logger == nil {
+		cfg.Logger = log.New(io.Discard, "", 0)
+	}
+	srv, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -747,6 +754,315 @@ func sseHasType(lines []string, typ string) bool {
 		}
 	}
 	return false
+}
+
+func TestLoadReplayAndResume(t *testing.T) {
+	_, base, cleanup := startTestServer(t, nil)
+	defer cleanup()
+	rel := postAttach(t, base+"/v1/sessions/sess-a1/load", `{"workspace":"rel"}`)
+	if rel.StatusCode != http.StatusBadRequest {
+		t.Fatalf("relative %d", rel.StatusCode)
+	}
+	load := postAttach(t, base+"/v1/sessions/sess-a1/load", `{"workspace":"/tmp/zbridge-ws-a"}`)
+	if load.StatusCode != http.StatusOK {
+		t.Fatalf("load %d %s", load.StatusCode, load.Body)
+	}
+	var loaded map[string]any
+	if err := json.Unmarshal(load.Body, &loaded); err != nil {
+		t.Fatal(err)
+	}
+	if loaded["sessionId"] != "sess-a1" || loaded["mode"] != "ask" {
+		t.Fatalf("loaded %v", loaded)
+	}
+	again := postAttach(t, base+"/v1/sessions/sess-a1/load", "")
+	if again.StatusCode != http.StatusConflict {
+		t.Fatalf("again %d %s", again.StatusCode, again.Body)
+	}
+	evs := readSessionEvents(t, base+"/v1/sessions/sess-a1/events", 3)
+	want := []string{"replay-user", "replay-agent", "replay-tool"}
+	for i, text := range want {
+		if evs[i].text != text || !evs[i].replay || evs[i].seq != float64(i+1) {
+			t.Fatalf("event %d %+v", i, evs[i])
+		}
+	}
+	resumed := postAttach(t, base+"/v1/sessions/sess-a2/resume", "")
+	if resumed.StatusCode != http.StatusOK || !strings.Contains(string(resumed.Body), `"mode":"auto"`) {
+		t.Fatalf("resume %d %s", resumed.StatusCode, resumed.Body)
+	}
+	idem := postAttach(t, base+"/v1/sessions/sess-a2/resume", "")
+	if idem.StatusCode != http.StatusOK || !strings.Contains(string(idem.Body), `"attached":true`) {
+		t.Fatalf("idempotent %d %s", idem.StatusCode, idem.Body)
+	}
+	quiet := readSessionEvents(t, base+"/v1/sessions/sess-a2/events", 0)
+	if len(quiet) != 0 {
+		t.Fatalf("resume replayed %+v", quiet)
+	}
+	missing := postAttach(t, base+"/v1/sessions/missing/load", "")
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("discover %d %s", missing.StatusCode, missing.Body)
+	}
+	unknown := postAttach(t, base+"/v1/sessions/missing/load", `{"workspace":"/tmp/zbridge-ws-a"}`)
+	if unknown.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown %d %s", unknown.StatusCode, unknown.Body)
+	}
+	found := postAttach(t, base+"/v1/sessions/sess-b1/load", "")
+	if found.StatusCode != http.StatusOK {
+		t.Fatalf("discover cwd %d %s", found.StatusCode, found.Body)
+	}
+}
+
+func TestLoadReplayIsLive(t *testing.T) {
+	_, base, cleanup := startTestServer(t, []string{"ZB_FAKE_LOAD_SLOW_MS=400"})
+	defer cleanup()
+	done := make(chan attachResult, 1)
+	go func() {
+		done <- postAttach(t, base+"/v1/sessions/sess-a3/load", "")
+	}()
+	waitUntil(t, 2*time.Second, func() bool {
+		res, err := http.Get(base + "/v1/sessions/sess-a3/events")
+		if err != nil {
+			return false
+		}
+		res.Body.Close()
+		return res.StatusCode == http.StatusOK
+	})
+	evs := readSessionEvents(t, base+"/v1/sessions/sess-a3/events", 3)
+	if evs[0].text != "replay-user" || evs[2].text != "replay-tool" || !evs[0].replay {
+		t.Fatalf("live %+v", evs)
+	}
+	res := <-done
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("load %d %s", res.StatusCode, res.Body)
+	}
+}
+
+func TestLoadRedactsAndViewOnly(t *testing.T) {
+	_, base, cleanup := startTestServer(t, []string{"ZB_FAKE_LOAD_ERROR=1"})
+	defer cleanup()
+	bad := postAttach(t, base+"/v1/sessions/sess-a1/load", `{"workspace":"/tmp/zbridge-ws-a"}`)
+	if bad.StatusCode != http.StatusBadGateway || strings.Contains(string(bad.Body), "secret-token") || !strings.Contains(string(bad.Body), "[redacted]") {
+		t.Fatalf("load error %d %s", bad.StatusCode, bad.Body)
+	}
+	cleanup()
+
+	_, base, cleanup = startTestServer(t, []string{"ZB_FAKE_VIEWONLY_SECRET=1"})
+	defer cleanup()
+	loaded := postAttach(t, base+"/v1/sessions/sess-view/load", "")
+	if loaded.StatusCode != http.StatusOK {
+		t.Fatalf("view load %d %s", loaded.StatusCode, loaded.Body)
+	}
+	req, err := http.NewRequest(http.MethodPost, base+"/v1/sessions/sess-view/prompt", strings.NewReader(`{"text":"hi"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("prompt %d", res.StatusCode)
+	}
+	errEv := waitEvent(t, base+"/v1/sessions/sess-view/events", "error")
+	msg, _ := errEv["message"].(string)
+	if strings.Contains(msg, "secret-token") || !strings.Contains(msg, "[redacted]") || !strings.Contains(msg, "view-only") {
+		t.Fatalf("view-only message %q", msg)
+	}
+}
+
+func TestLoadReplayCapAndShutdown(t *testing.T) {
+	srv, base, cleanup := startConfigured(t, Config{ReplayLogCap: 1})
+	defer cleanup()
+	loaded := postAttach(t, base+"/v1/sessions/sess-a1/load", `{"workspace":"/tmp/zbridge-ws-a"}`)
+	if loaded.StatusCode != http.StatusOK {
+		t.Fatalf("load %d %s", loaded.StatusCode, loaded.Body)
+	}
+	if n := srv.sessionHub("sess-a1").logLen(); n != 1 {
+		t.Fatalf("log cap %d", n)
+	}
+	kept := readSessionEvents(t, base+"/v1/sessions/sess-a1/events", 1)
+	if kept[0].text != "replay-tool" {
+		t.Fatalf("kept %+v", kept[0])
+	}
+
+	before := runtime.NumGoroutine()
+	for i := 0; i < 2; i++ {
+		slow, slowBase, stop := startTestServer(t, []string{"ZB_FAKE_LOAD_SLOW_MS=2000"})
+		finished := make(chan struct{})
+		go func() {
+			defer close(finished)
+			_ = postAttach(t, slowBase+"/v1/sessions/sess-a1/load", "")
+		}()
+		waitUntil(t, 2*time.Second, func() bool {
+			res, err := http.Get(slowBase + "/v1/sessions/sess-a1/events")
+			if err != nil {
+				return false
+			}
+			res.Body.Close()
+			return res.StatusCode == http.StatusOK
+		})
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = slow.Shutdown(ctx)
+		cancel()
+		stop()
+		select {
+		case <-finished:
+		case <-time.After(3 * time.Second):
+			t.Fatal("load did not return on shutdown")
+		}
+	}
+	time.Sleep(200 * time.Millisecond)
+	if after := runtime.NumGoroutine(); after > before+8 {
+		t.Fatalf("goroutines %d -> %d", before, after)
+	}
+}
+
+type attachResult struct {
+	StatusCode int
+	Body       []byte
+}
+
+func postAttach(t *testing.T, url, body string) attachResult {
+	t.Helper()
+	var r io.Reader
+	if body != "" {
+		r = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	return attachResult{StatusCode: res.StatusCode, Body: b}
+}
+
+type sseEvent struct {
+	raw    map[string]any
+	text   string
+	replay bool
+	seq    float64
+}
+
+func readSessionEvents(t *testing.T, url string, n int) []sseEvent {
+	t.Helper()
+	wait := 3 * time.Second
+	if n == 0 {
+		wait = 300 * time.Millisecond
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		if n == 0 {
+			return nil
+		}
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		if n == 0 {
+			return nil
+		}
+		t.Fatalf("events %d", res.StatusCode)
+	}
+	return collectEvents(t, res.Body, n, func(sseEvent) bool { return false })
+}
+
+func waitEvent(t *testing.T, url, typ string) map[string]any {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	found := collectEvents(t, res.Body, 0, func(ev sseEvent) bool {
+		return ev.raw["type"] == typ
+	})
+	if len(found) == 0 {
+		t.Fatalf("missing %s", typ)
+	}
+	return found[0].raw
+}
+
+func collectEvents(t *testing.T, r io.Reader, n int, stop func(sseEvent) bool) []sseEvent {
+	t.Helper()
+	sc := bufio.NewScanner(r)
+	var out []sseEvent
+	for sc.Scan() {
+		line := sc.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &obj); err != nil {
+			t.Fatal(err)
+		}
+		ev := sseEvent{raw: obj, replay: obj["replay"] == true, seq: num(obj["seq"]), text: eventText(obj)}
+		if stop != nil && stop(ev) {
+			return []sseEvent{ev}
+		}
+		out = append(out, ev)
+		if n > 0 && len(out) >= n {
+			return out
+		}
+	}
+	if n == 0 {
+		return out
+	}
+	if len(out) < n {
+		t.Fatalf("got %d events, want %d (%v)", len(out), n, out)
+	}
+	return out
+}
+
+func eventText(obj map[string]any) string {
+	params, _ := obj["params"].(map[string]any)
+	upd, _ := params["update"].(map[string]any)
+	if upd == nil {
+		return ""
+	}
+	if title, ok := upd["title"].(string); ok && title != "" {
+		return title
+	}
+	content, _ := upd["content"].(map[string]any)
+	text, _ := content["text"].(string)
+	return text
+}
+
+func num(v any) float64 {
+	n, _ := v.(float64)
+	return n
+}
+
+func waitUntil(t *testing.T, d time.Duration, ready func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if ready() {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("timeout")
 }
 
 func sseContainsType(lines []string, typ string) bool {

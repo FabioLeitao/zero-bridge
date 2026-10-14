@@ -27,6 +27,7 @@ type Config struct {
 	Workspace         string
 	ExtraEnv          []string
 	EventLogCap       int
+	ReplayLogCap      int
 	SubQueueDepth     int
 	Keepalive         time.Duration
 	PermissionTimeout time.Duration
@@ -199,6 +200,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
+	mux.HandleFunc("POST /v1/sessions/{id}/load", s.handleLoad)
+	mux.HandleFunc("POST /v1/sessions/{id}/resume", s.handleResume)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
 	mux.HandleFunc("POST /v1/sessions/{id}/mode", s.handleMode)
 	mux.HandleFunc("GET /v1/sessions/{id}/events", s.handleEvents)
@@ -362,6 +365,195 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "agent": "down"})
+}
+
+var errSessionNotInList = errors.New("session not in list")
+
+func (s *Server) handleLoad(w http.ResponseWriter, r *http.Request) {
+	s.handleAttach(w, r, true)
+}
+
+func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
+	s.handleAttach(w, r, false)
+}
+
+func (s *Server) handleAttach(w http.ResponseWriter, r *http.Request, replay bool) {
+	id := r.PathValue("id")
+	if id == "" {
+		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+		return
+	}
+	s.mu.Lock()
+	_, attached := s.sessions[id]
+	s.mu.Unlock()
+	if attached {
+		if replay {
+			s.writeJSON(w, http.StatusConflict, map[string]any{"error": "already attached"})
+			return
+		}
+		s.writeJSON(w, http.StatusOK, map[string]any{"attached": true})
+		return
+	}
+	workspace, hasBody, ok := s.readAttachWorkspace(w, r)
+	if !ok {
+		return
+	}
+	var cwd string
+	if hasBody {
+		cwd = workspace
+	} else {
+		found, err := s.findSessionCwd(r.Context(), id)
+		if err != nil {
+			if errors.Is(err, errSessionNotInList) {
+				s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+				return
+			}
+			s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": Redact(err.Error())})
+			return
+		}
+		cwd = found
+	}
+	hub := s.newAttachedHub(replay)
+	s.mu.Lock()
+	if _, exists := s.sessions[id]; exists {
+		s.mu.Unlock()
+		if replay {
+			s.writeJSON(w, http.StatusConflict, map[string]any{"error": "already attached"})
+			return
+		}
+		s.writeJSON(w, http.StatusOK, map[string]any{"attached": true})
+		return
+	}
+	s.sessions[id] = hub
+	s.mu.Unlock()
+	if replay {
+		hub.setReplay(true)
+		defer hub.setReplay(false)
+	}
+	method := "session/resume"
+	if replay {
+		method = "session/load"
+	}
+	var res modePayload
+	err := s.acpCall(r.Context(), method, map[string]any{
+		"sessionId":  id,
+		"cwd":        cwd,
+		"mcpServers": []any{},
+	}, &res)
+	if err != nil {
+		s.mu.Lock()
+		delete(s.sessions, id)
+		s.mu.Unlock()
+		if code, ok := acpclient.JSONRPCCode(err); ok && code == -32602 {
+			s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+			return
+		}
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": Redact(err.Error())})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, modeResponse(id, res))
+}
+
+func (s *Server) readAttachWorkspace(w http.ResponseWriter, r *http.Request) (string, bool, bool) {
+	if r.ContentLength == 0 {
+		return "", false, true
+	}
+	if !requireJSONContentType(r) {
+		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
+		return "", false, false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var body struct {
+		Workspace string `json:"workspace"`
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return "", false, false
+	}
+	if body.Workspace == "" {
+		return "", false, true
+	}
+	if !filepath.IsAbs(body.Workspace) {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "workspace must be an absolute path"})
+		return "", false, false
+	}
+	return filepath.Clean(body.Workspace), true, true
+}
+
+func (s *Server) findSessionCwd(ctx context.Context, id string) (string, error) {
+	cursor := ""
+	for page := 0; page < 20; page++ {
+		params := map[string]any{}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		var res struct {
+			Sessions []struct {
+				SessionID string `json:"sessionId"`
+				Cwd       string `json:"cwd"`
+			} `json:"sessions"`
+			NextCursor string `json:"nextCursor"`
+		}
+		if err := s.acpCall(ctx, "session/list", params, &res); err != nil {
+			return "", err
+		}
+		for _, sess := range res.Sessions {
+			if sess.SessionID == id && sess.Cwd != "" {
+				return sess.Cwd, nil
+			}
+		}
+		if res.NextCursor == "" || res.NextCursor == cursor {
+			return "", errSessionNotInList
+		}
+		cursor = res.NextCursor
+	}
+	return "", errSessionNotInList
+}
+
+func (s *Server) newAttachedHub(replay bool) *sessionHub {
+	logCap := s.cfg.EventLogCap
+	if replay {
+		logCap = s.cfg.ReplayLogCap
+		if logCap <= 0 {
+			logCap = defaultReplayLogCap
+		}
+	} else if logCap <= 0 {
+		logCap = defaultEventLogCap
+	}
+	subQ := s.cfg.SubQueueDepth
+	if subQ <= 0 {
+		subQ = defaultSubQueue
+	}
+	hub := newSessionHub(logCap, subQ)
+	hub.logger = s.cfg.Logger
+	return hub
+}
+
+type modePayload struct {
+	Modes *struct {
+		CurrentModeID  string `json:"currentModeId"`
+		AvailableModes []struct {
+			ID string `json:"id"`
+		} `json:"availableModes"`
+	} `json:"modes"`
+}
+
+func modeResponse(id string, res modePayload) map[string]any {
+	out := map[string]any{"sessionId": id}
+	if res.Modes == nil {
+		return out
+	}
+	ids := make([]string, 0, len(res.Modes.AvailableModes))
+	for _, m := range res.Modes.AvailableModes {
+		if m.ID != "" {
+			ids = append(ids, m.ID)
+		}
+	}
+	out["mode"] = res.Modes.CurrentModeID
+	out["modes"] = ids
+	return out
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {

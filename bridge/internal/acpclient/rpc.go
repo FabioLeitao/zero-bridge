@@ -2,6 +2,7 @@ package acpclient
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -24,6 +25,15 @@ func (e *rpcError) Error() string {
 		return "<nil rpc error>"
 	}
 	return fmt.Sprintf("jsonrpc error %d: %s", e.Code, e.Message)
+}
+
+// JSONRPCCode reports the agent's JSON-RPC error code.
+func JSONRPCCode(err error) (int, bool) {
+	var re *rpcError
+	if errors.As(err, &re) && re != nil {
+		return re.Code, true
+	}
+	return 0, false
 }
 
 type rpcMessage struct {

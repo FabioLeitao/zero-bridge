@@ -95,6 +95,10 @@ func runAgent(r io.Reader, w io.Writer) {
 			sessions, next := listPage(listReq.Params.Cwd, listReq.Params.Cursor)
 			writeResp(w, env.ID, map[string]any{"sessions": sessions, "nextCursor": next})
 		case "session/load":
+			if os.Getenv("ZB_FAKE_LOAD_ERROR") == "1" {
+				writeErr(w, env.ID, -32603, "load failed Bearer secret-token")
+				continue
+			}
 			var loadReq struct {
 				Params struct {
 					SessionID string `json:"sessionId"`
@@ -105,6 +109,9 @@ func runAgent(r io.Reader, w io.Writer) {
 			if !ok {
 				writeErr(w, env.ID, -32602, "unknown session")
 				continue
+			}
+			if ms := envMillis("ZB_FAKE_LOAD_SLOW_MS"); ms > 0 {
+				time.Sleep(time.Duration(ms) * time.Millisecond)
 			}
 			replaySession(w, sess)
 			writeResp(w, env.ID, modeResult("ask"))
@@ -131,7 +138,11 @@ func runAgent(r io.Reader, w io.Writer) {
 				sid = req.Params.SessionID
 			}
 			if sess, ok := findPersisted(sid); ok && sess.viewOnly {
-				writeErr(w, env.ID, -32002, "session is view-only")
+				msg := "session is view-only"
+				if os.Getenv("ZB_FAKE_VIEWONLY_SECRET") == "1" {
+					msg += " Bearer secret-token"
+				}
+				writeErr(w, env.ID, -32002, msg)
 				continue
 			}
 			if ms := slowMillis(); ms > 0 {
@@ -464,7 +475,11 @@ func permissionRoundTool(r *bufio.Reader, w io.Writer, sessionID string, onlyAlw
 }
 
 func slowMillis() int {
-	s := os.Getenv("ZB_FAKE_AGENT_SLOW_MS")
+	return envMillis("ZB_FAKE_AGENT_SLOW_MS")
+}
+
+func envMillis(key string) int {
+	s := os.Getenv(key)
 	if s == "" {
 		return 0
 	}

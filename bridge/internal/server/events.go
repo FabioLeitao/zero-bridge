@@ -7,6 +7,7 @@ import (
 )
 
 const defaultEventLogCap = 1000
+const defaultReplayLogCap = 5000
 const defaultSubQueue = 256
 
 type sessionHub struct {
@@ -18,6 +19,7 @@ type sessionHub struct {
 	subs       map[int]*subscriber
 	nextSub    int
 	promptBusy bool
+	replay     bool
 	logger     *log.Logger
 }
 
@@ -87,6 +89,12 @@ func (h *sessionHub) unsubscribe(id int) {
 	h.mu.Unlock()
 }
 
+func (h *sessionHub) setReplay(on bool) {
+	h.mu.Lock()
+	h.replay = on
+	h.mu.Unlock()
+}
+
 func (h *sessionHub) emit(obj map[string]any) {
 	h.emitMaybe(obj, true)
 }
@@ -95,6 +103,9 @@ func (h *sessionHub) emitMaybe(obj map[string]any, fallback bool) {
 	h.mu.Lock()
 	h.seq++
 	obj["seq"] = h.seq
+	if h.replay {
+		obj["replay"] = true
+	}
 	b, err := json.Marshal(obj)
 	if err != nil {
 		h.mu.Unlock()
