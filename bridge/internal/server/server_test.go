@@ -11,6 +11,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1126,6 +1128,127 @@ func TestLoginRateLimitBlocksCorrectToken(t *testing.T) {
 	}
 	if !got {
 		t.Fatal("session cookie missing after the window")
+	}
+}
+
+func TestLoginRateLimitConcurrentWrongToken(t *testing.T) {
+	_, base, cleanup := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+	})
+	defer cleanup()
+	var unauthorized atomic.Int32
+	var limited atomic.Int32
+	var other atomic.Int32
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"wrong-token"}`))
+			if err != nil {
+				other.Add(1)
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				other.Add(1)
+				return
+			}
+			res.Body.Close()
+			switch res.StatusCode {
+			case http.StatusUnauthorized:
+				unauthorized.Add(1)
+			case http.StatusTooManyRequests:
+				limited.Add(1)
+			default:
+				other.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if other.Load() != 0 || unauthorized.Load() > 5 || unauthorized.Load()+limited.Load() != 50 {
+		t.Fatalf("401=%d 429=%d other=%d", unauthorized.Load(), limited.Load(), other.Load())
+	}
+}
+
+func TestV1RoutesRequireCredential(t *testing.T) {
+	_, base, cleanup := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+	})
+	defer cleanup()
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/v1/info"},
+		{http.MethodGet, "/v1/sessions"},
+		{http.MethodPost, "/v1/sessions"},
+		{http.MethodPost, "/v1/sessions/s1/prompt"},
+		{http.MethodGet, "/v1/sessions/s1/events"},
+		{http.MethodGet, "/v1/sessions/s1/permissions/pending"},
+		{http.MethodPost, "/v1/sessions/s1/permissions/r1"},
+		{http.MethodPost, "/v1/sessions/s1/mode"},
+		{http.MethodPost, "/v1/sessions/s1/load"},
+		{http.MethodPost, "/v1/sessions/s1/resume"},
+		{http.MethodPost, "/v1/logout"},
+	}
+	call := func(method, path, bearer string, cookie *http.Cookie) int {
+		t.Helper()
+		req, err := http.NewRequest(method, base+path, strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	for _, rt := range routes {
+		if got := call(rt.method, rt.path, "", nil); got != http.StatusUnauthorized {
+			t.Fatalf("%s %s without credential: %d", rt.method, rt.path, got)
+		}
+		if got := call(rt.method, rt.path, bearerToken, nil); got == http.StatusUnauthorized {
+			t.Fatalf("%s %s with bearer: 401", rt.method, rt.path)
+		}
+	}
+	loginReq, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"`+bearerToken+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRes, err := http.DefaultClient.Do(loginReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginRes.Body.Close()
+	var session *http.Cookie
+	for _, c := range loginRes.Cookies() {
+		if c.Name == sessionCookie {
+			session = c
+		}
+	}
+	if session == nil {
+		t.Fatal("login cookie missing")
+	}
+	for _, rt := range routes {
+		if rt.method != http.MethodPost {
+			continue
+		}
+		if got := call(rt.method, rt.path, "", session); got != http.StatusForbidden {
+			t.Fatalf("%s %s cookie without Origin: %d", rt.method, rt.path, got)
+		}
 	}
 }
 

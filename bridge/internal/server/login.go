@@ -82,20 +82,33 @@ func (s *Server) dropSession(id string) {
 	s.login.mu.Unlock()
 }
 
-func (s *Server) loginLimited(key string) (bool, int) {
+func (s *Server) reserveLogin(key string) (at time.Time, limited bool, retryAfter int) {
 	now := s.now()
 	s.login.mu.Lock()
 	defer s.login.mu.Unlock()
 	kept := recentFailures(s.login.fails[key], now)
-	s.login.fails[key] = kept
-	if len(kept) < loginFailMax {
-		return false, 0
+	if len(kept) >= loginFailMax {
+		s.login.fails[key] = kept
+		retry := int(kept[0].Add(loginFailWindow).Sub(now).Seconds())
+		if retry < 1 {
+			retry = 1
+		}
+		return time.Time{}, true, retry
 	}
-	retry := int(kept[0].Add(loginFailWindow).Sub(now).Seconds())
-	if retry < 1 {
-		retry = 1
+	s.login.fails[key] = append(kept, now)
+	return now, false, 0
+}
+
+func (s *Server) releaseLogin(key string, at time.Time) {
+	s.login.mu.Lock()
+	defer s.login.mu.Unlock()
+	prev := s.login.fails[key]
+	for i, ts := range prev {
+		if ts.Equal(at) {
+			s.login.fails[key] = append(append([]time.Time{}, prev[:i]...), prev[i+1:]...)
+			return
+		}
 	}
-	return true, retry
 }
 
 func recentFailures(prev []time.Time, now time.Time) []time.Time {
@@ -107,23 +120,6 @@ func recentFailures(prev []time.Time, now time.Time) []time.Time {
 		}
 	}
 	return kept
-}
-
-func (s *Server) noteLoginFailure(key string) (limited bool, retryAfter int) {
-	now := s.now()
-	s.login.mu.Lock()
-	defer s.login.mu.Unlock()
-	kept := recentFailures(s.login.fails[key], now)
-	if len(kept) >= loginFailMax {
-		s.login.fails[key] = kept
-		retry := int(kept[0].Add(loginFailWindow).Sub(now).Seconds())
-		if retry < 1 {
-			retry = 1
-		}
-		return true, retry
-	}
-	s.login.fails[key] = append(kept, now)
-	return false, 0
 }
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
@@ -151,18 +147,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
-	if limited, retry := s.loginLimited(s.clientKey(r)); limited {
-		if s.loginDelay > 0 {
-			time.Sleep(s.loginDelay)
-		}
+	key := s.clientKey(r)
+	at, limited, retry := s.reserveLogin(key)
+	if limited {
+		s.sleepLoginFailure()
 		w.Header().Set("Retry-After", strconv.Itoa(retry))
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many requests"})
 		return
 	}
 	if !auth.Equal(s.cfg.Token, body.Token) {
-		s.failLogin(w, r)
+		s.sleepLoginFailure()
+		s.writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
 		return
 	}
+	s.releaseLogin(key, at)
 	id, err := newSessionID()
 	if err != nil {
 		s.writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "unavailable"})
@@ -184,17 +182,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func (s *Server) failLogin(w http.ResponseWriter, r *http.Request) {
+func (s *Server) sleepLoginFailure() {
 	if s.loginDelay > 0 {
 		time.Sleep(s.loginDelay)
 	}
-	limited, retry := s.noteLoginFailure(s.clientKey(r))
-	if limited {
-		w.Header().Set("Retry-After", strconv.Itoa(retry))
-		s.writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many requests"})
-		return
-	}
-	s.writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
