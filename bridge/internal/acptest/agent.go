@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -18,6 +19,7 @@ func Main() {
 }
 
 var nextSessionID atomic.Int64
+var nextPermID atomic.Int64
 
 func runAgent(r io.Reader, w io.Writer) {
 	reader := bufio.NewReader(r)
@@ -65,6 +67,26 @@ func runAgent(r io.Reader, w io.Writer) {
 			if ms := slowMillis(); ms > 0 {
 				time.Sleep(time.Duration(ms) * time.Millisecond)
 			}
+			if os.Getenv("ZB_FAKE_PERMISSION") == "1" {
+				n := 1
+				if os.Getenv("ZB_FAKE_PERMISSION_N") == "2" {
+					n = 2
+				}
+				onlyAlways := os.Getenv("ZB_FAKE_PERMISSION_OPTIONS") == "always"
+				var parts []string
+				for i := 0; i < n; i++ {
+					parts = append(parts, permissionRound(reader, w, sid, onlyAlways))
+				}
+				notify(w, "session/update", map[string]any{
+					"sessionId": sid,
+					"update": map[string]any{
+						"sessionUpdate": "agent_message_chunk",
+						"content":       map[string]string{"type": "text", "text": strings.Join(parts, "\n")},
+					},
+				})
+				writeResp(w, env.ID, map[string]any{"stopReason": "end_turn"})
+				continue
+			}
 			text := os.Getenv("ZB_FAKE_TEXT")
 			if text == "" {
 				text = "OK"
@@ -106,6 +128,77 @@ func runAgent(r io.Reader, w io.Writer) {
 		default:
 			writeErr(w, env.ID, -32601, "method not found")
 		}
+	}
+}
+
+func permissionRound(r *bufio.Reader, w io.Writer, sessionID string, onlyAlways bool) string {
+	id := nextPermID.Add(1)
+	options := []map[string]string{
+		{"optionId": "allow", "name": "Allow", "kind": "allow_once"},
+		{"optionId": "deny", "name": "Deny", "kind": "reject_once"},
+		{"optionId": "always_allow", "name": "Always", "kind": "allow_always"},
+	}
+	if onlyAlways {
+		options = []map[string]string{
+			{"optionId": "always_allow", "name": "Always", "kind": "allow_always"},
+			{"optionId": "deny", "name": "Deny", "kind": "reject_once"},
+		}
+	}
+	req := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"method":  "session/request_permission",
+		"params": map[string]any{
+			"sessionId": sessionID,
+			"toolCall": map[string]any{
+				"toolCallId": "tc-perm",
+				"title":      "write",
+				"kind":       "edit",
+				"status":     "pending",
+				"rawInput":   map[string]string{"path": "x"},
+			},
+			"options": options,
+		},
+	}
+	b, _ := json.Marshal(req)
+	_, _ = w.Write(append(b, '\n'))
+	for {
+		line, err := r.ReadBytes('\n')
+		if err != nil {
+			return "DENIED:read"
+		}
+		var msg struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Result json.RawMessage `json:"result"`
+			Error  *struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(line, &msg) != nil || msg.Method != "" || len(msg.ID) == 0 {
+			continue
+		}
+		var got float64
+		if json.Unmarshal(msg.ID, &got) != nil || int64(got) != id {
+			continue
+		}
+		if msg.Error != nil {
+			return "DENIED:" + msg.Error.Message
+		}
+		var result struct {
+			Outcome struct {
+				Outcome  string `json:"outcome"`
+				OptionID string `json:"optionId"`
+			} `json:"outcome"`
+		}
+		_ = json.Unmarshal(msg.Result, &result)
+		if result.Outcome.Outcome == "cancelled" || result.Outcome.OptionID == "" {
+			return "DENIED:cancelled"
+		}
+		if result.Outcome.OptionID == "allow" {
+			return "ALLOWED optionId=allow"
+		}
+		return "DENIED optionId=" + result.Outcome.OptionID
 	}
 }
 

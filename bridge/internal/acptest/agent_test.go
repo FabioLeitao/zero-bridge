@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 )
@@ -42,6 +43,40 @@ func TestFakeTextAndKinds(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Fatalf("missing %s in %s", want, s)
 		}
+	}
+}
+
+func TestPermissionRound(t *testing.T) {
+	resp := `{"jsonrpc":"2.0","id":1,"result":{"outcome":{"outcome":"selected","optionId":"deny"}}}` + "\n"
+	pr, pw := io.Pipe()
+	go func() {
+		_, _ = io.WriteString(pw, resp)
+		_ = pw.Close()
+	}()
+	var out bytes.Buffer
+	got := permissionRound(bufio.NewReader(pr), &out, "s", false)
+	if got != "DENIED optionId=deny" {
+		t.Fatalf("got %q", got)
+	}
+	if !strings.Contains(out.String(), "always_allow") || !strings.Contains(out.String(), `"optionId":"allow"`) {
+		t.Fatalf("request %s", out.String())
+	}
+}
+
+func TestPermissionRoundAlwaysOptions(t *testing.T) {
+	resp := `{"jsonrpc":"2.0","id":1,"result":{"outcome":{"outcome":"selected","optionId":"deny"}}}` + "\n"
+	pr, pw := io.Pipe()
+	go func() {
+		_, _ = io.WriteString(pw, resp)
+		_ = pw.Close()
+	}()
+	var out bytes.Buffer
+	_ = permissionRound(bufio.NewReader(pr), &out, "s", true)
+	if strings.Contains(out.String(), `"optionId":"allow"`) {
+		t.Fatal("allow_once should be omitted")
+	}
+	if !strings.Contains(out.String(), "always_allow") {
+		t.Fatal(out.String())
 	}
 }
 
