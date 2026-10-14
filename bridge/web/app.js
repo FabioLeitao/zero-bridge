@@ -6,6 +6,7 @@ const textEl = document.getElementById("text");
 const workspaceEl = document.getElementById("workspace");
 const sendBtn = document.getElementById("send");
 const modeEl = document.getElementById("mode");
+const newSessionBtn = document.getElementById("new-session");
 const planEl = document.getElementById("plan");
 const permEl = document.getElementById("permissions");
 
@@ -19,12 +20,22 @@ const tools = new Map();
 const permState = new Map();
 const permQueue = [];
 let activePerm = null;
+let streamGen = 0;
+let reader = null;
+
+function nearBottom() {
+  return logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 48;
+}
 
 function addLine(className, value) {
+  const follow = nearBottom();
   const p = document.createElement("p");
   p.className = "line " + className;
   p.appendChild(document.createTextNode(value));
   logEl.appendChild(p);
+  if (follow) {
+    logEl.scrollTop = logEl.scrollHeight;
+  }
   return p;
 }
 
@@ -52,38 +63,117 @@ async function boot() {
   }
   const data = await ses.json();
   sessionId = data.sessionId || "";
+  if (data.mode === "auto" || data.mode === "ask" || data.mode === "plan") {
+    modeEl.value = data.mode;
+  }
+  modeEl.disabled = false;
   connect(0);
+}
+
+function clearView() {
+  if (activePerm) {
+    window.clearInterval(activePerm.timer);
+    activePerm = null;
+  }
+  while (logEl.firstChild) {
+    logEl.removeChild(logEl.firstChild);
+  }
+  while (planEl.firstChild) {
+    planEl.removeChild(planEl.firstChild);
+  }
+  planEl.hidden = true;
+  while (permEl.firstChild) {
+    permEl.removeChild(permEl.firstChild);
+  }
+  tools.clear();
+  permState.clear();
+  permQueue.length = 0;
+  seen = new Set();
+  assistant = null;
+  thoughtBody = null;
+}
+
+function abortStream() {
+  streamGen += 1;
+  if (reader) {
+    reader.cancel().catch(function () {});
+    reader = null;
+  }
+}
+
+async function openSession() {
+  abortStream();
+  clearView();
+  const body = JSON.stringify({ workspace: workspaceEl.value });
+  const ses = await fetch("/v1/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body
+  });
+  if (!ses.ok) {
+    note("session failed");
+    return;
+  }
+  const data = await ses.json();
+  sessionId = data.sessionId || "";
+  if (data.mode === "auto" || data.mode === "ask" || data.mode === "plan") {
+    modeEl.value = data.mode;
+  }
+  modeEl.disabled = false;
+  backoff = 500;
+  connect(0);
+}
+
+function scheduleReconnect(attempt) {
+  if (stopped || attempt >= 5) {
+    return;
+  }
+  const wait = backoff;
+  backoff = Math.min(backoff * 2, 8000);
+  window.setTimeout(function () { connect(attempt + 1); }, wait);
 }
 
 function connect(attempt) {
   if (!sessionId || stopped) {
     return;
   }
+  const gen = streamGen;
   fetch("/v1/sessions/" + encodeURIComponent(sessionId) + "/events")
     .then(function (res) {
+      if (gen !== streamGen) {
+        return;
+      }
       if (!res.ok || !res.body) {
         throw new Error("events " + res.status);
       }
       backoff = 500;
-      return readStream(res.body);
+      return readStream(res.body, gen);
     })
-    .catch(function (err) {
-      note(String(err && err.message ? err.message : err));
-      if (attempt >= 5) {
+    .then(function () {
+      if (gen !== streamGen || stopped) {
         return;
       }
-      const wait = backoff;
-      backoff = Math.min(backoff * 2, 8000);
-      window.setTimeout(function () { connect(attempt + 1); }, wait);
+      scheduleReconnect(attempt);
+    })
+    .catch(function (err) {
+      if (gen !== streamGen || stopped) {
+        return;
+      }
+      note(String(err && err.message ? err.message : err));
+      scheduleReconnect(attempt);
     });
 }
 
-function readStream(body) {
-  const reader = body.getReader();
+function readStream(body, gen) {
+  const current = body.getReader();
+  reader = current;
   const dec = new TextDecoder();
   let buf = "";
   function pump() {
-    return reader.read().then(function (chunk) {
+    return current.read().then(function (chunk) {
+      if (gen !== streamGen) {
+        return;
+      }
       if (chunk.done) {
         return;
       }
@@ -143,6 +233,7 @@ function render(msg) {
   if (msg.type === "error") {
     note(String(msg.message || "error"));
     sendBtn.disabled = false;
+    modeEl.disabled = false;
     return;
   }
   if (msg.type === "permission_request") {
@@ -158,6 +249,7 @@ function render(msg) {
     assistant = null;
     thoughtBody = null;
     sendBtn.disabled = false;
+    modeEl.disabled = false;
     return;
   }
   if (msg.type !== "session/update" || !msg.params || !msg.params.update) {
@@ -168,10 +260,7 @@ function render(msg) {
   const kind = String(update.sessionUpdate || "");
   if (kind === "agent_message_chunk") {
     const piece = update.content && update.content.text ? update.content.text : "";
-    if (!assistant) {
-      assistant = addLine("assistant", "");
-    }
-    assistant.textContent = assistant.textContent + piece;
+    appendAssistant(piece);
     return;
   }
   if (kind === "agent_thought_chunk") {
@@ -205,6 +294,26 @@ function render(msg) {
     return;
   }
   addLine("event", "event: " + kind);
+}
+
+function appendAssistant(piece) {
+  const lines = String(piece).split("\n");
+  lines.forEach(function (line, i) {
+    const last = i === lines.length - 1;
+    if (line.indexOf("[zero warning]") === 0) {
+      note(line);
+      assistant = null;
+      return;
+    }
+    const follow = nearBottom();
+    if (!assistant) {
+      assistant = addLine("assistant", "");
+    }
+    assistant.textContent = assistant.textContent + line + (last ? "" : "\n");
+    if (follow) {
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  });
 }
 
 function renderTool(update) {
@@ -422,6 +531,49 @@ function resolvePermission(msg) {
   }
 }
 
+document.getElementById("session").addEventListener("submit", function (ev) {
+  ev.preventDefault();
+});
+
+textEl.addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter" && !ev.shiftKey) {
+    ev.preventDefault();
+    form.requestSubmit();
+  }
+});
+
+modeEl.addEventListener("change", function () {
+  if (!sessionId) {
+    return;
+  }
+  const mode = modeEl.value;
+  modeEl.disabled = true;
+  fetch("/v1/sessions/" + encodeURIComponent(sessionId) + "/mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: mode })
+  }).then(function (res) {
+    if (sendBtn.disabled) {
+      return;
+    }
+    modeEl.disabled = false;
+    if (!res.ok) {
+      note("mode failed " + res.status);
+    }
+  }).catch(function (err) {
+    if (!sendBtn.disabled) {
+      modeEl.disabled = false;
+    }
+    note(String(err && err.message ? err.message : err));
+  });
+});
+
+newSessionBtn.addEventListener("click", function () {
+  openSession().catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+});
+
 form.addEventListener("submit", function (ev) {
   ev.preventDefault();
   if (!sessionId) {
@@ -431,6 +583,7 @@ form.addEventListener("submit", function (ev) {
   const text = textEl.value;
   addLine("user", text);
   sendBtn.disabled = true;
+  modeEl.disabled = true;
   assistant = null;
   thoughtBody = null;
   fetch("/v1/sessions/" + encodeURIComponent(sessionId) + "/prompt", {
@@ -440,17 +593,19 @@ form.addEventListener("submit", function (ev) {
   }).then(function (res) {
     if (res.status === 409) {
       note("prompt already running");
-      sendBtn.disabled = false;
       return;
     }
     if (!res.ok) {
       note("prompt failed " + res.status);
       sendBtn.disabled = false;
+      modeEl.disabled = false;
+      return;
     }
     textEl.value = "";
   }).catch(function (err) {
     note(String(err && err.message ? err.message : err));
     sendBtn.disabled = false;
+    modeEl.disabled = false;
   });
 });
 
