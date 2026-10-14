@@ -30,6 +30,29 @@ body {
   font: 16px/1.45 system-ui, sans-serif;
 }
 
+#shell { display: flex; align-items: stretch; min-height: 100vh; }
+
+#sidebar {
+  width: 18rem;
+  flex: none;
+  border-right: 1px solid var(--line);
+  padding: 0.75rem;
+}
+
+#sidebar button, #session-filter {
+  width: 100%;
+  margin-top: 0.35rem;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+
+#session-list { list-style: none; margin: 0.5rem 0; padding: 0; }
+#session-list li { padding: 0.4rem 0; border-bottom: 1px solid var(--line); }
+#session-list li.active { outline: 2px solid var(--focus); }
+#session-list p { margin: 0.2rem 0; color: var(--muted); font-size: 0.8rem; }
+.history-mark { color: var(--muted); font-size: 0.75rem; margin-right: 0.35rem; }
+
 main {
   max-width: 42rem;
   margin: 0 auto;
@@ -38,6 +61,7 @@ main {
   flex-direction: column;
   gap: 0.75rem;
   min-height: 100vh;
+  flex: 1;
 }
 
 h1 { font-size: 1.25rem; margin: 0; }
@@ -108,5 +132,9 @@ button:disabled, select:disabled { opacity: 0.5; cursor: default; }
 .diff-path { font-size: 0.85rem; color: var(--muted); }
 
 @media (max-width: 40rem) {
+  #shell { flex-direction: column; }
+  #sidebar { width: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  #sidebar-body { display: none; }
+  #sidebar.open #sidebar-body { display: block; }
   main { padding: 0.75rem; }
 }

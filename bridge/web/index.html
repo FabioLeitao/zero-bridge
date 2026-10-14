@@ -7,6 +7,20 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <div id="shell">
+  <aside id="sidebar">
+    <button id="sidebar-toggle" type="button">Sessoes</button>
+    <div id="sidebar-body">
+      <label for="session-filter">Filtro</label>
+      <select id="session-filter">
+        <option value="workspace">workspace atual</option>
+        <option value="all">todos</option>
+      </select>
+      <button id="refresh-sessions" type="button">Atualizar</button>
+      <ul id="session-list"></ul>
+      <button id="more-sessions" type="button" hidden>mais</button>
+    </div>
+  </aside>
   <main>
     <h1>zero-bridge</h1>
     <form id="session">
@@ -29,6 +43,7 @@
       <button id="send" type="submit">Send</button>
     </form>
   </main>
+  </div>
   <script src="/app.js"></script>
 </body>
 </html>

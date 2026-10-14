@@ -9,6 +9,12 @@ const modeEl = document.getElementById("mode");
 const newSessionBtn = document.getElementById("new-session");
 const planEl = document.getElementById("plan");
 const permEl = document.getElementById("permissions");
+const sessionListEl = document.getElementById("session-list");
+const sessionFilterEl = document.getElementById("session-filter");
+const moreSessionsBtn = document.getElementById("more-sessions");
+const refreshSessionsBtn = document.getElementById("refresh-sessions");
+const sidebarEl = document.getElementById("sidebar");
+let sessionCursor = "";
 
 let sessionId = "";
 let seen = new Set();
@@ -51,6 +57,7 @@ async function boot() {
   }
   const info = await infoRes.json();
   workspaceEl.value = info.defaultWorkspace || "";
+  await refreshSessions();
   const body = JSON.stringify({ workspace: workspaceEl.value });
   const ses = await fetch("/v1/sessions", {
     method: "POST",
@@ -63,11 +70,11 @@ async function boot() {
   }
   const data = await ses.json();
   sessionId = data.sessionId || "";
-  if (data.mode === "auto" || data.mode === "ask" || data.mode === "plan") {
-    modeEl.value = data.mode;
-  }
-  modeEl.disabled = false;
+  applyMode(data);
   connect(0);
+  refreshSessions().catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
 }
 
 function clearView() {
@@ -116,10 +123,164 @@ async function openSession() {
   }
   const data = await ses.json();
   sessionId = data.sessionId || "";
-  if (data.mode === "auto" || data.mode === "ask" || data.mode === "plan") {
+  applyMode(data);
+  backoff = 500;
+  connect(0);
+  refreshSessions().catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+}
+
+function applyMode(data) {
+  if (data && (data.mode === "auto" || data.mode === "ask" || data.mode === "plan")) {
     modeEl.value = data.mode;
   }
   modeEl.disabled = false;
+  markActiveSession();
+}
+
+function baseName(cwd) {
+  const parts = String(cwd || "").split("/");
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i]) {
+      return parts[i];
+    }
+  }
+  return "";
+}
+
+function shortId(id) {
+  const text = String(id || "");
+  return text.length > 8 ? text.slice(0, 8) : text;
+}
+
+function markHistory(line) {
+  const mark = document.createElement("span");
+  mark.className = "history-mark";
+  mark.textContent = "historico";
+  line.insertBefore(mark, line.firstChild);
+}
+
+function markActiveSession() {
+  const items = sessionListEl.children;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].dataset.id === sessionId) {
+      items[i].className = "active";
+    } else {
+      items[i].className = "";
+    }
+  }
+}
+
+async function refreshSessions() {
+  sessionCursor = "";
+  while (sessionListEl.firstChild) {
+    sessionListEl.removeChild(sessionListEl.firstChild);
+  }
+  await pageSessions(false);
+}
+
+async function pageSessions(more) {
+  const params = new URLSearchParams();
+  if (sessionFilterEl.value === "workspace" && workspaceEl.value.charAt(0) === "/") {
+    params.set("cwd", workspaceEl.value);
+  }
+  if (more && sessionCursor) {
+    params.set("cursor", sessionCursor);
+  }
+  const res = await fetch("/v1/sessions?" + params.toString());
+  if (!res.ok) {
+    note("list failed " + res.status);
+    return;
+  }
+  const data = await res.json();
+  const sessions = data.sessions || [];
+  sessions.forEach(renderSessionItem);
+  sessionCursor = data.nextCursor || "";
+  moreSessionsBtn.hidden = !sessionCursor;
+  markActiveSession();
+}
+
+function renderSessionItem(sess) {
+  const li = document.createElement("li");
+  li.dataset.id = String(sess.sessionId || "");
+  const open = document.createElement("button");
+  open.type = "button";
+  open.textContent = sess.title ? String(sess.title) : shortId(sess.sessionId);
+  open.addEventListener("click", function () {
+    loadSession(li.dataset.id).catch(function (err) {
+      note(String(err && err.message ? err.message : err));
+    });
+  });
+  const meta = document.createElement("p");
+  meta.textContent = baseName(sess.cwd) + " " + String(sess.updatedAt || "");
+  const resume = document.createElement("button");
+  resume.type = "button";
+  resume.textContent = "Retomar";
+  resume.addEventListener("click", function () {
+    resumeSession(li.dataset.id).catch(function (err) {
+      note(String(err && err.message ? err.message : err));
+    });
+  });
+  li.appendChild(open);
+  li.appendChild(meta);
+  li.appendChild(resume);
+  sessionListEl.appendChild(li);
+}
+
+async function loadSession(id) {
+  if (!id) {
+    return;
+  }
+  abortStream();
+  clearView();
+  const res = await fetch("/v1/sessions/" + encodeURIComponent(id) + "/load", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}"
+  });
+  if (res.status === 409) {
+    note("already attached");
+    sessionId = id;
+    markActiveSession();
+    connect(0);
+    return;
+  }
+  if (!res.ok) {
+    note("load failed " + res.status);
+    return;
+  }
+  const data = await res.json();
+  sessionId = data.sessionId || id;
+  applyMode(data);
+  backoff = 500;
+  connect(0);
+}
+
+async function resumeSession(id) {
+  if (!id) {
+    return;
+  }
+  const res = await fetch("/v1/sessions/" + encodeURIComponent(id) + "/resume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}"
+  });
+  if (!res.ok) {
+    note("resume failed " + res.status);
+    return;
+  }
+  const data = await res.json();
+  if (data.attached === true) {
+    sessionId = id;
+    markActiveSession();
+    note("retomada");
+    return;
+  }
+  abortStream();
+  clearView();
+  sessionId = data.sessionId || id;
+  applyMode(data);
   backoff = 500;
   connect(0);
 }
@@ -231,7 +392,8 @@ function render(msg) {
     return;
   }
   if (msg.type === "error") {
-    note(String(msg.message || "error"));
+    const message = String(msg.message || "error");
+    note(message.indexOf("view-only") >= 0 ? "sessao somente leitura" : message);
     sendBtn.disabled = false;
     modeEl.disabled = false;
     return;
@@ -258,9 +420,17 @@ function render(msg) {
   }
   const update = msg.params.update;
   const kind = String(update.sessionUpdate || "");
+  if (kind === "user_message_chunk") {
+    const piece = update.content && update.content.text ? update.content.text : "";
+    const line = addLine(msg.replay ? "user history" : "user", piece);
+    if (msg.replay) {
+      markHistory(line);
+    }
+    return;
+  }
   if (kind === "agent_message_chunk") {
     const piece = update.content && update.content.text ? update.content.text : "";
-    appendAssistant(piece);
+    appendAssistant(piece, msg.replay === true);
     return;
   }
   if (kind === "agent_thought_chunk") {
@@ -296,7 +466,7 @@ function render(msg) {
   addLine("event", "event: " + kind);
 }
 
-function appendAssistant(piece) {
+function appendAssistant(piece, replay) {
   const lines = String(piece).split("\n");
   lines.forEach(function (line, i) {
     const last = i === lines.length - 1;
@@ -307,7 +477,10 @@ function appendAssistant(piece) {
     }
     const follow = nearBottom();
     if (!assistant) {
-      assistant = addLine("assistant", "");
+      assistant = addLine(replay ? "assistant history" : "assistant", "");
+      if (replay) {
+        markHistory(assistant);
+      }
     }
     assistant.textContent = assistant.textContent + line + (last ? "" : "\n");
     if (follow) {
@@ -618,6 +791,32 @@ modeEl.addEventListener("change", function () {
     if (!sendBtn.disabled) {
       modeEl.disabled = false;
     }
+    note(String(err && err.message ? err.message : err));
+  });
+});
+
+document.getElementById("sidebar-toggle").addEventListener("click", function () {
+  if (sidebarEl.className.indexOf("open") >= 0) {
+    sidebarEl.className = "";
+  } else {
+    sidebarEl.className = "open";
+  }
+});
+
+refreshSessionsBtn.addEventListener("click", function () {
+  refreshSessions().catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+});
+
+moreSessionsBtn.addEventListener("click", function () {
+  pageSessions(true).catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+});
+
+sessionFilterEl.addEventListener("change", function () {
+  refreshSessions().catch(function (err) {
     note(String(err && err.message ? err.message : err));
   });
 });
