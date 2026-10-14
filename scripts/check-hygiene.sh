@@ -9,11 +9,13 @@
 #   -b  tracked agent artifacts (.remember/, .cursor/, agent-transcripts/)
 #   -c  English / pt_BR markdown parity (heading count and table-row count)
 #   -d  relative links in tracked markdown resolve to a file
-#   -e  commits in HYGIENE_BASE..HEAD (default origin/main) are signed,
+#   -e  commits in HYGIENE_BASE..HEAD (default origin/main) have a signature,
 #       have no co-author trailer (any case), do not mention the skip-hooks
 #       flag, and do not use a GitHub closing keyword before an issue number
 #       (close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved).
 #       That line belongs in a pull request body.
+#       No gpgsig header, N, or a bad status (B/R/X/Y) fails. G passes.
+#       U/E prints a warning and passes, unless HYGIENE_SIGNATURE=verified.
 #   -f  tracked Go files are gofmt-clean and contain no TODO(operator)
 #
 # scripts/hygiene-allow.txt skips the sk- shape in those paths only.
@@ -204,8 +206,26 @@ if [[ "$want_e" -eq 1 ]]; then
 		while IFS= read -r sha; do
 			[[ -z "$sha" ]] && continue
 			sig=$(git log -1 --format='%G?' "$sha")
-			if [[ "$sig" != "G" ]]; then
-				note "commit $sha signature status $sig (want G)"
+			gpgsig=$(git cat-file commit "$sha" | awk 'BEGIN { found = 0 } /^$/ { exit } /^gpgsig / { found = 1; exit } END { exit found ? 0 : 1 }' && echo yes || echo no)
+			if [[ "$gpgsig" != yes || "$sig" == "N" ]]; then
+				note "commit $sha has no signature"
+			else
+				case "$sig" in
+				G) ;;
+				B|R|X|Y)
+					note "commit $sha signature status $sig"
+					;;
+				U|E)
+					if [[ "${HYGIENE_SIGNATURE:-}" == verified ]]; then
+						note "commit $sha signature status $sig (strict)"
+					else
+						echo "hygiene: warning: commit $sha signature status $sig (not verified here)" >&2
+					fi
+					;;
+				*)
+					note "commit $sha signature status $sig"
+					;;
+				esac
 			fi
 			msg=$(git log -1 --format='%B' "$sha")
 			if grep -qi 'co-authored-by' <<<"$msg"; then

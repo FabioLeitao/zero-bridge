@@ -26,7 +26,7 @@ A clone does not install the hooks. Run `make hooks` once.
 
 ## One commit
 
-One commit is one thing. It compiles, the tests that cover it pass, and it can be reverted by itself. Do not amend, reset, or rebase unless the operator asks for that exact operation. Sign the commit. Do not add a co-author trailer. Stage files by name.
+One commit is one thing. It compiles, the tests that cover it pass, and it can be reverted by itself. Do not amend, reset, or rebase unless the operator asks for that exact operation. Sign the commit. A missing or bad signature fails the gate; a signature this clone cannot verify is a warning unless an allowed signers file is configured. Do not add a co-author trailer. Stage files by name.
 
 ## Slice flow
 

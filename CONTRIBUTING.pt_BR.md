@@ -36,7 +36,7 @@ Na raiz do repositório:
 
 ## Commits e merge
 
-Assine cada commit. Não acrescente trailer de coautor. A mensagem diz por que a mudança existe.
+Assine cada commit. Assinatura ausente ou ruim falha no gate; uma assinatura que este clone não consegue verificar é um aviso, a menos que um arquivo de signatários permitidos esteja configurado. Não acrescente trailer de coautor. A mensagem diz por que a mudança existe.
 
 `Refs` e uma palavra do GitHub que fecha issue ficam no corpo da pull request, nunca na mensagem do commit.
 

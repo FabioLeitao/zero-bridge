@@ -36,7 +36,7 @@ From the repository root:
 
 ## Commits and merge
 
-Sign every commit. Do not add a co-author trailer. The commit message describes why the change exists.
+Sign every commit. A missing or bad signature fails the gate; a signature this clone cannot verify is a warning unless an allowed signers file is configured. Do not add a co-author trailer. The commit message describes why the change exists.
 
 `Refs` and a GitHub closing keyword belong in the pull request body, never in the commit message.
 

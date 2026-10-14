@@ -26,7 +26,7 @@ Um clone não instala os ganchos. Rode `make hooks` uma vez.
 
 ## Um commit
 
-Um commit é uma coisa. Compila, os testes que o cobrem passam, e ele pode ser revertido sozinho. Não faça amend, reset nem rebase, a menos que o operador peça essa operação exata. Assine o commit. Não acrescente trailer de coautor. Coloque arquivos no stage pelo nome.
+Um commit é uma coisa. Compila, os testes que o cobrem passam, e ele pode ser revertido sozinho. Não faça amend, reset nem rebase, a menos que o operador peça essa operação exata. Assine o commit. Assinatura ausente ou ruim falha no gate; uma assinatura que este clone não consegue verificar é um aviso, a menos que um arquivo de signatários permitidos esteja configurado. Não acrescente trailer de coautor. Coloque arquivos no stage pelo nome.
 
 ## Fluxo da fatia
 

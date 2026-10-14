@@ -130,6 +130,13 @@ git -C "$link" add README.md README.pt_BR.md
 sign "$link" "link"
 expect_fail "broken link" check "$link" -d
 
+signed=$(mktemp -d "$work/signed.XXXX")
+seed "$signed"
+printf '%s\n' 'x' >"$signed/extra.txt"
+git -C "$signed" add extra.txt
+sign "$signed" "signed ahead"
+expect_ok "signed commit" check "$signed" -e
+
 unsigned=$(mktemp -d "$work/unsigned.XXXX")
 seed "$unsigned"
 printf '%s\n' 'x' >"$unsigned/extra.txt"
