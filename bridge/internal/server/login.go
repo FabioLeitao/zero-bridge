@@ -150,17 +150,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	key := s.clientKey(r)
 	at, limited, retry := s.reserveLogin(key)
 	if limited {
+		s.recordAudit(auth.KindRateLimited, r, "window full")
 		s.sleepLoginFailure()
 		w.Header().Set("Retry-After", strconv.Itoa(retry))
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many requests"})
 		return
 	}
 	if !auth.Equal(s.cfg.Token, body.Token) {
+		s.recordAudit(auth.KindLoginFailure, r, "mismatch")
 		s.sleepLoginFailure()
 		s.writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
 		return
 	}
 	s.releaseLogin(key, at)
+	s.recordAudit(auth.KindLoginSuccess, r, "ok")
 	id, err := newSessionID()
 	if err != nil {
 		s.writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "unavailable"})
@@ -192,6 +195,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		s.dropSession(c.Value)
 	}
+	s.recordAudit(auth.KindLogout, r, "ok")
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    "",
@@ -213,6 +217,20 @@ func (s *Server) cookieCSRF(r *http.Request) bool {
 		return false
 	}
 	return originAllowed(origin, s.allowed, s.cfg.PublicOrigins)
+}
+
+func (s *Server) recordAudit(kind auth.Kind, r *http.Request, reason string) {
+	if s.audit == nil || r == nil {
+		return
+	}
+	_ = s.audit.Record(auth.Event{
+		Time:   s.now(),
+		Kind:   kind,
+		Source: s.clientKey(r),
+		Method: r.Method,
+		Path:   r.URL.Path,
+		Reason: reason,
+	})
 }
 
 func newSessionID() (string, error) {

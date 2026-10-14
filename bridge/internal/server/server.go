@@ -33,6 +33,7 @@ type Config struct {
 	Keepalive         time.Duration
 	PermissionTimeout time.Duration
 	Logger            *log.Logger
+	Audit             auth.Sink
 	Token             string
 	AllowedHosts      []string
 	PublicOrigins     []string
@@ -60,6 +61,7 @@ type Server struct {
 	perms          *permissions.Broker
 	login          *loginState
 	loginDelay     time.Duration
+	audit          auth.Sink
 }
 
 // New builds a Server; call Boot before serving.
@@ -72,6 +74,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = log.New(io.Discard, "", 0)
+	}
+	if cfg.Audit == nil {
+		cfg.Audit = auth.NewLogSink(cfg.Logger)
 	}
 	if cfg.Token != "" {
 		if err := auth.Validate(cfg.Token); err != nil {
@@ -107,6 +112,7 @@ func New(cfg Config) (*Server, error) {
 		perms:       permissions.New(cfg.PermissionTimeout),
 		login:       newLoginState(),
 		loginDelay:  delay,
+		audit:       cfg.Audit,
 	}
 	s.perms.OnEvent = s.onPermission
 	return s, nil
@@ -293,6 +299,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	if s.workspaceOwned && s.workspace != "" {
 		_ = os.RemoveAll(s.workspace)
+	}
+	if cl, ok := s.audit.(auth.Closer); ok {
+		if cerr := cl.Close(); err == nil {
+			err = cerr
+		}
 	}
 	return err
 }

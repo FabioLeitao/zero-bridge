@@ -41,6 +41,7 @@ func run() int {
 	workspace := ""
 	permTimeout := 60 * time.Second
 	tokenFile := ""
+	auditLog := ""
 	var allowedHosts []string
 	var publicOrigins []string
 	trustProxy := false
@@ -95,6 +96,13 @@ func run() int {
 			}
 			i++
 			tokenFile = os.Args[i]
+		case "--audit-log":
+			if i+1 >= len(os.Args) {
+				fmt.Fprintln(os.Stderr, "missing value for --audit-log")
+				return 2
+			}
+			i++
+			auditLog = os.Args[i]
 		case "--zero-bin":
 			if i+1 >= len(os.Args) {
 				fmt.Fprintln(os.Stderr, "missing value for --zero-bin")
@@ -115,12 +123,22 @@ func run() int {
 		return 2
 	}
 	logger := log.New(os.Stderr, "", log.LstdFlags)
+	auditSink := auth.Sink(auth.NewLogSink(logger))
+	if auditLog != "" {
+		fileSink, err := auth.OpenFileSink(auditLog)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
+			return 2
+		}
+		auditSink = auth.NewMulti(auditSink, fileSink)
+	}
 	srv, err := server.New(server.Config{
 		Listen:            resolved,
 		ZeroBin:           zeroBin,
 		Workspace:         workspace,
 		PermissionTimeout: permTimeout,
 		Logger:            logger,
+		Audit:             auditSink,
 		Token:             token,
 		AllowedHosts:      allowedHosts,
 		PublicOrigins:     publicOrigins,

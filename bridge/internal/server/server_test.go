@@ -1552,3 +1552,63 @@ func TestBearerAuth(t *testing.T) {
 		t.Fatal("token appeared in the log")
 	}
 }
+
+func TestLoginAuditOmitsSecret(t *testing.T) {
+	var logs bytes.Buffer
+	_, base, cleanup := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+		Logger:            log.New(&logs, "", 0),
+	})
+	defer cleanup()
+	body := `{"token":"` + bearerToken + `"}`
+	bad, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"wrong-token-value"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad.Header.Set("Content-Type", "application/json")
+	badRes, err := http.DefaultClient.Do(bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badRes.Body.Close()
+	if badRes.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d", badRes.StatusCode)
+	}
+	ok, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok.Header.Set("Content-Type", "application/json")
+	okRes, err := http.DefaultClient.Do(ok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okRes.Body.Close()
+	if okRes.StatusCode != http.StatusOK {
+		t.Fatalf("login %d", okRes.StatusCode)
+	}
+	text := logs.String()
+	if !strings.Contains(text, `"kind":"login_failure"`) || !strings.Contains(text, `"kind":"login_success"`) {
+		t.Fatalf("audit lines: %s", text)
+	}
+	if strings.Contains(text, bearerToken) || strings.Contains(text, "wrong-token-value") {
+		t.Fatal("secret in audit log")
+	}
+	out, err := http.NewRequest(http.MethodPost, base+"/v1/logout", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range okRes.Cookies() {
+		out.AddCookie(c)
+	}
+	out.Header.Set("Origin", base)
+	outRes, err := http.DefaultClient.Do(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outRes.Body.Close()
+	if !strings.Contains(logs.String(), `"kind":"logout"`) {
+		t.Fatalf("logout audit: %s", logs.String())
+	}
+}
