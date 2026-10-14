@@ -68,6 +68,8 @@ type Client struct {
 	inboundWG   sync.WaitGroup
 	inboundCtx  context.Context
 	inboundStop context.CancelFunc
+
+	state agentState
 }
 
 // Start launches the agent and begins reading stdout in the background.
@@ -209,10 +211,10 @@ func (c *Client) Call(ctx context.Context, method string, params any, result any
 		c.dropPending(id)
 		return err
 	}
-	return c.recvResponse(ctx, ch, id, result)
+	return c.recvResponse(ctx, ch, id, method, params, result)
 }
 
-func (c *Client) recvResponse(ctx context.Context, ch chan rpcMessage, id int64, result any) error {
+func (c *Client) recvResponse(ctx context.Context, ch chan rpcMessage, id int64, method string, params any, result any) error {
 	select {
 	case <-ctx.Done():
 		c.dropPending(id)
@@ -221,14 +223,14 @@ func (c *Client) recvResponse(ctx context.Context, ch chan rpcMessage, id int64,
 		if !ok {
 			return errors.New("acpclient: connection closed")
 		}
-		return c.finishCall(msg, result)
+		return c.finishCall(method, params, msg, result)
 	case <-c.readDone:
 		select {
 		case msg, ok := <-ch:
 			if !ok {
 				return errors.New("acpclient: connection closed")
 			}
-			return c.finishCall(msg, result)
+			return c.finishCall(method, params, msg, result)
 		default:
 			if c.readErr != nil {
 				return c.readErr
@@ -238,7 +240,7 @@ func (c *Client) recvResponse(ctx context.Context, ch chan rpcMessage, id int64,
 	}
 }
 
-func (c *Client) finishCall(msg rpcMessage, result any) error {
+func (c *Client) finishCall(method string, params any, msg rpcMessage, result any) error {
 	if msg.Error != nil {
 		return msg.Error
 	}
@@ -247,6 +249,7 @@ func (c *Client) finishCall(msg rpcMessage, result any) error {
 			return fmt.Errorf("acpclient: decode result: %w", err)
 		}
 	}
+	c.noteResult(method, params, msg.Result)
 	return nil
 }
 
