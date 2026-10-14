@@ -19,14 +19,14 @@ TOOL_GO_TOOLCHAIN := go1.26.9
 GO_FILES := $(shell git -C $(ROOT) ls-files 'bridge/*.go' 'bridge/**/*.go')
 
 .DEFAULT_GOAL := help
-.PHONY: help fmt fmt-check vet build test test-quick lint-static deadcode vulncheck tidy-check diff-check check check-advisory
+.PHONY: help fmt fmt-check vet build test test-quick lint-static deadcode vulncheck tidy-check diff-check hygiene check check-advisory
 
 lint-static deadcode vulncheck: export GOTOOLCHAIN = $(TOOL_GO_TOOLCHAIN)
 lint-static deadcode vulncheck: export GOWORK = off
 
 help:
 	@echo "Pinned: deadcode $(DEADCODE_VERSION), golangci-lint $(GOLANGCI_LINT_VERSION), govulncheck $(GOVULNCHECK_VERSION); analyzer toolchain $(TOOL_GO_TOOLCHAIN); go.mod language $(GO_VERSION)"
-	@echo "Targets: fmt, fmt-check, vet, build, test, test-quick, lint-static, deadcode, vulncheck, tidy-check, diff-check, check, check-advisory"
+	@echo "Targets: fmt, fmt-check, vet, build, test, test-quick, lint-static, deadcode, vulncheck, tidy-check, diff-check, hygiene, check, check-advisory"
 	@echo "check-advisory is deadcode only. It is not part of check: -test=false reports test-only helpers."
 
 fmt:
@@ -64,6 +64,10 @@ tidy-check:
 diff-check:
 	git -C $(ROOT) diff HEAD --check
 
-check: fmt-check vet build test lint-static vulncheck tidy-check diff-check
+hygiene:
+	bash $(ROOT)/scripts/check-hygiene-selftest.sh
+	bash $(ROOT)/scripts/check-hygiene.sh --root $(ROOT)
+
+check: fmt-check vet build test lint-static vulncheck tidy-check hygiene diff-check
 
 check-advisory: deadcode

@@ -1,0 +1,4 @@
+# Skips the sk- shape only. Personal paths and every other secret shape still fail.
+# These tests plant the redaction fixture the production code must remove.
+bridge/internal/server/events_test.go
+bridge/internal/server/redact_test.go

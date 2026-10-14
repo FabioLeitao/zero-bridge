@@ -9,3 +9,5 @@ node bridge/web/e2e/check.mjs http://127.0.0.1:8769/
 ```
 
 The script loads the page, sends three prompts, and checks the hostile payload stays text, the permission card, Allow/Deny, expiry, the plan, and the diff. It then lists sessions (filter "todos"), checks a hostile title stays text, loads a replay, resumes without replay, and shows "sessao somente leitura" for the view-only session. It prints JSON and exits 1 on any failure. `--permission-timeout` has to be short enough for the expiry check, which waits 20s.
+
+Portuguese: [README.pt_BR.md](README.pt_BR.md).
