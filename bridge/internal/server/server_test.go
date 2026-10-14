@@ -160,6 +160,119 @@ func TestForbiddenHost(t *testing.T) {
 	}
 }
 
+func TestListSessions(t *testing.T) {
+	_, base, cleanup := startTestServer(t, nil)
+	defer cleanup()
+	rel, err := http.Get(base + "/v1/sessions?cwd=relative")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel.Body.Close()
+	if rel.StatusCode != http.StatusBadRequest {
+		t.Fatalf("relative %d", rel.StatusCode)
+	}
+	put, err := http.NewRequest(http.MethodPut, base+"/v1/sessions?cwd=/tmp/zbridge-ws-a", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putRes, err := http.DefaultClient.Do(put)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putRes.Body.Close()
+	if putRes.StatusCode != http.StatusNotFound {
+		t.Fatalf("method %d", putRes.StatusCode)
+	}
+	hostReq, _ := http.NewRequest(http.MethodGet, base+"/v1/sessions?cwd=/tmp/zbridge-ws-a", nil)
+	hostReq.Host = "evil.example:1"
+	hostRes, err := http.DefaultClient.Do(hostReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostRes.Body.Close()
+	if hostRes.StatusCode != http.StatusForbidden {
+		t.Fatalf("host %d", hostRes.StatusCode)
+	}
+	originReq, _ := http.NewRequest(http.MethodGet, base+"/v1/sessions?cwd=/tmp/zbridge-ws-a", nil)
+	originReq.Header.Set("Origin", "http://evil.example")
+	originRes, err := http.DefaultClient.Do(originReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originRes.Body.Close()
+	if originRes.StatusCode != http.StatusForbidden {
+		t.Fatalf("origin %d", originRes.StatusCode)
+	}
+	res, err := http.Get(base + "/v1/sessions?cwd=/tmp/zbridge-ws-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var page struct {
+		Sessions []struct {
+			SessionID string `json:"sessionId"`
+			Title     string `json:"title"`
+			Cwd       string `json:"cwd"`
+		} `json:"sessions"`
+		NextCursor string `json:"nextCursor"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Sessions) != 2 || page.Sessions[0].Title != `<img src=x onerror="window.__xss=1"></script><script>window.__xss=2</script>` || page.NextCursor == "" {
+		t.Fatalf("page %+v", page)
+	}
+	res2, err := http.Get(base + "/v1/sessions?cwd=/tmp/zbridge-ws-a&cursor=" + page.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res2.Body.Close()
+	var page2 struct {
+		Sessions []struct {
+			SessionID string `json:"sessionId"`
+		} `json:"sessions"`
+	}
+	if err := json.NewDecoder(res2.Body).Decode(&page2); err != nil {
+		t.Fatal(err)
+	}
+	if len(page2.Sessions) != 2 || page2.Sessions[0].SessionID != "sess-a3" {
+		t.Fatalf("page2 %+v", page2.Sessions)
+	}
+	one, err := http.Get(base + "/v1/sessions?cwd=/tmp/zbridge-ws-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer one.Body.Close()
+	var filtered struct {
+		Sessions []struct {
+			Cwd string `json:"cwd"`
+		} `json:"sessions"`
+	}
+	if err := json.NewDecoder(one.Body).Decode(&filtered); err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered.Sessions) != 1 || filtered.Sessions[0].Cwd != "/tmp/zbridge-ws-b" {
+		t.Fatalf("filter %+v", filtered.Sessions)
+	}
+}
+
+func TestListSessionsRedactsError(t *testing.T) {
+	_, base, cleanup := startTestServer(t, []string{"ZB_FAKE_LIST_ERROR=1"})
+	defer cleanup()
+	res, err := http.Get(base + "/v1/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status %d %s", res.StatusCode, b)
+	}
+	if strings.Contains(string(b), "secret-token") || !strings.Contains(string(b), "[redacted]") {
+		t.Fatalf("body %s", b)
+	}
+}
+
 func TestSessionMode(t *testing.T) {
 	_, base, cleanup := startTestServer(t, nil)
 	defer cleanup()

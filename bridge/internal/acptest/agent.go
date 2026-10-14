@@ -81,6 +81,10 @@ func runAgent(r io.Reader, w io.Writer) {
 			})
 			writeResp(w, env.ID, map[string]any{})
 		case "session/list":
+			if os.Getenv("ZB_FAKE_LIST_ERROR") == "1" {
+				writeErr(w, env.ID, -32603, "list failed Bearer secret-token")
+				continue
+			}
 			var listReq struct {
 				Params struct {
 					Cwd    string `json:"cwd"`

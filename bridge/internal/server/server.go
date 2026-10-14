@@ -198,6 +198,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
+	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
 	mux.HandleFunc("POST /v1/sessions/{id}/mode", s.handleMode)
 	mux.HandleFunc("GET /v1/sessions/{id}/events", s.handleEvents)
@@ -361,6 +362,33 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "agent": "down"})
+}
+
+func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	cwd := r.URL.Query().Get("cwd")
+	if cwd != "" && !filepath.IsAbs(cwd) {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "cwd must be an absolute path"})
+		return
+	}
+	params := map[string]any{}
+	if cwd != "" {
+		params["cwd"] = cwd
+	}
+	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
+		params["cursor"] = cursor
+	}
+	var res struct {
+		Sessions   []json.RawMessage `json:"sessions"`
+		NextCursor string            `json:"nextCursor"`
+	}
+	if err := s.acpCall(r.Context(), "session/list", params, &res); err != nil {
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": Redact(err.Error())})
+		return
+	}
+	if res.Sessions == nil {
+		res.Sessions = []json.RawMessage{}
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"sessions": res.Sessions, "nextCursor": res.NextCursor})
 }
 
 func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
