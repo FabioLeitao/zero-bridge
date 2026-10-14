@@ -12,7 +12,15 @@
     <form id="session">
       <label for="workspace">Workspace</label>
       <input id="workspace" name="workspace" type="text" autocomplete="off">
+      <label for="mode">Mode</label>
+      <select id="mode" disabled>
+        <option value="auto">auto</option>
+        <option value="ask">ask</option>
+        <option value="plan">plan</option>
+      </select>
     </form>
+    <div id="plan" hidden></div>
+    <div id="permissions"></div>
     <div id="log" aria-live="polite"></div>
     <form id="composer">
       <label for="text">Message</label>
