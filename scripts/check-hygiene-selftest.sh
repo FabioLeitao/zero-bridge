@@ -146,12 +146,28 @@ sign "$trailer" "note
 Co-authored-by: not-a-person <nobody@example.com>"
 expect_fail "co-author trailer" check "$trailer" -e
 
+mixed=$(mktemp -d "$work/mixed.XXXX")
+seed "$mixed"
+printf '%s\n' 'x' >"$mixed/extra.txt"
+git -C "$mixed" add extra.txt
+sign "$mixed" "note
+
+Co-Authored-By: not-a-person <nobody@example.com>"
+expect_fail "mixed-case co-author trailer" check "$mixed" -e
+
 closes=$(mktemp -d "$work/closes.XXXX")
 seed "$closes"
 printf '%s\n' 'x' >"$closes/extra.txt"
 git -C "$closes" add extra.txt
 sign "$closes" "Closes #1"
 expect_fail "closes in commit" check "$closes" -e
+
+fixes=$(mktemp -d "$work/fixes.XXXX")
+seed "$fixes"
+printf '%s\n' 'x' >"$fixes/extra.txt"
+git -C "$fixes" add extra.txt
+sign "$fixes" "Fixes #1"
+expect_fail "fixes keyword" check "$fixes" -e
 
 skip=$(mktemp -d "$work/skip.XXXX")
 seed "$skip"

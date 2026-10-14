@@ -10,8 +10,10 @@
 #   -c  English / pt_BR markdown parity (heading count and table-row count)
 #   -d  relative links in tracked markdown resolve to a file
 #   -e  commits in HYGIENE_BASE..HEAD (default origin/main) are signed,
-#       have no Co-authored-by, do not mention the skip-hooks flag,
-#       and do not contain a Closes # line (that belongs in a PR body)
+#       have no co-author trailer (any case), do not mention the skip-hooks
+#       flag, and do not use a GitHub closing keyword before an issue number
+#       (close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved).
+#       That line belongs in a pull request body.
 #   -f  tracked Go files are gofmt-clean and contain no TODO(operator)
 #
 # scripts/hygiene-allow.txt skips the sk- shape in those paths only.
@@ -206,11 +208,13 @@ if [[ "$want_e" -eq 1 ]]; then
 				note "commit $sha signature status $sig (want G)"
 			fi
 			msg=$(git log -1 --format='%B' "$sha")
-			if grep -q 'Co-authored-by' <<<"$msg"; then
-				note "commit $sha contains Co-authored-by"
+			if grep -qi 'co-authored-by' <<<"$msg"; then
+				note "commit $sha contains a co-author trailer"
 			fi
-			if grep -q 'Closes #' <<<"$msg"; then
-				note "commit $sha contains Closes # (PR body only)"
+			# GitHub closes an issue from any of these words before #N, any case.
+			close_re='(^|[^[:alnum:]])(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[[:space:]]*:?[[:space:]]*#[0-9]+'
+			if grep -Eiq "$close_re" <<<"$msg"; then
+				note "commit $sha contains a closing keyword (pull request body only)"
 			fi
 			if grep -F -q -- '--no-verify' <<<"$msg"; then
 				note "commit $sha mentions the skip-hooks flag"
