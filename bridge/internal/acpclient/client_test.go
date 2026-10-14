@@ -1,11 +1,15 @@
 package acpclient
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -131,7 +135,7 @@ func TestNotificationCallback(t *testing.T) {
 
 func TestPermissionDenied(t *testing.T) {
 	h := DefaultInboundHandler{}
-	out, err := h.HandleRequest(methodSessionRequestPerm, json.RawMessage(`{"sessionId":"s1"}`))
+	out, err := h.HandleRequest(methodSessionRequestPerm, json.RawMessage(`{"sessionId":"s1","options":[{"optionId":"deny","kind":"reject_once"},{"optionId":"allow","kind":"allow_once"}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,8 +152,47 @@ func TestPermissionDenied(t *testing.T) {
 	if err := json.Unmarshal(b, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Outcome.OptionID != permRejectOnce {
+	if decoded.Outcome.OptionID != "deny" {
 		t.Fatalf("option %q", decoded.Outcome.OptionID)
+	}
+}
+
+func TestPermissionDenyTable(t *testing.T) {
+	h := DefaultInboundHandler{}
+	cases := []struct {
+		name   string
+		params string
+		want   string
+	}{
+		{"reject option", `{"options":[{"optionId":"allow_always","kind":"allow_always"},{"optionId":"no","kind":"reject_once"}]}`, "no"},
+		{"no reject", `{"options":[{"optionId":"allow_always","kind":"allow_always"}]}`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := h.HandleRequest(methodSessionRequestPerm, json.RawMessage(tc.params))
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := json.Marshal(out)
+			var decoded struct {
+				Outcome struct {
+					Outcome  string `json:"outcome"`
+					OptionID string `json:"optionId"`
+				} `json:"outcome"`
+			}
+			if err := json.Unmarshal(b, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			if tc.want == "" {
+				if decoded.Outcome.Outcome != "cancelled" {
+					t.Fatalf("outcome %q", decoded.Outcome.Outcome)
+				}
+				return
+			}
+			if decoded.Outcome.OptionID != tc.want {
+				t.Fatalf("option %q", decoded.Outcome.OptionID)
+			}
+		})
 	}
 }
 
@@ -201,6 +244,120 @@ func TestCallRace200Pings(t *testing.T) {
 		if err := c.Call(ctx, "ping", nil, &struct{}{}); err != nil {
 			t.Fatalf("ping %d: %v", i, err)
 		}
+	}
+}
+
+type gateHandler struct {
+	started chan struct{}
+	release chan struct{}
+	done    <-chan struct{}
+	once    atomic.Bool
+}
+
+func (h *gateHandler) HandleRequest(string, json.RawMessage) (any, error) {
+	if h.once.CompareAndSwap(false, true) {
+		close(h.started)
+	}
+	select {
+	case <-h.release:
+	case <-h.done:
+	}
+	return map[string]any{"ok": true}, nil
+}
+
+func TestSlowInboundDoesNotBlockNotify(t *testing.T) {
+	stdoutR, stdoutW := io.Pipe()
+	stdinR, stdinW := io.Pipe()
+	release := make(chan struct{})
+	h := &gateHandler{started: make(chan struct{}), release: release}
+	c := attachPipes(stdoutR, stdinW, nil, Options{Inbound: h})
+	h.done = c.inboundCtx.Done()
+	notified := make(chan struct{}, 1)
+	c.SetNotifyHandler(func(string, json.RawMessage) {
+		select {
+		case notified <- struct{}{}:
+		default:
+		}
+	})
+	go func() {
+		_, _ = io.Copy(io.Discard, stdinR)
+	}()
+	_, _ = stdoutW.Write([]byte(`{"jsonrpc":"2.0","id":1,"method":"session/request_permission","params":{}}` + "\n"))
+	select {
+	case <-h.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not start")
+	}
+	_, _ = stdoutW.Write([]byte(`{"jsonrpc":"2.0","method":"session/update","params":{}}` + "\n"))
+	select {
+	case <-notified:
+	case <-time.After(2 * time.Second):
+		t.Fatal("notification blocked by inbound handler")
+	}
+	close(release)
+	_ = stdoutW.Close()
+	_ = c.Close()
+}
+
+func TestInboundBusy(t *testing.T) {
+	stdoutR, stdoutW := io.Pipe()
+	stdinR, stdinW := io.Pipe()
+	release := make(chan struct{})
+	h := &gateHandler{started: make(chan struct{}), release: release}
+	c := attachPipes(stdoutR, stdinW, nil, Options{Inbound: h})
+	h.done = c.inboundCtx.Done()
+	gotBusy := make(chan struct{}, 1)
+	go func() {
+		sc := bufio.NewScanner(stdinR)
+		for sc.Scan() {
+			if strings.Contains(sc.Text(), `"code":-32000`) {
+				gotBusy <- struct{}{}
+				return
+			}
+		}
+	}()
+	for i := 0; i < 16; i++ {
+		_, _ = fmt.Fprintf(stdoutW, "{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"session/request_permission\",\"params\":{}}\n", i+1)
+	}
+	select {
+	case <-h.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not start")
+	}
+	time.Sleep(50 * time.Millisecond)
+	_, _ = stdoutW.Write([]byte(`{"jsonrpc":"2.0","id":99,"method":"session/request_permission","params":{}}` + "\n"))
+	select {
+	case <-gotBusy:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected -32000 busy")
+	}
+	close(release)
+	_ = stdoutW.Close()
+	_ = c.Close()
+}
+
+func TestClosePendingInbound(t *testing.T) {
+	stdoutR, stdoutW := io.Pipe()
+	stdinR, stdinW := io.Pipe()
+	release := make(chan struct{})
+	h := &gateHandler{started: make(chan struct{}), release: release}
+	c := attachPipes(stdoutR, stdinW, nil, Options{Inbound: h})
+	h.done = c.inboundCtx.Done()
+	go func() { _, _ = io.Copy(io.Discard, stdinR) }()
+	_, _ = stdoutW.Write([]byte(`{"jsonrpc":"2.0","id":1,"method":"session/request_permission","params":{}}` + "\n"))
+	select {
+	case <-h.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not start")
+	}
+	before := runtime.NumGoroutine()
+	go func() { _ = stdoutW.Close() }()
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if after := runtime.NumGoroutine(); after > before+2 {
+		t.Fatalf("goroutines before %d after %d", before, after)
 	}
 }
 

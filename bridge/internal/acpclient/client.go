@@ -56,6 +56,11 @@ type Client struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	inboundSem  chan struct{}
+	inboundWG   sync.WaitGroup
+	inboundCtx  context.Context
+	inboundStop context.CancelFunc
 }
 
 // Start launches `zero acp` and begins reading stdout in the background.
@@ -105,15 +110,19 @@ func Start(parent context.Context, opts Options) (*Client, error) {
 	if opts.Inbound != nil {
 		inbound = opts.Inbound
 	}
+	inCtx, inStop := context.WithCancel(context.Background())
 	c := &Client{
-		cmd:      cmd,
-		stdin:    stdin,
-		stderr:   lw,
-		pending:  make(map[int64]chan rpcMessage),
-		inbound:  inbound,
-		readDone: make(chan struct{}),
-		ctx:      ctx,
-		cancel:   cancel,
+		cmd:         cmd,
+		stdin:       stdin,
+		stderr:      lw,
+		pending:     make(map[int64]chan rpcMessage),
+		inbound:     inbound,
+		readDone:    make(chan struct{}),
+		ctx:         ctx,
+		cancel:      cancel,
+		inboundSem:  make(chan struct{}, 16),
+		inboundCtx:  inCtx,
+		inboundStop: inStop,
 	}
 	if opts.Notify != nil {
 		c.handlerMu.Lock()
@@ -209,7 +218,11 @@ func (c *Client) Close() error {
 	if c.closed.Swap(true) {
 		return nil
 	}
+	if c.inboundStop != nil {
+		c.inboundStop()
+	}
 	_ = c.stdin.Close()
+	c.inboundWG.Wait()
 
 	if c.cmd == nil {
 		<-c.readDone
@@ -251,20 +264,24 @@ func attachPipes(stdout io.Reader, stdin io.WriteCloser, cmd *exec.Cmd, opts Opt
 	if opts.Inbound != nil {
 		inbound = opts.Inbound
 	}
+	inCtx, inStop := context.WithCancel(context.Background())
 	c := &Client{
-		cmd:      cmd,
-		stdin:    stdin,
-		stderr:   &limitedWriter{limit: 1 << 20},
-		pending:  make(map[int64]chan rpcMessage),
-		inbound:  inbound,
-		readDone: make(chan struct{}),
+		cmd:         cmd,
+		stdin:       stdin,
+		stderr:      &limitedWriter{limit: 1 << 20},
+		pending:     make(map[int64]chan rpcMessage),
+		inbound:     inbound,
+		readDone:    make(chan struct{}),
+		inboundSem:  make(chan struct{}, 16),
+		inboundCtx:  inCtx,
+		inboundStop: inStop,
 	}
 	if opts.Notify != nil {
 		c.handlerMu.Lock()
 		c.notify = opts.Notify
 		c.handlerMu.Unlock()
 	}
-	go c.readLoop(context.Background(), stdout)
+	go c.readLoop(c.inboundCtx, stdout)
 	return c
 }
 
@@ -332,7 +349,21 @@ func (c *Client) writeMessage(msg rpcMessage) error {
 
 func (c *Client) readLoop(ctx context.Context, r io.Reader) {
 	defer close(c.readDone)
-	reader := bufio.NewReader(r)
+	pr, pw := io.Pipe()
+	copyDone := make(chan struct{})
+	go func() {
+		defer close(copyDone)
+		_, err := io.Copy(pw, r)
+		_ = pw.CloseWithError(err)
+	}()
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = pw.CloseWithError(ctx.Err())
+		case <-copyDone:
+		}
+	}()
+	reader := bufio.NewReader(pr)
 	for {
 		if ctx.Err() != nil {
 			c.readErr = ctx.Err()
@@ -362,7 +393,7 @@ func (c *Client) readLoop(ctx context.Context, r io.Reader) {
 				fn(msg.Method, msg.Params)
 			}
 		case msg.isRequest():
-			c.handleInbound(msg)
+			c.dispatchInbound(msg)
 		case msg.isResponse():
 			id, ok := parseID(msg.ID)
 			if ok {
@@ -384,6 +415,24 @@ func (c *Client) getInbound() InboundHandler {
 	h := c.inbound
 	c.handlerMu.RUnlock()
 	return h
+}
+
+func (c *Client) dispatchInbound(msg rpcMessage) {
+	select {
+	case c.inboundSem <- struct{}{}:
+		c.inboundWG.Add(1)
+		go func() {
+			defer c.inboundWG.Done()
+			defer func() { <-c.inboundSem }()
+			c.handleInbound(msg)
+		}()
+	default:
+		_ = c.writeMessage(rpcMessage{
+			JSONRPC: jsonRPCVersion,
+			ID:      msg.ID,
+			Error:   &rpcError{Code: -32000, Message: "busy"},
+		})
+	}
 }
 
 func (c *Client) handleInbound(msg rpcMessage) {
