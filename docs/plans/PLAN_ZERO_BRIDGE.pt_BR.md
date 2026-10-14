@@ -256,13 +256,17 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 ### S5b — C3b UI de aprovação
 
-**Caminho:** `bridge/web/` (mesmos arquivos). Depende da S4.
+**Caminho:** `bridge/web/` (mesmos arquivos), `bridge/web/e2e/check.mjs`, `POST /v1/sessions/{id}/mode` em `bridge/internal/server/`. Depende da S4.
 
-**Aceite**
+**Wire confirmado no `internal/acp` do upstream:** `session/new` devolve `modes.currentModeId` e `modes.availableModes[].id` (`auto`, `ask`, `plan`). `session/set_mode` recebe `modeId`. A saída de tool é `content[]` com `{type:"content",content:{type:"text",text}}` ou `{type:"diff",path,oldText,newText}`.
 
-- Cartão de permissão ligado à S4; um pendente visível; timeout mostra **expirado** conforme S4.
-- Entradas de plano quando SSE traz `sessionUpdate: "plan"` (tabela no doc de pesquisa).
-- Status de tool e diff/edição em texto, sem injeção de HTML.
+**Entregue**
+
+- `POST /v1/sessions` também devolve `mode` e `modes` (ids) quando o agente os envia.
+- `POST /v1/sessions/{id}/mode` com `{"mode":"auto|ask|plan"}` chama `session/set_mode`. Outro id, inclusive `unsafe`, é **400**. **409** com prompt em andamento. **404** / **415** seguem as outras rotas JSON.
+- Um cartão de permissão. Allow/Deny chamam a S4. Enter no cartão não aprova. Cartão resolvido vira linha compacta no histórico. Timeout mostra **expired**.
+- Checklist de plano e linhas de tool (diff como texto `-`/`+`) atualizam no lugar. O `<select>` de modo segue `current_mode_update` e posta a rota. Workspace é somente leitura; "Nova sessao" abre outra sessão.
+- Check headless: [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) (HEAD `c63f17a`, agente falso em `127.0.0.1:8769`). `window.__xss` ficou undefined. O `zero acp` real em modo `ask` não emitiu `session/request_permission` num prompt pedindo para criar `hello.txt`.
 
 **Parada:** não iniciar S5b antes da API HTTP de permissão da S4.
 

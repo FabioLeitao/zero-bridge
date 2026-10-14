@@ -271,13 +271,17 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 ### S5b — C3b approval UI
 
-**Path:** `bridge/web/` (same files). Depends on S4.
+**Path:** `bridge/web/` (same files), `bridge/web/e2e/check.mjs`, `POST /v1/sessions/{id}/mode` in `bridge/internal/server/`. Depends on S4.
 
-**Acceptance**
+**Wire confirmed on upstream `internal/acp`:** `session/new` returns `modes.currentModeId` and `modes.availableModes[].id` (`auto`, `ask`, `plan`). `session/set_mode` takes `modeId`. Tool output is `content[]` of `{type:"content",content:{type:"text",text}}` or `{type:"diff",path,oldText,newText}`.
 
-- Deny-by-default permission card wired to S4; only one pending card visible; Allow/Deny call S4; timeout shows **expired** per S4.
-- Plan entries appear when SSE carries ACP `sessionUpdate: "plan"` (see research mapping table).
-- Tool-call status and plain-text edit/diff lines render without HTML injection.
+**Shipped**
+
+- `POST /v1/sessions` also returns `mode` and `modes` (ids) when the agent sends them.
+- `POST /v1/sessions/{id}/mode` body `{"mode":"auto|ask|plan"}` calls `session/set_mode`. Other ids, including `unsafe`, are **400**. **409** while a prompt is in progress. **404** / **415** follow the other JSON routes.
+- One permission card. Allow/Deny call S4. Enter on the card does not approve. A resolved card becomes a compact history line. Timeout text is **expired**.
+- Plan checklist and tool rows (diff as `-`/`+` text) update in place. The mode `<select>` follows `current_mode_update` and posts the mode route. Workspace is read-only; "Nova sessao" opens a new session.
+- Headless check: [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) (HEAD `c63f17a`, fake agent on `127.0.0.1:8769`). `window.__xss` stayed undefined. Real `zero acp` in mode `ask` did not emit `session/request_permission` for one "create hello.txt" prompt.
 
 **Stop:** Do not start S5b before S4 permission HTTP exists.
 

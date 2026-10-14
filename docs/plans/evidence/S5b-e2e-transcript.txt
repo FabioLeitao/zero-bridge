@@ -1,0 +1,52 @@
+S5b e2e transcript — 2026-10-13 23:26:11 -03
+
+Bridge commit (HEAD at run):
+  c63f17a test(bridge): headless chrome e2e check for the web UI
+
+Commands (shown before the run):
+  cd /home/leitao/Projects/dev/zero-bridge/bridge
+  go build -o /tmp/acpfake ./cmd/acpfake
+  tmux new-session -d -s zbridge-s5b-fake \
+    "cd /home/leitao/Projects/dev/zero-bridge/bridge && ZB_FAKE_SCENARIO=rich ZB_FAKE_PERMISSION=1 go run ./cmd/zero-bridge --listen 127.0.0.1:8769 --zero-bin /tmp/acpfake --permission-timeout 3s"
+  node bridge/web/e2e/check.mjs http://127.0.0.1:8769/
+
+check.mjs exit 0:
+  {
+    "url": "http://127.0.0.1:8769/",
+    "failures": [],
+    "sessionBooted": true,
+    "title": "zero-bridge",
+    "permissionCard": true,
+    "xss": "undefined",
+    "imgCount": 0,
+    "scriptCount": 0,
+    "payloadAsText": true,
+    "plan": "[ ] high look[~] medium <img src=x onerror=\"window.__xss=1\"></script><script>window.__xss=2</script>[x] low finish",
+    "diff": 1,
+    "tool": 2,
+    "denied": true,
+    "allowed": true,
+    "expired": true,
+    "ok": true
+  }
+
+S5a servers:
+  The previous tmux sessions zbridge-s5a-real and zbridge-s5a-fake were already gone, and 8765/8766 were closed, before the restart commands ran.
+  Recreated with the new embedded UI:
+    tmux new-session -d -s zbridge-s5a-real \
+      "cd /home/leitao/Projects/dev/zero-bridge/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765"
+    tmux new-session -d -s zbridge-s5a-fake \
+      "cd /home/leitao/Projects/dev/zero-bridge/bridge && ZB_FAKE_TEXT='<img src=x onerror=\"window.__xss=1\">' go run ./cmd/zero-bridge --listen 127.0.0.1:8766 --zero-bin /tmp/acpfake"
+  Both /health returned 200. Left running.
+
+Real zero on 127.0.0.1:8765 (one try, not forced):
+  POST /v1/sessions workspace /tmp/zbridge-s5b-real
+    → {"mode":"auto","modes":["auto","ask","plan"],"sessionId":"zero_20261014022832_1791944912343710554_1"}
+  POST .../mode {"mode":"ask"} → 200 {"mode":"ask","ok":true}
+  POST .../prompt "create hello.txt with the word hi using a tool" → 202 {"ok":true}
+  GET .../permissions/pending for 20s → no pending request
+  nao observado com zero real
+
+After the check:
+  tmux kill-session -t zbridge-s5b-fake
+  TCP 8769 closed. 8765 and 8766 still listening.
