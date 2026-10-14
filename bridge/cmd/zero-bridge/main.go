@@ -21,6 +21,7 @@ func run() int {
 	listen := "127.0.0.1:8765"
 	zeroBin := "zero"
 	workspace := ""
+	permTimeout := 60 * time.Second
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "--listen":
@@ -37,6 +38,18 @@ func run() int {
 			}
 			i++
 			workspace = os.Args[i]
+		case "--permission-timeout":
+			if i+1 >= len(os.Args) {
+				fmt.Fprintln(os.Stderr, "missing value for --permission-timeout")
+				return 2
+			}
+			i++
+			d, err := time.ParseDuration(os.Args[i])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "zero-bridge: permission timeout: %v\n", err)
+				return 2
+			}
+			permTimeout = d
 		case "--zero-bin":
 			if i+1 >= len(os.Args) {
 				fmt.Fprintln(os.Stderr, "missing value for --zero-bin")
@@ -53,10 +66,11 @@ func run() int {
 	}
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	srv, err := server.New(server.Config{
-		Listen:    resolved,
-		ZeroBin:   zeroBin,
-		Workspace: workspace,
-		Logger:    logger,
+		Listen:            resolved,
+		ZeroBin:           zeroBin,
+		Workspace:         workspace,
+		PermissionTimeout: permTimeout,
+		Logger:            logger,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)

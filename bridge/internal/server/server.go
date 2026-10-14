@@ -15,20 +15,22 @@ import (
 	"time"
 
 	"zero-bridge/bridge/internal/acpclient"
+	"zero-bridge/bridge/internal/permissions"
 	"zero-bridge/bridge/internal/zeroenv"
 	"zero-bridge/bridge/web"
 )
 
 // Config configures the HTTP bridge server.
 type Config struct {
-	Listen        string
-	ZeroBin       string
-	Workspace     string
-	ExtraEnv      []string
-	EventLogCap   int
-	SubQueueDepth int
-	Keepalive     time.Duration
-	Logger        *log.Logger
+	Listen            string
+	ZeroBin           string
+	Workspace         string
+	ExtraEnv          []string
+	EventLogCap       int
+	SubQueueDepth     int
+	Keepalive         time.Duration
+	PermissionTimeout time.Duration
+	Logger            *log.Logger
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -47,6 +49,7 @@ type Server struct {
 
 	workspace      string
 	workspaceOwned bool
+	perms          *permissions.Broker
 }
 
 // New builds a Server; call Boot before serving.
@@ -69,14 +72,17 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 	serveCtx, serveCancel := context.WithCancel(context.Background())
-	return &Server{
+	s := &Server{
 		cfg:         cfg,
 		listen:      listen,
 		allowed:     allowed,
 		sessions:    make(map[string]*sessionHub),
 		serveCtx:    serveCtx,
 		serveCancel: serveCancel,
-	}, nil
+		perms:       permissions.New(cfg.PermissionTimeout),
+	}
+	s.perms.OnEvent = s.onPermission
+	return s, nil
 }
 
 // Boot starts the zero acp child and performs initialize.
@@ -90,6 +96,7 @@ func (s *Server) Boot(ctx context.Context) error {
 		ExtraEnv: extra,
 		Timeout:  0,
 		Notify:   s.onNotify,
+		Inbound:  permInbound{s},
 	})
 	if err != nil {
 		return err
@@ -113,6 +120,10 @@ func (s *Server) Boot(ctx context.Context) error {
 		_ = client.Close()
 		return fmt.Errorf("initialize: %w", err)
 	}
+	go func() {
+		<-client.Done()
+		s.perms.Stop()
+	}()
 	return nil
 }
 
@@ -189,6 +200,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
 	mux.HandleFunc("GET /v1/sessions/{id}/events", s.handleEvents)
+	mux.HandleFunc("GET /v1/sessions/{id}/permissions/pending", s.handlePending)
+	mux.HandleFunc("POST /v1/sessions/{id}/permissions/{reqId}", s.handlePermission)
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, _ *http.Request) {
 		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 	})
@@ -236,6 +249,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	c := s.acp
 	s.acp = nil
 	s.acpMu.Unlock()
+	if s.perms != nil {
+		s.perms.Stop()
+	}
 	if c != nil {
 		if cerr := c.Close(); err == nil {
 			err = cerr
@@ -435,7 +451,12 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string) {
-	defer hub.endPrompt()
+	defer func() {
+		hub.endPrompt()
+		if s.perms != nil {
+			s.perms.AbortSession(sessionID)
+		}
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	var res struct {
