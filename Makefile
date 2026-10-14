@@ -19,15 +19,16 @@ TOOL_GO_TOOLCHAIN := go1.26.9
 GO_FILES := $(shell git -C $(ROOT) ls-files 'bridge/*.go' 'bridge/**/*.go')
 
 .DEFAULT_GOAL := help
-.PHONY: help fmt fmt-check vet build test test-quick lint-static deadcode vulncheck tidy-check diff-check hygiene hooks check check-advisory
+.PHONY: help fmt fmt-check vet build test test-quick lint-static deadcode vulncheck tidy-check diff-check hygiene hooks e2e mutate check check-advisory
 
 lint-static deadcode vulncheck: export GOTOOLCHAIN = $(TOOL_GO_TOOLCHAIN)
 lint-static deadcode vulncheck: export GOWORK = off
 
 help:
 	@echo "Pinned: deadcode $(DEADCODE_VERSION), golangci-lint $(GOLANGCI_LINT_VERSION), govulncheck $(GOVULNCHECK_VERSION); analyzer toolchain $(TOOL_GO_TOOLCHAIN); go.mod language $(GO_VERSION)"
-	@echo "Targets: fmt, fmt-check, vet, build, test, test-quick, lint-static, deadcode, vulncheck, tidy-check, diff-check, hygiene, hooks, check, check-advisory"
+	@echo "Targets: fmt, fmt-check, vet, build, test, test-quick, lint-static, deadcode, vulncheck, tidy-check, diff-check, hygiene, hooks, e2e, mutate, check, check-advisory"
 	@echo "hooks installs .githooks for this clone. A fresh clone does not do that. Skipping the hooks is forbidden."
+	@echo "e2e starts its own bridge on a free port. mutate is the slow pre-PR layer, not pre-commit."
 	@echo "check-advisory is deadcode only. It is not part of check: -test=false reports test-only helpers."
 
 fmt:
@@ -68,6 +69,15 @@ diff-check:
 hygiene:
 	bash $(ROOT)/scripts/check-hygiene-selftest.sh
 	bash $(ROOT)/scripts/check-hygiene.sh --root $(ROOT)
+
+# Not part of check or pre-commit. Needs Node >= 22 and /usr/bin/google-chrome,
+# or E2E_OPTIONAL=1 to skip when those are missing.
+e2e:
+	bash $(ROOT)/scripts/e2e.sh
+
+# Slow pre-PR layer. Not part of check or pre-commit.
+mutate:
+	bash $(ROOT)/scripts/mutate-auth.sh
 
 # Local config only. Does not set user.name or user.email.
 hooks:
