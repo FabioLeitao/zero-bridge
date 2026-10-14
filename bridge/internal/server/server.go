@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"zero-bridge/bridge/internal/acpclient"
+	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/permissions"
 	"zero-bridge/bridge/internal/zeroenv"
 	"zero-bridge/bridge/web"
@@ -32,6 +33,7 @@ type Config struct {
 	Keepalive         time.Duration
 	PermissionTimeout time.Duration
 	Logger            *log.Logger
+	Token             string
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -63,6 +65,11 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = log.New(io.Discard, "", 0)
+	}
+	if cfg.Token != "" {
+		if err := auth.Validate(cfg.Token); err != nil {
+			return nil, err
+		}
 	}
 	listen, err := ResolveListen(cfg.Listen)
 	if err != nil {
@@ -300,6 +307,12 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusForbidden, time.Since(start))
 			return
 		}
+		if !s.authorized(r) {
+			rec.Header().Set("WWW-Authenticate", "Bearer")
+			s.writeJSON(rec, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusUnauthorized, time.Since(start))
+			return
+		}
 		next.ServeHTTP(rec, r)
 		if rec.status == 0 {
 			rec.status = http.StatusOK
@@ -359,7 +372,43 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) redact(msg string) string {
+	return RedactSecrets(msg, s.cfg.Token)
+}
+
+func (s *Server) authorized(r *http.Request) bool {
+	if s.cfg.Token == "" || isPublic(r) {
+		return true
+	}
+	return s.hasBearer(r)
+}
+
+func isPublic(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	switch r.URL.Path {
+	case "/health", "/", "/app.js", "/style.css":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) hasBearer(r *http.Request) bool {
+	const prefix = "Bearer "
+	h := r.Header.Get("Authorization")
+	if len(h) <= len(prefix) || h[:len(prefix)] != prefix {
+		return false
+	}
+	return auth.Equal(s.cfg.Token, h[len(prefix):])
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Token != "" && !s.hasBearer(r) {
+		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
 	if s.agentUp() {
 		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "agent": "up"})
 		return
@@ -408,7 +457,7 @@ func (s *Server) handleAttach(w http.ResponseWriter, r *http.Request, replay boo
 				s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
 				return
 			}
-			s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": Redact(err.Error())})
+			s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
 			return
 		}
 		cwd = found
@@ -448,7 +497,7 @@ func (s *Server) handleAttach(w http.ResponseWriter, r *http.Request, replay boo
 			s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
 			return
 		}
-		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": Redact(err.Error())})
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
 		return
 	}
 	s.writeJSON(w, http.StatusOK, modeResponse(id, res))
@@ -574,7 +623,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		NextCursor string            `json:"nextCursor"`
 	}
 	if err := s.acpCall(r.Context(), "session/list", params, &res); err != nil {
-		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": Redact(err.Error())})
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
 		return
 	}
 	if res.Sessions == nil {
@@ -617,7 +666,7 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 		"cwd":        body.Workspace,
 		"mcpServers": []any{},
 	}, &res); err != nil {
-		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": Redact(err.Error())})
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
 		return
 	}
 	logCap := s.cfg.EventLogCap
@@ -683,7 +732,7 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 		"sessionId": id,
 		"modeId":    body.Mode,
 	}, &ignored); err != nil {
-		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": Redact(err.Error())})
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
 		return
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mode": body.Mode})
@@ -751,7 +800,7 @@ func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string) {
 		},
 	}, &res)
 	if err != nil {
-		hub.emit(map[string]any{"type": "error", "message": Redact(err.Error())})
+		hub.emit(map[string]any{"type": "error", "message": s.redact(err.Error())})
 		return
 	}
 	hub.emit(map[string]any{"type": "stop", "stopReason": res.StopReason})

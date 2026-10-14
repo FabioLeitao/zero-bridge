@@ -1077,3 +1077,96 @@ func sseContainsType(lines []string, typ string) bool {
 	}
 	return strings.Contains(buf.String(), typ)
 }
+
+const bearerToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+func TestBearerAuth(t *testing.T) {
+	if _, err := New(Config{Listen: "127.0.0.1:9", Token: "short"}); err == nil {
+		t.Fatal("short token accepted")
+	}
+	var logs bytes.Buffer
+	_, base, cleanup := startConfigured(t, Config{
+		Token: bearerToken,
+		ExtraEnv: []string{
+			"ZB_FAKE_LIST_ERROR=1",
+			"ZB_FAKE_ERROR_ECHO=" + bearerToken,
+		},
+		Logger: log.New(&logs, "", 0),
+	})
+	defer cleanup()
+	res, err := http.Get(base + "/v1/info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized || res.Header.Get("WWW-Authenticate") != "Bearer" || !strings.Contains(string(b), `"error":"unauthorized"`) {
+		t.Fatalf("missing %d %s %s", res.StatusCode, res.Header.Get("WWW-Authenticate"), b)
+	}
+	wrong, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong.Header.Set("Authorization", "Bearer not-the-token")
+	wrongRes, err := http.DefaultClient.Do(wrong)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongBody, _ := io.ReadAll(wrongRes.Body)
+	wrongRes.Body.Close()
+	if wrongRes.StatusCode != http.StatusUnauthorized || string(wrongBody) != string(b) {
+		t.Fatalf("wrong token %d %s", wrongRes.StatusCode, wrongBody)
+	}
+	okReq, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okReq.Header.Set("Authorization", "Bearer "+bearerToken)
+	okRes, err := http.DefaultClient.Do(okReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okRes.Body.Close()
+	if okRes.StatusCode != http.StatusOK {
+		t.Fatalf("bearer %d", okRes.StatusCode)
+	}
+	listReq, err := http.NewRequest(http.MethodGet, base+"/v1/sessions", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listReq.Header.Set("Authorization", "Bearer "+bearerToken)
+	listRes, err := http.DefaultClient.Do(listReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listBody, _ := io.ReadAll(listRes.Body)
+	listRes.Body.Close()
+	if strings.Contains(string(listBody), bearerToken) || !strings.Contains(string(listBody), "[redacted]") {
+		t.Fatalf("error body leaked")
+	}
+	health, err := http.Get(base + "/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	healthBody, _ := io.ReadAll(health.Body)
+	health.Body.Close()
+	if health.StatusCode != http.StatusOK || strings.Contains(string(healthBody), "agent") {
+		t.Fatalf("health %d %s", health.StatusCode, healthBody)
+	}
+	page, err := http.Get(base + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page.Body.Close()
+	if page.StatusCode != http.StatusOK {
+		t.Fatalf("static %d", page.StatusCode)
+	}
+	q, err := http.Get(base + "/v1/info?access_token=" + bearerToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.Body.Close()
+	if strings.Contains(logs.String(), bearerToken) {
+		t.Fatal("token appeared in the log")
+	}
+}

@@ -10,8 +10,26 @@ import (
 	"syscall"
 	"time"
 
+	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/server"
 )
+
+func loadToken(tokenFile string) (string, error) {
+	envToken := os.Getenv("ZERO_BRIDGE_TOKEN")
+	if tokenFile != "" && envToken != "" {
+		return "", fmt.Errorf("set only one of --token-file and ZERO_BRIDGE_TOKEN")
+	}
+	if tokenFile != "" {
+		return auth.LoadFile(tokenFile)
+	}
+	if envToken == "" {
+		return "", nil
+	}
+	if err := auth.Validate(envToken); err != nil {
+		return "", err
+	}
+	return envToken, nil
+}
 
 func main() {
 	os.Exit(run())
@@ -22,6 +40,7 @@ func run() int {
 	zeroBin := "zero"
 	workspace := ""
 	permTimeout := 60 * time.Second
+	tokenFile := ""
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "--listen":
@@ -50,6 +69,13 @@ func run() int {
 				return 2
 			}
 			permTimeout = d
+		case "--token-file":
+			if i+1 >= len(os.Args) {
+				fmt.Fprintln(os.Stderr, "missing value for --token-file")
+				return 2
+			}
+			i++
+			tokenFile = os.Args[i]
 		case "--zero-bin":
 			if i+1 >= len(os.Args) {
 				fmt.Fprintln(os.Stderr, "missing value for --zero-bin")
@@ -58,6 +84,11 @@ func run() int {
 			i++
 			zeroBin = os.Args[i]
 		}
+	}
+	token, err := loadToken(tokenFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
+		return 2
 	}
 	resolved, err := server.ResolveListen(listen)
 	if err != nil {
@@ -71,6 +102,7 @@ func run() int {
 		Workspace:         workspace,
 		PermissionTimeout: permTimeout,
 		Logger:            logger,
+		Token:             token,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)

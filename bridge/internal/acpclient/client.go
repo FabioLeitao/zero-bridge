@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -64,6 +65,24 @@ type Client struct {
 }
 
 // Start launches `zero acp` and begins reading stdout in the background.
+func childEnv(extra []string) []string {
+	env := make([]string, 0, len(os.Environ())+len(extra))
+	keep := func(e string) bool {
+		return !strings.HasPrefix(e, "ZERO_BRIDGE_TOKEN=")
+	}
+	for _, e := range os.Environ() {
+		if keep(e) {
+			env = append(env, e)
+		}
+	}
+	for _, e := range extra {
+		if keep(e) {
+			env = append(env, e)
+		}
+	}
+	return env
+}
+
 func Start(parent context.Context, opts Options) (*Client, error) {
 	if opts.ZeroBin == "" {
 		opts.ZeroBin = "zero"
@@ -83,7 +102,7 @@ func Start(parent context.Context, opts Options) (*Client, error) {
 	}()
 
 	cmd := exec.CommandContext(ctx, opts.ZeroBin, "acp")
-	cmd.Env = append(os.Environ(), opts.ExtraEnv...)
+	cmd.Env = childEnv(opts.ExtraEnv)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

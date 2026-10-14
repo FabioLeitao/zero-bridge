@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 )
 
 var (
@@ -16,6 +17,18 @@ func Redact(s string) string {
 	s = reSk.ReplaceAllString(s, "[redacted]")
 	s = reBearer.ReplaceAllString(s, "[redacted]")
 	s = reAuthHeader.ReplaceAllString(s, "authorization: [redacted]")
+	return s
+}
+
+// RedactSecrets applies Redact and then removes an exact configured secret.
+func RedactSecrets(s string, secrets ...string) string {
+	s = Redact(s)
+	for _, secret := range secrets {
+		if secret == "" {
+			continue
+		}
+		s = strings.ReplaceAll(s, secret, "[redacted]")
+	}
 	return s
 }
 
