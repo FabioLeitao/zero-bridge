@@ -1,8 +1,3 @@
----
-name: Pull request
-about: O que mudou, qual issue, e a saída do gate
----
-
 # Pull request
 
 ## O que mudou e por quê
