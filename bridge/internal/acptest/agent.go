@@ -183,6 +183,7 @@ func richPrompt(r *bufio.Reader, w io.Writer, sid string, id json.RawMessage) {
 			"title":         "list",
 			"kind":          "read",
 			"status":        "pending",
+			"rawInput":      map[string]string{"command": hostile},
 		},
 	})
 	notify(w, "session/update", map[string]any{
@@ -190,8 +191,6 @@ func richPrompt(r *bufio.Reader, w io.Writer, sid string, id json.RawMessage) {
 		"update": map[string]any{
 			"sessionUpdate": "tool_call_update",
 			"toolCallId":    "tc-text",
-			"title":         "list",
-			"kind":          "read",
 			"status":        "completed",
 			"content": []any{
 				map[string]any{"type": "content", "content": map[string]string{"type": "text", "text": "listed"}},

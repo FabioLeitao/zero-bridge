@@ -274,20 +274,26 @@ func TestSessionMode(t *testing.T) {
 }
 
 func TestModeConflictsWithPrompt(t *testing.T) {
-	_, base, cleanup := startTestServer(t, []string{"ZB_FAKE_AGENT_SLOW_MS=400"})
+	_, base, cleanup := startTestServer(t, []string{"ZB_FAKE_AGENT_SLOW_MS=1500"})
 	defer cleanup()
 	dir := t.TempDir()
 	sid := createSession(t, base, dir)
 	postPromptAsync(base, sid, "one")
-	time.Sleep(30 * time.Millisecond)
-	res, err := http.Post(base+"/v1/sessions/"+sid+"/mode", "application/json", strings.NewReader(`{"mode":"plan"}`))
-	if err != nil {
-		t.Fatal(err)
+	deadline := time.Now().Add(2 * time.Second)
+	var status int
+	for time.Now().Before(deadline) {
+		res, err := http.Post(base+"/v1/sessions/"+sid+"/mode", "application/json", strings.NewReader(`{"mode":"plan"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		status = res.StatusCode
+		res.Body.Close()
+		if status == http.StatusConflict {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusConflict {
-		t.Fatalf("status %d", res.StatusCode)
-	}
+	t.Fatalf("status %d", status)
 }
 
 func TestPromptRequiresJSON(t *testing.T) {

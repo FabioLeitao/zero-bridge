@@ -124,11 +124,19 @@ try {
   result.plan = await evalJs("document.getElementById('plan').textContent");
   result.diff = await evalJs("document.querySelectorAll('#log .diff-add').length");
   result.tool = await evalJs("document.querySelectorAll('#log .tool').length");
+  result.toolHead = await evalJs("document.querySelector('#log .tool-head') ? document.querySelector('#log .tool-head').textContent : ''");
+  result.toolArgs = await evalJs("document.querySelector('#log .tool-args pre') ? document.querySelector('#log .tool-args pre').textContent : ''");
   if (!String(result.plan || "").includes("[x]") || !String(result.plan || "").includes("[~]")) {
     fail("plan", result.plan);
   }
   if (!result.diff) fail("diff", result.diff);
   if (!result.tool) fail("tool", result.tool);
+  if (!String(result.toolHead).includes("read") || !String(result.toolHead).includes("list") || !String(result.toolHead).includes("completed")) {
+    fail("tool-title", result.toolHead);
+  }
+  if (!String(result.toolArgs).includes("onerror") || !String(result.toolArgs).includes("window.__xss=2")) {
+    fail("tool-args", result.toolArgs);
+  }
 
   const denied = await evalJs(`(function () {
     const buttons = Array.from(document.querySelectorAll('#permissions button'));

@@ -316,6 +316,34 @@ function appendAssistant(piece) {
   });
 }
 
+function rawText(raw) {
+  if (raw == null) {
+    return "";
+  }
+  if (typeof raw === "string") {
+    return raw;
+  }
+  return JSON.stringify(raw, null, 2);
+}
+
+function rawSummary(raw) {
+  if (raw == null) {
+    return "";
+  }
+  const obj = typeof raw === "string" ? null : raw;
+  const keys = ["command", "path", "file_path", "pattern", "query", "url", "cwd"];
+  if (obj && typeof obj === "object") {
+    for (let i = 0; i < keys.length; i++) {
+      const value = obj[keys[i]];
+      if (typeof value === "string" && value) {
+        return value.length > 80 ? value.slice(0, 80) + "…" : value;
+      }
+    }
+  }
+  const text = rawText(raw).replace(/\s+/g, " ");
+  return text.length > 80 ? text.slice(0, 80) + "…" : text;
+}
+
 function renderTool(update) {
   const id = String(update.toolCallId || "");
   let row = tools.get(id);
@@ -324,6 +352,13 @@ function renderTool(update) {
     wrap.className = "tool";
     const head = document.createElement("p");
     head.className = "tool-head";
+    const args = document.createElement("details");
+    args.className = "tool-args";
+    const argsSummary = document.createElement("summary");
+    argsSummary.textContent = "command";
+    const argsPre = document.createElement("pre");
+    args.appendChild(argsSummary);
+    args.appendChild(argsPre);
     const details = document.createElement("details");
     const summary = document.createElement("summary");
     summary.textContent = "output";
@@ -331,15 +366,34 @@ function renderTool(update) {
     details.appendChild(summary);
     details.appendChild(body);
     wrap.appendChild(head);
+    wrap.appendChild(args);
     wrap.appendChild(details);
     logEl.appendChild(wrap);
-    row = { head: head, body: body };
+    row = { head: head, args: args, argsPre: argsPre, body: body, meta: { kind: "", title: "", raw: null, status: "", id: id } };
     tools.set(id, row);
   }
-  const bits = [update.title, update.kind, update.status].filter(function (part) {
-    return part;
-  });
+  // tool_call_update from zero repeats the id and status, not the title or rawInput.
+  if (update.kind) {
+    row.meta.kind = String(update.kind);
+  }
+  if (update.title) {
+    row.meta.title = String(update.title);
+  }
+  if (update.status) {
+    row.meta.status = String(update.status);
+  }
+  if (update.rawInput != null) {
+    row.meta.raw = update.rawInput;
+  }
+  const label = [row.meta.kind, row.meta.title].filter(Boolean).join(" · ");
+  const bits = [label || row.meta.id, rawSummary(row.meta.raw), row.meta.status].filter(Boolean);
   row.head.textContent = bits.join(" · ");
+  if (row.meta.raw == null) {
+    row.args.hidden = true;
+  } else {
+    row.args.hidden = false;
+    row.argsPre.textContent = clip(rawText(row.meta.raw));
+  }
   if (Array.isArray(update.content)) {
     fillToolBody(row.body, update.content);
   }
