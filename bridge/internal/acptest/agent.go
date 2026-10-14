@@ -80,6 +80,42 @@ func runAgent(r io.Reader, w io.Writer) {
 				},
 			})
 			writeResp(w, env.ID, map[string]any{})
+		case "session/list":
+			var listReq struct {
+				Params struct {
+					Cwd    string `json:"cwd"`
+					Cursor string `json:"cursor"`
+				} `json:"params"`
+			}
+			_ = json.Unmarshal(line, &listReq)
+			sessions, next := listPage(listReq.Params.Cwd, listReq.Params.Cursor)
+			writeResp(w, env.ID, map[string]any{"sessions": sessions, "nextCursor": next})
+		case "session/load":
+			var loadReq struct {
+				Params struct {
+					SessionID string `json:"sessionId"`
+				} `json:"params"`
+			}
+			_ = json.Unmarshal(line, &loadReq)
+			sess, ok := findPersisted(loadReq.Params.SessionID)
+			if !ok {
+				writeErr(w, env.ID, -32602, "unknown session")
+				continue
+			}
+			replaySession(w, sess)
+			writeResp(w, env.ID, modeResult("ask"))
+		case "session/resume":
+			var resumeReq struct {
+				Params struct {
+					SessionID string `json:"sessionId"`
+				} `json:"params"`
+			}
+			_ = json.Unmarshal(line, &resumeReq)
+			if _, ok := findPersisted(resumeReq.Params.SessionID); !ok {
+				writeErr(w, env.ID, -32602, "unknown session")
+				continue
+			}
+			writeResp(w, env.ID, modeResult("auto"))
 		case "session/prompt":
 			sid := "sess-acptest-1"
 			var req struct {
@@ -89,6 +125,10 @@ func runAgent(r io.Reader, w io.Writer) {
 			}
 			if json.Unmarshal(line, &req) == nil && req.Params.SessionID != "" {
 				sid = req.Params.SessionID
+			}
+			if sess, ok := findPersisted(sid); ok && sess.viewOnly {
+				writeErr(w, env.ID, -32002, "session is view-only")
+				continue
 			}
 			if ms := slowMillis(); ms > 0 {
 				time.Sleep(time.Duration(ms) * time.Millisecond)
@@ -159,6 +199,115 @@ func runAgent(r io.Reader, w io.Writer) {
 			writeErr(w, env.ID, -32601, "method not found")
 		}
 	}
+}
+
+// persistedSession is a fake catalog entry. session/new ids are not added here.
+type persistedSession struct {
+	id       string
+	cwd      string
+	title    string
+	updated  string
+	viewOnly bool
+}
+
+func persistedCatalog() []persistedSession {
+	hostile := hostilePayload()
+	return []persistedSession{
+		{id: "sess-a1", cwd: "/tmp/zbridge-ws-a", title: hostile, updated: "2026-10-13T00:00:01Z"},
+		{id: "sess-a2", cwd: "/tmp/zbridge-ws-a", title: "alpha", updated: "2026-10-13T00:00:02Z"},
+		{id: "sess-a3", cwd: "/tmp/zbridge-ws-a", title: "beta", updated: "2026-10-13T00:00:03Z"},
+		{id: "sess-b1", cwd: "/tmp/zbridge-ws-b", title: "other", updated: "2026-10-13T00:00:04Z"},
+		{id: "sess-view", cwd: "/tmp/zbridge-ws-a", title: "locked", updated: "2026-10-13T00:00:05Z", viewOnly: true},
+	}
+}
+
+func findPersisted(id string) (persistedSession, bool) {
+	for _, s := range persistedCatalog() {
+		if s.id == id {
+			return s, true
+		}
+	}
+	return persistedSession{}, false
+}
+
+const sessionPageSize = 2
+
+func listPage(cwd, cursor string) ([]map[string]any, string) {
+	var filtered []persistedSession
+	for _, s := range persistedCatalog() {
+		if cwd == "" || s.cwd == cwd {
+			filtered = append(filtered, s)
+		}
+	}
+	start := 0
+	if cursor != "" {
+		start = len(filtered)
+		for i, s := range filtered {
+			if s.id == cursor {
+				start = i + 1
+				break
+			}
+		}
+	}
+	end := start + sessionPageSize
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	out := make([]map[string]any, 0, end-start)
+	for _, s := range filtered[start:end] {
+		out = append(out, map[string]any{
+			"sessionId": s.id,
+			"cwd":       s.cwd,
+			"title":     s.title,
+			"updatedAt": s.updated,
+			"_meta":     map[string]string{"modelId": "fake", "createdAt": s.updated},
+		})
+	}
+	next := ""
+	if end < len(filtered) && end > start {
+		next = filtered[end-1].id
+	}
+	return out, next
+}
+
+func modeResult(current string) map[string]any {
+	return map[string]any{
+		"modes": map[string]any{
+			"currentModeId": current,
+			"availableModes": []map[string]string{
+				{"id": "auto", "name": "Auto"},
+				{"id": "ask", "name": "Ask"},
+				{"id": "plan", "name": "Plan"},
+			},
+		},
+	}
+}
+
+func replaySession(w io.Writer, s persistedSession) {
+	notify(w, "session/update", map[string]any{
+		"sessionId": s.id,
+		"update": map[string]any{
+			"sessionUpdate": "user_message_chunk",
+			"content":       map[string]string{"type": "text", "text": "replay-user"},
+		},
+	})
+	notify(w, "session/update", map[string]any{
+		"sessionId": s.id,
+		"update": map[string]any{
+			"sessionUpdate": "agent_message_chunk",
+			"content":       map[string]string{"type": "text", "text": "replay-agent"},
+		},
+	})
+	notify(w, "session/update", map[string]any{
+		"sessionId": s.id,
+		"update": map[string]any{
+			"sessionUpdate": "tool_call",
+			"toolCallId":    "tc-replay",
+			"title":         "replay-tool",
+			"kind":          "read",
+			"status":        "completed",
+		},
+	})
 }
 
 // hostilePayload is untrusted text the UI must render as text, never as HTML.

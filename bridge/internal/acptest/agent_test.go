@@ -33,6 +33,130 @@ func TestFakeAgentInitializeAndPrompt(t *testing.T) {
 	}
 }
 
+func TestSessionListPages(t *testing.T) {
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"session/list","params":{"cwd":"/tmp/zbridge-ws-a"}}` + "\n" +
+		`{"jsonrpc":"2.0","id":2,"method":"session/list","params":{"cwd":"/tmp/zbridge-ws-b"}}` + "\n" +
+		`{"jsonrpc":"2.0","id":3,"method":"session/list","params":{}}` + "\n")
+	var out bytes.Buffer
+	runAgent(in, &out)
+	lines := splitLines(t, out.String())
+	if len(lines) != 3 {
+		t.Fatalf("lines %d", len(lines))
+	}
+	var first struct {
+		Result struct {
+			Sessions []struct {
+				SessionID string `json:"sessionId"`
+				Title     string `json:"title"`
+				Cwd       string `json:"cwd"`
+			} `json:"sessions"`
+			NextCursor string `json:"nextCursor"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Result.Sessions) != 2 || first.Result.NextCursor != "sess-a2" {
+		t.Fatalf("page %+v", first.Result)
+	}
+	if first.Result.Sessions[0].Title != hostilePayload() {
+		t.Fatalf("title %q", first.Result.Sessions[0].Title)
+	}
+	var other struct {
+		Result struct {
+			Sessions []struct {
+				Cwd string `json:"cwd"`
+			} `json:"sessions"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &other); err != nil {
+		t.Fatal(err)
+	}
+	if len(other.Result.Sessions) != 1 || other.Result.Sessions[0].Cwd != "/tmp/zbridge-ws-b" {
+		t.Fatalf("filter %+v", other.Result.Sessions)
+	}
+	var all struct {
+		Result struct {
+			Sessions   []struct{} `json:"sessions"`
+			NextCursor string     `json:"nextCursor"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(lines[2]), &all); err != nil {
+		t.Fatal(err)
+	}
+	if len(all.Result.Sessions) != 2 || all.Result.NextCursor == "" {
+		t.Fatalf("all %+v", all.Result)
+	}
+	page2 := `{"jsonrpc":"2.0","id":4,"method":"session/list","params":{"cursor":"` + all.Result.NextCursor + `"}}` + "\n"
+	var out2 bytes.Buffer
+	runAgent(strings.NewReader(page2), &out2)
+	if !strings.Contains(out2.String(), "sess-a3") {
+		t.Fatalf("cursor page %s", out2.String())
+	}
+}
+
+func TestSessionLoadAndResume(t *testing.T) {
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"session/load","params":{"sessionId":"sess-a1","cwd":"/tmp/zbridge-ws-a","mcpServers":[]}}` + "\n" +
+		`{"jsonrpc":"2.0","id":2,"method":"session/resume","params":{"sessionId":"sess-a1","cwd":"/tmp/zbridge-ws-a","mcpServers":[]}}` + "\n" +
+		`{"jsonrpc":"2.0","id":3,"method":"session/load","params":{"sessionId":"missing"}}` + "\n" +
+		`{"jsonrpc":"2.0","id":4,"method":"session/prompt","params":{"sessionId":"sess-view","prompt":[]}}` + "\n")
+	var out bytes.Buffer
+	runAgent(in, &out)
+	s := out.String()
+	loadAt := strings.Index(s, "replay-user")
+	agentAt := strings.Index(s, "replay-agent")
+	toolAt := strings.Index(s, "replay-tool")
+	if loadAt < 0 || agentAt < loadAt || toolAt < agentAt {
+		t.Fatalf("replay order %s", s)
+	}
+	lines := splitLines(t, s)
+	var loadResult, resumeResult map[string]any
+	for _, line := range lines {
+		var msg map[string]any
+		if json.Unmarshal([]byte(line), &msg) != nil {
+			t.Fatal(line)
+		}
+		id, _ := msg["id"].(float64)
+		switch id {
+		case 1:
+			loadResult = msg
+		case 2:
+			resumeResult = msg
+			if strings.Contains(line, "session/update") {
+				t.Fatal("resume replayed")
+			}
+		case 3:
+			errObj, _ := msg["error"].(map[string]any)
+			if errObj["code"].(float64) != -32602 {
+				t.Fatalf("unknown %v", msg)
+			}
+		case 4:
+			errObj, _ := msg["error"].(map[string]any)
+			if errObj["message"] != "session is view-only" {
+				t.Fatalf("view %v", msg)
+			}
+		}
+	}
+	if loadResult["result"] == nil || resumeResult["result"] == nil {
+		t.Fatalf("missing results load=%v resume=%v", loadResult, resumeResult)
+	}
+	between := s[strings.Index(s, `"id":2`):strings.Index(s, `"id":3`)]
+	if strings.Contains(between, "replay-user") {
+		t.Fatalf("resume included replay %s", between)
+	}
+}
+
+func splitLines(t *testing.T, s string) []string {
+	t.Helper()
+	var lines []string
+	for _, line := range strings.Split(s, "\n") {
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
 func TestFakeSetMode(t *testing.T) {
 	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/tmp"}}` + "\n" +
 		`{"jsonrpc":"2.0","id":2,"method":"session/set_mode","params":{"sessionId":"s","modeId":"ask"}}` + "\n")
