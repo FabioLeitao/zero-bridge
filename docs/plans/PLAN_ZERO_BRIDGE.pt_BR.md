@@ -22,7 +22,7 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S12 | desenhada | [#8](https://github.com/FabioLeitao/zero-bridge/issues/8). Não construída. |
 | S13 | acompanhando | [#9](https://github.com/FabioLeitao/zero-bridge/issues/9). [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). |
 | S14 | feita | [#1](https://github.com/FabioLeitao/zero-bridge/issues/1). [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt). Mergeada na PR #16. |
-| S14b | em andamento | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Construída em `epic/s14b-auth-hardening-ii`, sem merge. [evidence/S14b-auth-transcript.txt](evidence/S14b-auth-transcript.txt). `fb24d4b` `085110b` `daefb32` `4940aad` `d49cf81` `d63bd0d`. |
+| S14b | feita | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) fechada. Mergeada na [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18). [evidence/S14b-auth-transcript.txt](evidence/S14b-auth-transcript.txt). `fb24d4b` `085110b` `daefb32` `4940aad` `d49cf81` `d63bd0d`. |
 | S15 | desenhada | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10). Depende da S17. Não construída. |
 | S16 | desenhada | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Não construída. |
 | S17 | feita | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` é a definição de pronto. Mergeada na PR #16. |
@@ -58,7 +58,7 @@ Referências somente leitura: Hermes `plugins/platforms/a2a`, `web/`, `acp_adapt
 ## Regras globais
 
 1. **Lugar:** cada fatia declara repo + caminho.
-2. **Sequência:** **22 fatias** (S1…S15 mais S5a/S5b, S6b, S14b, S16, S17, S18 e S19). Uma fatia ativa; aceite antes da seguinte. S14 e S17 estão na main (PR #16). Próxima ordem de construção: **S14b → S19 → S16 → S18 → S6b → S7**. A S15 espera um go explícito do operador.
+2. **Sequência:** **22 fatias** (S1…S15 mais S5a/S5b, S6b, S14b, S16, S17, S18 e S19). Uma fatia ativa; aceite antes da seguinte. S14, S14b e S17 estão na main (PR #16 e PR #18). Próxima ordem de construção: **S19 → S16 → S18 → S6b → S7**. A S15 espera um go explícito do operador.
 3. **Bloqueio externo:** **BLOQUEADA-EXTERNA** pula para a próxima fatia independente.
 4. **Custo zero:** qualquer `session/prompt` real usa modelo **local** (Ollama) ou **`:free`**; nunca provedor pago. Evidências registram provedor/modelo, nunca chaves.
 5. **Nunca fechar PR sem merge:** se o upstream absorver trabalho parecido, fazer merge de `upstream/main` na branch de tópico, reduzir o PR ao delta restante e **parar para o operador**. Não fechar PR aberto sem merge nem fechar issues do upstream daqui.
@@ -118,7 +118,7 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 | **S18** | C6d | container do `zero-bridge` | Imagem ao lado do proxy, root somente leitura | — |
 | **S15** | — | docs | checklist de publicação e Show and tell | espera go explícito do operador |
 
-**Ordem:** S1 destrava contagem de usage. As fatias C até S6, S14 e S17 estão na main. A próxima ordem de construção é **S14b → S19 → S16 → S18 → S6b → S7**. A S15 espera um go explícito do operador. B (S8–S10) não depende do HTTP. A S11 está feita no upstream, na [#1134](https://github.com/Twigpine/zero/pull/1134). A ponte ainda precisa conferir contra um build que contenha esse merge.
+**Ordem:** S1 destrava contagem de usage. As fatias C até S6, S14, S14b e S17 estão na main. A próxima ordem de construção é **S19 → S16 → S18 → S6b → S7**. A S15 espera um go explícito do operador. B (S8–S10) não depende do HTTP. A S11 está feita no upstream, na [#1134](https://github.com/Twigpine/zero/pull/1134). A ponte ainda precisa conferir contra um build que contenha esse merge.
 
 Mapa de issues deste repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15).
 
@@ -387,15 +387,15 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 **Parada:** não fazer bind em `0.0.0.0`. Mergeada na PR #16.
 
-**Destrava:** S17, que está feita. A próxima fatia de construção é a S14b. A S15 espera um go explícito do operador.
+**Destrava:** S17, que está feita. A S14b está feita. A ordem seguinte é S19 → S16 → S18 → S6b → S7. A S15 espera um go explícito do operador.
 
 ### S14b — endurecimento de auth II
 
-**Caminho:** login, auditoria e vida da sessão em `bridge/`. Construída em `epic/s14b-auth-hardening-ii`. Sem merge. [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Evidência: [evidence/S14b-auth-transcript.txt](evidence/S14b-auth-transcript.txt).
+**Caminho:** login, auditoria e vida da sessão em `bridge/`. Mergeada na [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18). A [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) está fechada. Evidência: [evidence/S14b-auth-transcript.txt](evidence/S14b-auth-transcript.txt).
 
 Commits: `fb24d4b` modelo e sink de auditoria, `085110b` limite de Bearer em toda rota `/v1`, `daefb32` vidas finitas, `4940aad` logout-all, handle público e `SIGHUP`, `d49cf81` lista na web, `d63bd0d` e2e e mutantes.
 
-**Aceite** — cumprido na branch
+**Aceite** — cumprido. Mergeada na PR #18.
 
 - A trilha de auditoria do login registra sucesso, falha e limite, e nunca registra o segredo.
 - A janela de falhas também cobre chamadas Bearer em `/v1/*`.
@@ -482,7 +482,7 @@ Commits: `fb24d4b` modelo e sink de auditoria, `085110b` limite de Bearer em tod
 
 **Parada:** não adicionar arquivo de workflow. Não documentar um jeito de pular os hooks.
 
-**Destrava:** S14b. A S15 espera um go explícito do operador. Mergeada na PR #16.
+**Destrava:** S14b, que está feita (PR #18). A ordem seguinte é S19 → S16 → S18 → S6b → S7. A S15 espera um go explícito do operador. Mergeada na PR #16.
 
 ### S15 — publicação
 

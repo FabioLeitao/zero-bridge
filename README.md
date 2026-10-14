@@ -45,7 +45,7 @@ Use a local model or a `:free` variant. The bridge sets `ZERO_PROVIDER=granite-l
 
 ## Status
 
-S2–S6, S14, and S17 are on main. S14 and S17 landed in [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). S14b is built on `epic/s14b-auth-hardening-ii` and is not merged. After it, the order is S19, S16, S18, S6b, S7. S11 is done upstream in [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). S13 follows [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detail: [docs/plans/PLAN_ZERO_BRIDGE.md](docs/plans/PLAN_ZERO_BRIDGE.md).
+S2–S6, S14, S14b, and S17 are on main. S14 and S17 landed in [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). S14b landed in [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18) and [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) is closed. The next order is S19, S16, S18, S6b, S7. S11 is done upstream in [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). S13 follows [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detail: [docs/plans/PLAN_ZERO_BRIDGE.md](docs/plans/PLAN_ZERO_BRIDGE.md).
 
 | Slice | State |
 | --- | --- |
@@ -53,7 +53,8 @@ S2–S6, S14, and S17 are on main. S14 and S17 landed in [PR #16](https://github
 | S2–S6 bridge and web UI | done |
 | S14 proxy, token, login | on main ([#1](https://github.com/FabioLeitao/zero-bridge/issues/1), [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16)) |
 | S17 local gate | on main ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13), [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16)) |
-| S14b, S19, S16, S18, S6b, S7 | S14b is built on the branch and is not merged ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11)). The rest are designed, in that order ([#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S14b auth hardening II | on main ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11) closed, [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18)) |
+| S19, S16, S18, S6b, S7 | designed, in that order ([#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
 | S8–S10, S12, S15 | designed ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
 | S11 mode restore | done upstream ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134)) |
 | S13 frame limits | following ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), open [PR #944](https://github.com/Twigpine/zero/pull/944)) |
