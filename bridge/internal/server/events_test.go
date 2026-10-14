@@ -1,6 +1,9 @@
 package server
 
 import (
+	"bytes"
+	"log"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -28,6 +31,24 @@ func TestConcurrentEmit(t *testing.T) {
 			}
 			return
 		}
+	}
+}
+
+func TestEmitMarshalErrorDropsWithoutPayload(t *testing.T) {
+	var buf bytes.Buffer
+	h := newSessionHub(10, 4)
+	h.logger = log.New(&buf, "", 0)
+	_, ch, _ := h.subscribe()
+	h.emit(map[string]any{"secret": "sk-SUPERSECRET", "bad": make(chan int)})
+	frame := string(<-ch)
+	if !strings.Contains(frame, `"type":"error"`) || !strings.Contains(frame, "event dropped") {
+		t.Fatalf("frame %s", frame)
+	}
+	if strings.Contains(frame, "sk-SUPERSECRET") || strings.Contains(buf.String(), "sk-SUPERSECRET") {
+		t.Fatalf("payload leaked log=%q frame=%s", buf.String(), frame)
+	}
+	if !strings.Contains(buf.String(), "event dropped") {
+		t.Fatalf("log %q", buf.String())
 	}
 }
 

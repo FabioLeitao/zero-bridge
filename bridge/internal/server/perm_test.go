@@ -85,13 +85,17 @@ func TestAllowDoesNotSelectAlways(t *testing.T) {
 	postPromptAsync(base, sid, "go")
 	reqID := waitPending(t, base, sid)
 	res := postDecision(t, base, sid, reqID, "allow")
+	body, _ := io.ReadAll(res.Body)
 	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(body), `"effective":"deny"`) {
+		t.Fatalf("allow body %d %s", res.StatusCode, body)
+	}
 	lines := collectSSE(t, base+"/v1/sessions/"+sid+"/events", 3*time.Second)
 	blob := strings.Join(lines, "\n")
-	if strings.Contains(blob, "always_allow") && strings.Contains(blob, "ALLOWED") {
+	if strings.Contains(blob, "always_allow") || strings.Contains(blob, `"decision":"allow"`) || strings.Contains(blob, "ALLOWED") {
 		t.Fatalf("widened grant: %s", blob)
 	}
-	if !strings.Contains(blob, "DENIED optionId=deny") {
+	if !strings.Contains(blob, "DENIED optionId=deny") || !strings.Contains(blob, `"decision":"deny"`) {
 		t.Fatalf("sse %s", blob)
 	}
 }

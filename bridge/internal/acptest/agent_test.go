@@ -47,20 +47,39 @@ func TestFakeTextAndKinds(t *testing.T) {
 }
 
 func TestPermissionRound(t *testing.T) {
-	resp := `{"jsonrpc":"2.0","id":1,"result":{"outcome":{"outcome":"selected","optionId":"deny"}}}` + "\n"
 	pr, pw := io.Pipe()
-	go func() {
-		_, _ = io.WriteString(pw, resp)
-		_ = pw.Close()
-	}()
-	var out bytes.Buffer
-	got := permissionRound(bufio.NewReader(pr), &out, "s", false)
+	or, ow := io.Pipe()
+	reqCh := make(chan string, 1)
+	go func() { reqCh <- replySelected(pw, or, "deny") }()
+	got := permissionRound(bufio.NewReader(pr), ow, "s", false)
+	req := <-reqCh
 	if got != "DENIED optionId=deny" {
 		t.Fatalf("got %q", got)
 	}
-	if !strings.Contains(out.String(), "always_allow") || !strings.Contains(out.String(), `"optionId":"allow"`) {
-		t.Fatalf("request %s", out.String())
+	if !strings.Contains(req, "always_allow") || !strings.Contains(req, `"optionId":"allow"`) {
+		t.Fatalf("request %s", req)
 	}
+}
+
+// replySelected answers the permission request with the id that request used.
+// nextPermID is process-global, so a hardcoded id fails on later -count runs.
+func replySelected(w io.WriteCloser, req io.Reader, optionID string) string {
+	sc := bufio.NewScanner(req)
+	if !sc.Scan() {
+		_ = w.Close()
+		return ""
+	}
+	line := sc.Text()
+	var msg struct {
+		ID json.RawMessage `json:"id"`
+	}
+	if json.Unmarshal([]byte(line), &msg) != nil || len(msg.ID) == 0 {
+		_ = w.Close()
+		return line
+	}
+	_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":`+string(msg.ID)+`,"result":{"outcome":{"outcome":"selected","optionId":"`+optionID+`"}}}`+"\n")
+	_ = w.Close()
+	return line
 }
 
 func TestPermissionRoundAlwaysOptions(t *testing.T) {

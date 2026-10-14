@@ -401,8 +401,10 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 	if subQ <= 0 {
 		subQ = defaultSubQueue
 	}
+	hub := newSessionHub(logCap, subQ)
+	hub.logger = s.cfg.Logger
 	s.mu.Lock()
-	s.sessions[res.SessionID] = newSessionHub(logCap, subQ)
+	s.sessions[res.SessionID] = hub
 	s.mu.Unlock()
 	s.writeJSON(w, http.StatusOK, map[string]any{"sessionId": res.SessionID})
 }

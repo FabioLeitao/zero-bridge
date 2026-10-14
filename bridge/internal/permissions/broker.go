@@ -104,14 +104,10 @@ func (b *Broker) clock() Clock {
 }
 
 // Wait blocks until the permission is decided. The returned value is the ACP result.
+// The deadline starts only once the item is exposed. A queued item ends only by
+// abort, stop, or queue overflow.
 func (b *Broker) Wait(sessionID string, params json.RawMessage) any {
 	it := b.enqueue(sessionID, params)
-	timer := b.clock().After(b.Timeout)
-	select {
-	case <-it.done:
-	case <-timer:
-		b.finish(it, "expired")
-	}
 	return it.getResult()
 }
 
@@ -134,7 +130,6 @@ func (b *Broker) enqueue(sessionID string, params json.RawMessage) *item {
 		tool:      parsed.ToolCall,
 		options:   parsed.Options,
 		done:      make(chan struct{}),
-		expires:   b.clock().Now().Add(b.Timeout),
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -149,10 +144,7 @@ func (b *Broker) enqueue(sessionID string, params json.RawMessage) *item {
 	}
 	if st.exposed == nil {
 		st.exposed = it
-		b.emitLocked(Event{
-			Type: "permission_request", SessionID: sessionID, ReqID: it.id,
-			ToolCall: it.tool, Decisions: []string{"allow", "deny"}, ExpiresAt: it.expires,
-		})
+		b.exposeLocked(it)
 		return it
 	}
 	st.queue = append(st.queue, it)
@@ -176,8 +168,11 @@ func (b *Broker) Resolve(sessionID, reqID, decision string) string {
 	if st.exposed == nil || st.exposed.id != reqID {
 		return "unknown"
 	}
-	b.finishLocked(st.exposed, decision)
+	eff := b.finishLocked(st.exposed, decision)
 	b.promoteLocked(st)
+	if eff != decision {
+		return "ok:" + eff
+	}
 	return "ok"
 }
 
@@ -258,20 +253,28 @@ func (b *Broker) finish(it *item, decision string) {
 	b.finishLocked(it, decision)
 }
 
-func (b *Broker) finishLocked(it *item, decision string) {
+// finishLocked records the effective decision. allow stays allow only when an
+// offered option is kind allow_once with optionId "allow"; otherwise the
+// recorded decision is deny and the agent receives that deny.
+func (b *Broker) finishLocked(it *item, decision string) string {
 	it.once.Do(func() {
+		effective := effectiveDecision(decision, it.options)
 		it.resMu.Lock()
-		it.decision = decision
-		it.res = acpResult(decision, it.options)
+		it.decision = effective
+		it.res = acpResult(effective, it.options)
 		it.resMu.Unlock()
 		close(it.done)
 		if st := b.sessions[it.sessionID]; st != nil {
-			st.pushHist(it.id, decision)
+			st.pushHist(it.id, effective)
 		}
 		b.emitLocked(Event{
-			Type: "permission_resolved", SessionID: it.sessionID, ReqID: it.id, Decision: decision,
+			Type: "permission_resolved", SessionID: it.sessionID, ReqID: it.id, Decision: effective,
 		})
 	})
+	it.resMu.Lock()
+	effective := it.decision
+	it.resMu.Unlock()
+	return effective
 }
 
 func (b *Broker) promoteLocked(st *sessionState) {
@@ -281,11 +284,25 @@ func (b *Broker) promoteLocked(st *sessionState) {
 	}
 	next := st.queue[0]
 	st.queue = st.queue[1:]
-	next.expires = b.clock().Now().Add(b.Timeout)
 	st.exposed = next
+	b.exposeLocked(next)
+}
+
+// exposeLocked starts the deadline at the moment the item becomes the one
+// shown to the operator. expiresAt and the timer share that instant.
+func (b *Broker) exposeLocked(it *item) {
+	it.expires = b.clock().Now().Add(b.Timeout)
+	timer := b.clock().After(b.Timeout)
+	go func() {
+		select {
+		case <-it.done:
+		case <-timer:
+			b.finish(it, "expired")
+		}
+	}()
 	b.emitLocked(Event{
-		Type: "permission_request", SessionID: next.sessionID, ReqID: next.id,
-		ToolCall: next.tool, Decisions: []string{"allow", "deny"}, ExpiresAt: next.expires,
+		Type: "permission_request", SessionID: it.sessionID, ReqID: it.id,
+		ToolCall: it.tool, Decisions: []string{"allow", "deny"}, ExpiresAt: it.expires,
 	})
 }
 
@@ -309,6 +326,18 @@ func (st *sessionState) pushHist(id, decision string) {
 	if len(st.hist) > historyLimit {
 		st.hist = st.hist[len(st.hist)-historyLimit:]
 	}
+}
+
+func effectiveDecision(decision string, options []option) string {
+	if decision != "allow" {
+		return decision
+	}
+	for _, opt := range options {
+		if opt.Kind == "allow_once" && opt.OptionID == "allow" {
+			return "allow"
+		}
+	}
+	return "deny"
 }
 
 func acpResult(decision string, options []option) any {

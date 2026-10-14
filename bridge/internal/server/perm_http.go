@@ -28,7 +28,7 @@ func (s *Server) onPermission(ev permissions.Event) {
 	if hub == nil {
 		return
 	}
-	tool := json.RawMessage(Redact(string(ev.ToolCall)))
+	tool := RedactJSON(ev.ToolCall)
 	switch ev.Type {
 	case "permission_request":
 		hub.emit(map[string]any{
@@ -58,7 +58,7 @@ func (s *Server) handlePending(w http.ResponseWriter, r *http.Request) {
 	if p.ReqID != "" {
 		pending = map[string]any{
 			"reqId":     p.ReqID,
-			"toolCall":  json.RawMessage(Redact(string(p.ToolCall))),
+			"toolCall":  RedactJSON(p.ToolCall),
 			"decisions": p.Decisions,
 			"expiresAt": p.ExpiresAt,
 		}
@@ -90,6 +90,8 @@ func (s *Server) handlePermission(w http.ResponseWriter, r *http.Request) {
 	switch got := s.perms.Resolve(id, reqID, body.Decision); got {
 	case "ok":
 		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "ok:deny":
+		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "effective": "deny"})
 	case "bad":
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "decision must be allow or deny"})
 	case "unknown":

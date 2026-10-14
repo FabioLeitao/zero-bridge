@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"sync"
 )
 
@@ -17,6 +18,7 @@ type sessionHub struct {
 	subs       map[int]*subscriber
 	nextSub    int
 	promptBusy bool
+	logger     *log.Logger
 }
 
 func newSessionHub(logCap, subQueue int) *sessionHub {
@@ -80,10 +82,24 @@ func (h *sessionHub) unsubscribe(id int) {
 }
 
 func (h *sessionHub) emit(obj map[string]any) {
+	h.emitMaybe(obj, true)
+}
+
+func (h *sessionHub) emitMaybe(obj map[string]any, fallback bool) {
 	h.mu.Lock()
 	h.seq++
 	obj["seq"] = h.seq
-	b, _ := json.Marshal(obj)
+	b, err := json.Marshal(obj)
+	if err != nil {
+		h.mu.Unlock()
+		if h.logger != nil {
+			h.logger.Printf("event dropped: %v", err)
+		}
+		if fallback {
+			h.emitMaybe(map[string]any{"type": "error", "message": "event dropped"}, false)
+		}
+		return
+	}
 	frame := append([]byte("data: "), b...)
 	frame = append(frame, '\n', '\n')
 	h.appendLog(frame)
