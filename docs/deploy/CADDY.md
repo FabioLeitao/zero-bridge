@@ -58,13 +58,15 @@ bridge.example {
 		flush_interval -1
 		header_up Host {host}
 		transport http {
-			read_timeout 0
+			read_timeout 2m
 		}
 	}
 }
 ```
 
 There is no `encode` on this site. The bridge also sends `X-Accel-Buffering: no` on the event stream.
+
+`read_timeout 2m` is finite. Caddy restarts that timer on every successful read, and the bridge writes an SSE keepalive every 15s, so a live stream stays open. A silent upstream still ends.
 
 HSTS is the proxy's job. The bridge does not terminate TLS, so it does not send `Strict-Transport-Security`. The same proxy response should carry `Permissions-Policy`, `Cross-Origin-Opener-Policy: same-origin`, and `Cross-Origin-Resource-Policy: same-origin`.
 

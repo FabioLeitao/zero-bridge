@@ -33,19 +33,22 @@ Use um modelo local ou uma variante `:free`. A ponte define `ZERO_PROVIDER=grani
 - As respostas não mandam `Access-Control-Allow-Origin`.
 - Uma permissão só é allow quando o agente ofereceu `allow_once` com option id `allow`. Qualquer outro allow vira deny efetivo. Timeout, abort e stop negam. Não viram allow.
 - A página insere texto do modelo e das tools só com `textContent` e `createTextNode`.
-- Ainda **não há token de autenticação**. Qualquer processo do mesmo usuário que alcance a porta pode chamar a API. Não publique em `0.0.0.0` e não coloque na rede sem proxy reverso e token. Isso está desenhado na S14 e não está implementado.
+- Sem token, o uso em loopback continua aberto a qualquer processo do mesmo usuário que alcance a porta. `--token-file` (ou `ZERO_BRIDGE_TOKEN`) protege `/v1/*`. Acesso externo é um proxy reverso mais esse token. A ponte continua recusando `--listen` fora de loopback. Guia: [docs/deploy/CADDY.pt_BR.md](docs/deploy/CADDY.pt_BR.md).
 
 ## Estado
 
-S2–S6 estão nesta árvore. S7–S12 e S14–S15 estão só desenhadas. S11 está bloqueada no #1125 do upstream. S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe e SHAs de evidência: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
+S2–S6 e S14 estão nesta árvore. A S14 é só local e não foi empurrada. O próximo é a S17, depois a pull request da S14. A S11 está bloqueada no #1125 do upstream. A S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
 
 | Fatia | Estado |
 | --- | --- |
 | S1 usage (#1118) | em andamento no fork do Zero |
 | S2–S6 ponte e UI web | feita |
-| S7–S10, S12, S14, S15 | desenhada |
-| S11 restaurar modo (#1125) | bloqueada-externa |
-| S13 limites de frame (#923) | acompanhando o PR #944 |
+| S14 proxy, token, login | feita localmente ([#1](https://github.com/FabioLeitao/zero-bridge/issues/1)) |
+| S17 gate local | desenhada ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13)); próxima |
+| S14b, S16, S6b, S7 | desenhadas, nessa ordem depois da pull request da S14 ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11), [#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S8–S10, S12, S15 | desenhadas ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
+| S11 restaurar modo | bloqueada ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), upstream #1125) |
+| S13 limites de frame | acompanhando ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), PR #944) |
 
 ## Testes
 
