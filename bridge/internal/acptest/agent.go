@@ -49,7 +49,22 @@ func runAgent(r io.Reader, w io.Writer) {
 		case "session/new":
 			n := nextSessionID.Add(1)
 			body := map[string]any{"sessionId": fmt.Sprintf("sess-acptest-%d", n)}
-			if os.Getenv("ZB_FAKE_NO_MODES") != "1" {
+			if ids := os.Getenv("ZB_FAKE_MODE_IDS"); ids != "" {
+				var modes []map[string]string
+				for _, id := range strings.Split(ids, ",") {
+					id = strings.TrimSpace(id)
+					if id == "" {
+						continue
+					}
+					modes = append(modes, map[string]string{"id": id, "name": id})
+				}
+				if len(modes) > 0 {
+					body["modes"] = map[string]any{
+						"currentModeId":  modes[0]["id"],
+						"availableModes": modes,
+					}
+				}
+			} else if os.Getenv("ZB_FAKE_NO_MODES") != "1" {
 				body["modes"] = modeResult("auto")["modes"]
 			}
 			writeResp(w, env.ID, body)

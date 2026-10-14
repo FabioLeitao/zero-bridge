@@ -861,11 +861,7 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 		s.notSupported(w)
 		return
 	}
-	offer, hasOffer := c.SessionOffer(id)
-	if !hasOffer || len(offer.Modes) == 0 {
-		s.notSupported(w)
-		return
-	}
+	offer, _ := c.SessionOffer(id)
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var body struct {
 		Mode string `json:"mode"`
@@ -876,10 +872,29 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
-	switch body.Mode {
-	case "auto", "ask", "plan":
-	default:
-		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "mode must be auto, ask, or plan"})
+	allowed := map[string]bool{}
+	fallback := false
+	if len(offer.Modes) > 0 {
+		for _, m := range offer.Modes {
+			if m.ID != "" {
+				allowed[m.ID] = true
+			}
+		}
+	} else if s.cfg.Profile == "zero" {
+		fallback = true
+		allowed["auto"] = true
+		allowed["ask"] = true
+		allowed["plan"] = true
+	} else {
+		s.notSupported(w)
+		return
+	}
+	if !allowed[body.Mode] {
+		msg := "mode is not offered by the agent"
+		if fallback {
+			msg = "mode must be auto, ask, or plan"
+		}
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": msg})
 		return
 	}
 	var ignored map[string]any

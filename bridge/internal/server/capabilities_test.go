@@ -51,7 +51,11 @@ func TestCapabilityGate(t *testing.T) {
 }
 
 func TestModeUnsupportedBeforeAgentCall(t *testing.T) {
-	_, base, cleanup := startTestServer(t, []string{"ZB_FAKE_NO_MODES=1"})
+	_, base, cleanup := startConfigured(t, Config{
+		Profile:  "generic",
+		ExtraEnv: []string{"ZB_FAKE_NO_MODES=1"},
+		Logger:   nil,
+	})
 	defer cleanup()
 	dir := t.TempDir()
 	res, err := http.Post(base+"/v1/sessions", "application/json", strings.NewReader(`{"workspace":"`+dir+`"}`))
@@ -81,6 +85,77 @@ func TestModeUnsupportedBeforeAgentCall(t *testing.T) {
 	b, _ := io.ReadAll(modeRes.Body)
 	if modeRes.StatusCode != http.StatusNotImplemented || !strings.Contains(string(b), "not supported by agent") {
 		t.Fatalf("status %d body %s", modeRes.StatusCode, b)
+	}
+}
+
+func TestModesFollowAgentList(t *testing.T) {
+	cases := []struct {
+		name    string
+		cfg     Config
+		mode    string
+		want    int
+		snippet string
+	}{
+		{
+			name:    "zero fallback allows ask",
+			cfg:     Config{ExtraEnv: []string{"ZB_FAKE_NO_MODES=1"}},
+			mode:    "ask",
+			want:    http.StatusOK,
+			snippet: `"ok":true`,
+		},
+		{
+			name:    "zero fallback rejects other ids",
+			cfg:     Config{ExtraEnv: []string{"ZB_FAKE_NO_MODES=1"}},
+			mode:    "build",
+			want:    http.StatusBadRequest,
+			snippet: "auto, ask, or plan",
+		},
+		{
+			name:    "announced id is allowed",
+			cfg:     Config{Profile: "generic", ExtraEnv: []string{"ZB_FAKE_MODE_IDS=build,chat"}},
+			mode:    "build",
+			want:    http.StatusOK,
+			snippet: `"ok":true`,
+		},
+		{
+			name:    "fixed id is rejected when not announced",
+			cfg:     Config{Profile: "generic", ExtraEnv: []string{"ZB_FAKE_MODE_IDS=build,chat"}},
+			mode:    "auto",
+			want:    http.StatusBadRequest,
+			snippet: "not offered by the agent",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, base, cleanup := startConfigured(t, tc.cfg)
+			defer cleanup()
+			dir := t.TempDir()
+			res, err := http.Post(base+"/v1/sessions", "application/json", strings.NewReader(`{"workspace":"`+dir+`"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			var created struct {
+				SessionID string `json:"sessionId"`
+			}
+			if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
+				t.Fatal(err)
+			}
+			req, err := http.NewRequest(http.MethodPost, base+"/v1/sessions/"+created.SessionID+"/mode", strings.NewReader(`{"mode":"`+tc.mode+`"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			got, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer got.Body.Close()
+			b, _ := io.ReadAll(got.Body)
+			if got.StatusCode != tc.want || !strings.Contains(string(b), tc.snippet) {
+				t.Fatalf("status %d body %s", got.StatusCode, b)
+			}
+		})
 	}
 }
 
