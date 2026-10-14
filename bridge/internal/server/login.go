@@ -82,18 +82,38 @@ func (s *Server) dropSession(id string) {
 	s.login.mu.Unlock()
 }
 
-func (s *Server) noteLoginFailure(key string) (limited bool, retryAfter int) {
+func (s *Server) loginLimited(key string) (bool, int) {
 	now := s.now()
 	s.login.mu.Lock()
 	defer s.login.mu.Unlock()
+	kept := recentFailures(s.login.fails[key], now)
+	s.login.fails[key] = kept
+	if len(kept) < loginFailMax {
+		return false, 0
+	}
+	retry := int(kept[0].Add(loginFailWindow).Sub(now).Seconds())
+	if retry < 1 {
+		retry = 1
+	}
+	return true, retry
+}
+
+func recentFailures(prev []time.Time, now time.Time) []time.Time {
 	cutoff := now.Add(-loginFailWindow)
-	prev := s.login.fails[key]
-	kept := make([]time.Time, 0, len(prev)+1)
+	kept := make([]time.Time, 0, len(prev))
 	for _, ts := range prev {
 		if ts.After(cutoff) {
 			kept = append(kept, ts)
 		}
 	}
+	return kept
+}
+
+func (s *Server) noteLoginFailure(key string) (limited bool, retryAfter int) {
+	now := s.now()
+	s.login.mu.Lock()
+	defer s.login.mu.Unlock()
+	kept := recentFailures(s.login.fails[key], now)
 	if len(kept) >= loginFailMax {
 		s.login.fails[key] = kept
 		retry := int(kept[0].Add(loginFailWindow).Sub(now).Seconds())
@@ -129,6 +149,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&body); err != nil {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if limited, retry := s.loginLimited(s.clientKey(r)); limited {
+		if s.loginDelay > 0 {
+			time.Sleep(s.loginDelay)
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(retry))
+		s.writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many requests"})
 		return
 	}
 	if !auth.Equal(s.cfg.Token, body.Token) {

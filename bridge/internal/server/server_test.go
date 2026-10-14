@@ -1080,6 +1080,55 @@ func sseContainsType(lines []string, typ string) bool {
 
 const bearerToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
+func TestLoginRateLimitBlocksCorrectToken(t *testing.T) {
+	now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	_, base, cleanup := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+		Now:               func() time.Time { return now },
+	})
+	defer cleanup()
+	post := func(token string) (*http.Response, []byte) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"`+token+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		return res, b
+	}
+	for i := 0; i < 5; i++ {
+		res, _ := post("wrong-token")
+		if res.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("fail %d status %d", i, res.StatusCode)
+		}
+	}
+	blocked, _ := post(bearerToken)
+	if blocked.StatusCode != http.StatusTooManyRequests || blocked.Header.Get("Retry-After") == "" || len(blocked.Cookies()) != 0 {
+		t.Fatalf("correct token while limited: %d retry %q cookies %d", blocked.StatusCode, blocked.Header.Get("Retry-After"), len(blocked.Cookies()))
+	}
+	now = now.Add(61 * time.Second)
+	okRes, _ := post(bearerToken)
+	if okRes.StatusCode != http.StatusOK {
+		t.Fatalf("after window %d", okRes.StatusCode)
+	}
+	got := false
+	for _, c := range okRes.Cookies() {
+		if c.Name == sessionCookie && c.Value != "" {
+			got = true
+		}
+	}
+	if !got {
+		t.Fatal("session cookie missing after the window")
+	}
+}
+
 func TestLoginCookieSession(t *testing.T) {
 	fixed := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
 	cfg := Config{
@@ -1109,20 +1158,6 @@ func TestLoginCookieSession(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		res.Body.Close()
 		return res, b
-	}
-	bad, _ := login("not-the-token-but-long-enough-xxxxxx", nil)
-	if bad.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("bad login %d", bad.StatusCode)
-	}
-	for i := 0; i < 4; i++ {
-		res, _ := login("still-wrong", nil)
-		if res.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("fail %d status %d", i, res.StatusCode)
-		}
-	}
-	limited, _ := login("still-wrong", nil)
-	if limited.StatusCode != http.StatusTooManyRequests || limited.Header.Get("Retry-After") == "" {
-		t.Fatalf("rate %d %q", limited.StatusCode, limited.Header.Get("Retry-After"))
 	}
 	_, base2, cleanup2 := startConfigured(t, cfg)
 	defer cleanup2()
