@@ -13,10 +13,23 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S5a | feita | `6930fa4` |
 | S5b | feita | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
 | S6 | feita | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
-| S7–S10, S12 | desenhada | seções abaixo; não construídas |
-| S11 | bloqueada-externa | [#1125](https://github.com/Twigpine/zero/issues/1125) sem `issue-approved` na época do plano |
-| S13 | acompanhando | [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944) |
-| S14, S15 | desenhada | seções abaixo; não construídas |
+| S6b | desenhada | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Não construída. |
+| S7 | desenhada | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3). Decisão de proxy abaixo. Não construída. |
+| S8 | desenhada | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Não construída. |
+| S9 | desenhada | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Não construída. |
+| S10 | desenhada | [#6](https://github.com/FabioLeitao/zero-bridge/issues/6). Não construída. |
+| S11 | bloqueada-externa | [#7](https://github.com/FabioLeitao/zero-bridge/issues/7). Upstream [#1125](https://github.com/Twigpine/zero/issues/1125) sem `issue-approved` na época do plano. |
+| S12 | desenhada | [#8](https://github.com/FabioLeitao/zero-bridge/issues/8). Não construída. |
+| S13 | acompanhando | [#9](https://github.com/FabioLeitao/zero-bridge/issues/9). [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). |
+| S14 | feita | [#1](https://github.com/FabioLeitao/zero-bridge/issues/1). [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt). Só local, sem push. |
+| S14b | desenhada | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Não construída. |
+| S15 | desenhada | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10). Depende da S17. Não construída. |
+| S16 | desenhada | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Não construída. |
+| S17 | feita | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` é a definição de pronto. Só local, sem push. |
+| S18 | desenhada | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Não construída. |
+| S19 | desenhada | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Não construída. |
+
+**Nome.** O repositório continua `zero-bridge`. A expansão pode mudar neste doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Outras leituras: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. O Zero do Gitlawb é o harness recomendado e de referência, não uma dependência do desenho. Este projeto não é afiliado nem endossado por Gitlawb ou Twigpine.
 
 ## Objetivo
 
@@ -45,21 +58,24 @@ Referências somente leitura: Hermes `plugins/platforms/a2a`, `web/`, `acp_adapt
 ## Regras globais
 
 1. **Lugar:** cada fatia declara repo + caminho.
-2. **Sequência:** **S1…S15** linear (mais S5a/S5b); uma fatia ativa; aceite antes da seguinte. S14 e S15 estão desenhadas e não são a próxima fatia a construir.
+2. **Sequência:** **22 fatias** (S1…S15 mais S5a/S5b, S6b, S14b, S16, S17, S18 e S19). Uma fatia ativa; aceite antes da seguinte. S14 e S17 estão feitas localmente. Próxima ordem de construção: **S14b → S19 → S16 → S18 → S6b → S7**. A S15 espera um go explícito do operador.
 3. **Bloqueio externo:** **BLOQUEADA-EXTERNA** pula para a próxima fatia independente.
 4. **Custo zero:** qualquer `session/prompt` real usa modelo **local** (Ollama) ou **`:free`**; nunca provedor pago. Evidências registram provedor/modelo, nunca chaves.
 5. **Nunca fechar PR sem merge:** se o upstream absorver trabalho parecido, fazer merge de `upstream/main` na branch de tópico, reduzir o PR ao delta restante e **parar para o operador**. Não fechar PR aberto sem merge nem fechar issues do upstream daqui.
+6. **Telemetria, a partir da S16:** toda rota nova e todo evento novo entregam um span, uma métrica e campos de log. O módulo do core fica só com a biblioteca padrão. A exportação fica desligada até o operador ligar.
+7. **Definição de pronto:** `make check`. Toda fatia usa esse alvo. `make check-advisory` (deadcode) fica fora dele.
 
 ## Postura de segurança
 
 | Controle | Fatia |
 | --- | --- |
-| Bind padrão `127.0.0.1` | S3, S7 |
-| Sem token ⇒ sem bind fora de loopback | S7 |
+| Bind padrão `127.0.0.1` | S3, S7, S14 |
+| Sem token ⇒ sem bind fora de loopback | S7, S14 |
 | Sem CORS `*` | S3, S4, S5, S7 |
 | Permissões: padrão negar; timeout negar | S4 |
 | Limites de corpo/frame | S3, S7 |
-| Sem segredos em log | S3–S7, S8–S10 |
+| Sem segredos em log | S3–S7, S8–S10, S16 |
+| Allowlist de telemetria; sem prompt, caminho, token ou id de sessão | S16 |
 | Web sem variáveis de ambiente do host | S5 |
 | A2A saída: `prompt`; rede só ao peer configurado | S8–S10 |
 
@@ -75,7 +91,7 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 
 ---
 
-## Sequência linear (S1…S15, mais S5a/S5b)
+## Sequência linear (22 fatias)
 
 | ID | Trilha | Repo / caminho | Destrava | Bloqueio |
 | --- | --- | --- | --- | --- |
@@ -86,7 +102,8 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 | **S5a** | C3a | `bridge/web/` | Chat mínimo em streaming (só depende da S3) | — |
 | **S5b** | C3b | `bridge/web/` | Cartão de permissão, plano e tools (depende da S4) | — |
 | **S6** | C4 | `bridge/` | list/load/resume | — |
-| **S7** | C5 | `bridge/a2a/` | A2A entrada | — |
+| **S6b** | C4b | `bridge/` | Lista compacta, apelido local, workspace na sessão nova | — |
+| **S7** | C5 | `bridge/a2a/` | A2A de entrada atrás do proxy da S14 | — |
 | **S8** | B1 | `plugin/a2a/` | `a2a_discover` | — |
 | **S9** | B2 | `plugin/a2a/` | `a2a_call` | — |
 | **S10** | B3 | `plugin/a2a/` | `a2a_list` | — |
@@ -94,9 +111,16 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 | **S12** | A3 | fork → `internal/acp/` | #664 spec-draft | merge upstream |
 | **S13** | A4 | fork → `internal/acp/` | #923 limites | acompanhar PR #944 |
 | **S14** | C6 | `bridge/` | allowlist, token e flush de SSE atrás de proxy | — |
-| **S15** | — | docs | checklist de publicação e Show and tell | go explícito do operador |
+| **S14b** | C6b | `bridge/` | Trilha de auditoria, limite Bearer, vidas finitas | — |
+| **S16** | C6c | `bridge/obs/` | Traces OTel, métricas, logs JSON | — |
+| **S17** | — | raiz do repo | `make check`, hooks, CONTRIBUTING, AGENTS | — |
+| **S19** | C6e | `bridge/` | `--agent-cmd`, perfis, gate por capacidade | — |
+| **S18** | C6d | container do `zero-bridge` | Imagem ao lado do proxy, root somente leitura | — |
+| **S15** | — | docs | checklist de publicação e Show and tell | espera go explícito do operador |
 
-**Ordem:** S1 destrava contagem de usage para S2–S7. B (S8–S10) não depende do HTTP. Com S11 bloqueada, seguir S12–S13 e voltar à S11 após `issue-approved` em #1125.
+**Ordem:** S1 destrava contagem de usage. As fatias C até S6, S14 e S17 estão na árvore. A próxima ordem de construção é **S14b → S19 → S16 → S18 → S6b → S7**. A S15 espera um go explícito do operador. B (S8–S10) não depende do HTTP. Com S11 bloqueada, seguir S12–S13 e voltar à S11 após `issue-approved` em #1125.
+
+Mapa de issues deste repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15).
 
 ---
 
@@ -308,54 +332,145 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 **Parada:** divergência com TUI → issue upstream; documentar filtro de workspace.
 
+**Destrava:** a S6b estende a lista. A S7 vem depois da S6b.
+
+### S6b — lista de sessões em escala
+
+**Caminho:** metadados de sessão, filtros da lista e `bridge/web/`. Só desenhada. Não construída. [#2](https://github.com/FabioLeitao/zero-bridge/issues/2).
+
+**Decisão:** apelido, arquivada e fixada são metadados da ponte. O ACP do Zero não tem renomear, arquivar nem apagar. `zero sessions prune` fica fora. O Zero não troca o cwd de uma sessão existente. `session/load` e `session/resume` com outro cwd falham com `session cwd does not match its persisted workspace`. A UI escolhe workspace só na sessão nova e mostra o cwd real da sessão ativa.
+
+**Aceite**
+
+- `--state-dir` guarda `sessions-meta.json` em modo `0600`, num diretório `0700`. Entrada toda no padrão é removida. Apelido hostil volta como texto.
+- `POST /v1/sessions/{id}/meta` e `GET /v1/sessions` aceitam `q`, `archived` e `limit`. Fixadas vêm primeiro. O cursor continua opaco.
+- `--workspace-root` limita o workspace da sessão nova e no máximo 8 diretórios adicionais. Load e resume não trocam o cwd.
+- A barra rola dentro dela. Busca, arquivar, fixar e renomear são só texto. O idioma da página é pt-BR.
+- O check headless cabe 25 sessões ou mais, mantém título hostil como texto, esconde a arquivada, sobe a fixada e preserva a meta no reload.
+
+**Parada:** não apagar nem fazer prune. Não mandar outro cwd em load ou resume.
+
 **Destrava:** S7.
 
 ### S7 — C5 A2A entrada
 
-**Caminho:** `bridge/a2a/`.
+**Caminho:** `bridge/a2a/`. Só desenhada. Não construída. [#3](https://github.com/FabioLeitao/zero-bridge/issues/3).
 
-**Precedente e pergunta aberta:** exposição fora de loopback no upstream (`daemon serve-remote`) é **só TLS** com bearer em `$ZERO_DAEMON_REMOTE_TOKEN` ou `_FILE` (nunca argv). O aceite de S7 hoje exige só bearer fora de loopback. **Pergunta aberta:** S7 também deve exigir TLS fora de loopback? Até decidir, bind fora de loopback continua **não suportado** (aceite inalterado).
+**Decisão:** a ponte nunca escuta fora de loopback. Um cliente A2A externo chega pelo proxy reverso e pelo token da S14. O TLS termina no proxy. `--listen` fora de loopback continua saindo 2, com ou sem token.
 
 **Aceite**
 
-- `curl -sf .../.well-known/agent-card.json` → **200**, JSON com `name`.
-- JSON-RPC `message/send` em loopback → **200** e id de tarefa; bridge chama `session/prompt` (zero-custo).
-- `--listen 0.0.0.0` sem token → saída não-zero **ou** só 127.0.0.1 (documentar; sem bind amplo sem auth).
-- Com token, bind não-loopback exige `Authorization: Bearer`; sem header → **401**.
-- Corpo acima do máximo → **413**.
+- `curl -sf http://127.0.0.1:8765/.well-known/agent-card.json` → **200**, JSON com campo `name`.
+- JSON-RPC `message/send` em loopback, com corpo válido → **200** e id de tarefa. A ponte chama `session/prompt` num modelo de custo zero.
+- `--listen 0.0.0.0:8765` sai **2**.
+- Através do proxy, credencial ausente é o mesmo **401** da S14.
+- Corpo de POST acima do máximo configurado → **413**.
 
-**Parada:** escopo só Agent Card + `message/send`.
+**Parada:** só Agent Card e `message/send`. Não criar um modo de escuta fora de loopback.
 
-**Destrava:** clientes A2A externos.
+**Destrava:** um cliente A2A externo pode chamar a ponte atrás do proxy.
 
 ### S14 — C6 proxy-ready
 
-**Caminho:** config e cabeçalhos SSE em `bridge/`. Só desenhada. Não implementada.
+**Caminho:** config, cookie de login e cabeçalhos SSE em `bridge/`. Feita localmente. Guia: [../deploy/CADDY.pt_BR.md](../deploy/CADDY.pt_BR.md). Evidência: [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt).
 
-**Decisão:** acesso externo só via proxy reverso, o mesmo padrão de Grafana e CouchDB no T14. O processo da ponte continua em loopback.
+**Decisão:** acesso externo só via proxy reverso, o mesmo padrão de Grafana e CouchDB no T14. O processo da ponte continua em loopback (`--listen` fora de loopback continua saindo 2). Sem TLS no processo.
 
 **Aceite**
 
-- Lista de hosts/origins configurável e vazia por padrão. Vazia mantém o check de Host em loopback de hoje.
-- A ponte tem um token de autenticação. Token ausente ou errado é recusado.
-- Respostas SSE incluem `X-Accel-Buffering: no`.
-- A doc traz um exemplo de Caddyfile com `flush_interval -1` e sem `encode` na rota SSE:
+- `--allowed-host` e `--public-origin` são repetíveis e vazios por padrão. Vazio mantém o check de Host em loopback. Qualquer um dos dois sem token sai 2 (`token required when exposed via proxy`).
+- `--token-file` ou `ZERO_BRIDGE_TOKEN`, não os dois. O modo do arquivo é `0600`. A string do token tem pelo menos 32 bytes. Bearer ausente e errado têm o mesmo corpo **401**. `GET /health` sem credencial é só `{"ok":true}`.
+- O cookie do navegador é `zb_session` com `HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`. `Secure` só com `--trust-proxy` e `X-Forwarded-Proto: https`. Sessões em memória.
+- O limite de login é 5 falhas por minuto só em `POST /v1/login`. Com a janela cheia, o token certo também é **429** com `Retry-After` e sem cookie. Pedidos Bearer nas outras rotas `/v1/*` não entram no limite.
+- `--allowed-host` casa só com `Host`. Sem `--public-origin`, `POST /v1/login` com `Origin` `https` é **403**. Se o proxy manda a porta no `Host`, a entrada da lista inclui essa porta.
+- Respostas SSE incluem `X-Accel-Buffering: no`. O exemplo Caddy usa `flush_interval -1`, sem `encode` na rota SSE, e `request_body { max_size 2MB }`.
 
-```caddyfile
-example.com {
-	reverse_proxy 127.0.0.1:8765 {
-		flush_interval -1
-	}
-}
-```
+**Parada:** não fazer bind em `0.0.0.0`. Não empurrar esta fatia até o operador pedir.
 
-**Parada:** não fazer bind em `0.0.0.0`. Não iniciar esta fatia sem go explícito do operador.
+**Destrava:** S17, que está feita. A próxima fatia de construção é a S14b. A S15 espera um go explícito do operador.
 
-**Destrava:** a S15 pode publicar uma ponte segura para ficar atrás de um proxy.
+### S14b — endurecimento de auth II
+
+**Caminho:** login e vida da sessão em `bridge/`. Só desenhada. Não construída. [#11](https://github.com/FabioLeitao/zero-bridge/issues/11).
+
+**Aceite**
+
+- A trilha de auditoria do login registra sucesso, falha e limite, e nunca registra o segredo.
+- A janela de falhas também cobre chamadas Bearer em `/v1/*`.
+- Uma chamada encerra todas as sessões, sessões podem ser revogadas, e SIGHUP gira o token.
+- Os limites são sempre finitos e vêm de flag, ambiente ou arquivo de config: TTL de sessão 12h com teto de 30 dias, ociosidade 2h, máximo de 8 sessões, janela de falha 1m, limite de falha 5. Zero, valor negativo ou "ilimitado" saem **2**.
+
+**Parada:** não aceitar vida infinita nem janela de falha sem limite.
+
+**Destrava:** S19.
+
+### S16 — observabilidade
+
+**Caminho:** submódulo `bridge/obs/` (o próprio `go.mod`). Só desenhada. Não construída. [#12](https://github.com/FabioLeitao/zero-bridge/issues/12).
+
+**Decisão:** o módulo do core fica só com a biblioteca padrão, sem dependência de terceiros. O SDK OpenTelemetry mora em `bridge/obs`. OTLP/JSON escrito à mão só se visibilidade ou desempenho exigirem depois.
+
+**Aceite**
+
+- Traces para o Tempo, métricas Prometheus, linhas `slog` em JSON com `trace_id` para o Loki, um dashboard Grafana provisionado deste repo e alertas.
+- O push OTLP vai para `127.0.0.1:4318` e nasce desligado. Endpoint fora de loopback exige flag explícita.
+- Allowlist de atributos. Sem texto de prompt, `rawInput`, caminhos, tokens ou ids de sessão. Labels de baixa cardinalidade.
+- Toda rota e todo evento novos depois desta fatia entregam um span, uma métrica e campos de log.
+
+**Parada:** não colocar o SDK no `go.mod` do core. Não exportar por padrão.
+
+**Destrava:** S18.
+
+### S19 — ponte ACP sem amarrar o harness
+
+**Caminho:** `bridge/`, comando do agente e perfis. Só desenhada. Não construída. [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). O Zero do Gitlawb segue como harness recomendado e de referência. Não é dependência do desenho.
+
+**Aceite**
+
+- `--agent-cmd`, com perfis `zero` e `generic`.
+- Gate por capacidade: um pedido que o agente não anunciou responde **501** com `not supported by agent`.
+- Os modos vêm de `availableModes`.
+- Variantes do agente falso, mais um spike contra um agente ACP que não é o Zero.
+- Candidatos que existem neste host e que a ponte ainda não exercitou: `zero acp`, `hermes acp` (`hermes-acp`) e `dsh --profile acp` (DeepSeek Harness). Claude Code só por adaptador de terceiros, não verificado, e fora do primeiro spike porque gasta cota.
+- Regra do spike: `HOME` e config isolados, workspace vazio, só `initialize` e `session/new`, sem chamada de modelo. O Hermes roda recuperação de update na partida, então o spike nunca aponta para o checkout real nem para `~/.hermes`.
+
+**Parada:** não chamar modelo. Não apontar o Hermes para o checkout real nem para `~/.hermes`.
+
+**Destrava:** S16.
+
+### S18 — imagem de container
+
+**Caminho:** imagem de container da ponte. Só desenhada. Não construída. [#14](https://github.com/FabioLeitao/zero-bridge/issues/14).
+
+**Aceite**
+
+- O container compartilha o namespace de rede do proxy. A ponte escuta em `127.0.0.1` dentro dele.
+- O binário do Zero é montado somente leitura. O arquivo do token fica no modo `0600`. O processo não é root. O sistema de arquivos raiz é somente leitura. As capabilities caem (`cap_drop ALL`).
+
+**Parada:** não rodar a ponte como root num sistema de arquivos raiz gravável.
+
+**Destrava:** S6b.
+
+### S17 — gate local rigoroso
+
+**Caminho:** raiz do repo (`Makefile`, `scripts/`, `.githooks/`, CONTRIBUTING, AGENTS, templates). Feita localmente. Sem push. [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). A S15 espera um go explícito do operador.
+
+**Aceite**
+
+- `make check` na raiz roda fmt-check, vet, build, `test -race`, golangci-lint pinada, govulncheck pinada, tidy-check, higiene e `git diff --check`. Deadcode é `make check-advisory`, fora do `make check`.
+- Um script de higiene recusa caminhos pessoais, formas de segredo, artefatos de agente rastreados, paridade EN/pt_BR quebrada e links relativos quebrados. Os commits do intervalo são assinados, não têm trailer de coautor e não usam palavra de fechamento antes de um número de issue. O script entra no `make check`.
+- `make hooks` aponta o Git para `.githooks/`. O pre-push roda `make check` e não é pulado. `--no-verify` é proibido. Um clone não instala os hooks sozinho.
+- `make e2e` roda o check headless com e sem token e derruba o servidor pelo pid registrado. `make mutate` aplica um conjunto curado de mutantes de auth numa cópia e sai diferente de zero se algum sobreviver. Mutate é pré-PR, não pré-commit.
+- CONTRIBUTING e AGENTS existem em inglês e em português. Existem templates de pull request e de issue. Esta fatia não adiciona workflow do GitHub Actions.
+- Ferramentas externas só por `go run pkg@version` pinado. O `go.mod` do core fica só com a biblioteca padrão. `bridge/obs` é o único módulo que pode importar o SDK OpenTelemetry.
+
+**Parada:** não adicionar arquivo de workflow. Não documentar um jeito de pular os hooks.
+
+**Destrava:** S14b. A S15 espera um go explícito do operador. O operador abre a pull request que cobre a S14 e a S17.
 
 ### S15 — publicação
 
-**Caminho:** docs na raiz do repo. Só desenhada. Não muda visibilidade.
+**Caminho:** docs na raiz do repo. Só desenhada. Não muda visibilidade. Depende da S17.
 
 **Aceite**
 

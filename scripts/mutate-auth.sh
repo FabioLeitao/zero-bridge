@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Applies one auth mutant at a time on a copy of bridge/ and requires the
+# suite to kill it. This is the slow pre-PR layer. It is not pre-commit.
+# Git sets GIT_DIR for a hook. Drop it before the copy, so a later git
+# command cannot write into the repository that invoked make.
+set -euo pipefail
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_NAMESPACE
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+base="$work/base"
+mkdir -p "$base"
+cp -a "$root/bridge/." "$base/"
+
+python3 - "$base" "$work" <<'PY'
+import pathlib, shutil, subprocess, sys
+
+base = pathlib.Path(sys.argv[1])
+work = pathlib.Path(sys.argv[2])
+survivors = []
+
+mutants = [
+    (
+        "login-limit-removed",
+        "internal/server",
+        "TestLoginRateLimitConcurrentWrongToken",
+        [("internal/server/login.go", "if len(kept) >= loginFailMax {", "if len(kept) >= loginFailMax && false {")],
+    ),
+    (
+        "csrf-missing-origin",
+        "internal/server",
+        "TestLoginCookieSession",
+        [("internal/server/login.go", "\tif origin == \"\" {\n\t\treturn false\n\t}", "\tif origin == \"\" {\n\t\treturn true\n\t}")],
+    ),
+    (
+        "secure-without-trust-proxy",
+        "internal/server",
+        "TestLoginCookieSession",
+        [("internal/server/login.go", "return s.cfg.TrustProxy && strings.EqualFold(r.Header.Get(\"X-Forwarded-Proto\"), \"https\")", "return true")],
+    ),
+    (
+        "httponly-off",
+        "internal/server",
+        "TestLoginCookieSession",
+        [("internal/server/login.go", "HttpOnly: true,", "HttpOnly: false,")],
+    ),
+    (
+        "post-without-auth",
+        "internal/server",
+        "TestV1RoutesRequireCredential",
+        [("internal/server/server.go", "\treturn s.hasBearer(r) || s.sessionOK(r)\n", "\tif r.Method == http.MethodPost {\n\t\treturn true\n\t}\n\treturn s.hasBearer(r) || s.sessionOK(r)\n")],
+    ),
+    (
+        "short-token-accepted",
+        "internal/auth",
+        "TestLoadFile",
+        [("internal/auth/token.go", "if len(token) < MinTokenBytes {", "if len(token) < 0 {")],
+    ),
+    (
+        "token-file-mode-ignored",
+        "internal/auth",
+        "TestLoadFile",
+        [("internal/auth/token.go", "if st.Mode().Perm()&0o077 != 0 {", "if false && st.Mode().Perm()&0o077 != 0 {")],
+    ),
+]
+
+for name, pkg, run, edits in mutants:
+    dest = work / name
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(base, dest, symlinks=True)
+    for rel, old, new in edits:
+        file = dest / rel
+        text = file.read_text()
+        count = text.count(old)
+        if count < 1:
+            sys.exit(f"mutate: anchor missing for {name} in {rel}")
+        file.write_text(text.replace(old, new))
+    print(f"mutate: {name}", flush=True)
+    result = subprocess.run(
+        ["go", "test", "-count=1", "-timeout", "180s", "./" + pkg, "-run", run],
+        cwd=dest,
+    )
+    if result.returncode == 0:
+        print(f"mutate: SURVIVOR {name}", file=sys.stderr)
+        survivors.append(name)
+    else:
+        print(f"mutate: killed {name}", flush=True)
+
+if survivors:
+    print("mutate: survivors: " + ", ".join(survivors), file=sys.stderr)
+    sys.exit(1)
+print("mutate: ok")
+PY

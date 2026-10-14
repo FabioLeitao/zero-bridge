@@ -33,19 +33,22 @@ Use a local model or a `:free` variant. The bridge sets `ZERO_PROVIDER=granite-l
 - Responses do not send `Access-Control-Allow-Origin`.
 - A permission is allowed only when the agent offered `allow_once` with option id `allow`. Any other allow choice is an effective deny. Timeout, abort, and stop deny. They never become an allow.
 - The page inserts model and tool text with `textContent` and `createTextNode` only.
-- There is still **no authentication token**. Any process of the same user that can open the port can call the API. Do not publish it on `0.0.0.0`, and do not put it on a network without a reverse proxy and a token. That work is designed as S14 and is not built.
+- Without a token, loopback use stays open to any process of the same user that can open the port. `--token-file` (or `ZERO_BRIDGE_TOKEN`) guards `/v1/*`. External access is a reverse proxy plus that token. The bridge still refuses a non-loopback `--listen`. Guide: [docs/deploy/CADDY.md](docs/deploy/CADDY.md).
 
 ## Status
 
-S2–S6 are in this tree. S7–S12 and S14–S15 are designed only. S11 is blocked on upstream #1125. S13 follows [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detail and evidence SHAs: [docs/plans/PLAN_ZERO_BRIDGE.md](docs/plans/PLAN_ZERO_BRIDGE.md).
+S2–S6, S14, and S17 are in this tree. S14 and S17 are local only and are not pushed. Next build order: S14b, S19, S16, S18, S6b, S7. S11 is blocked on upstream #1125. S13 follows [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detail: [docs/plans/PLAN_ZERO_BRIDGE.md](docs/plans/PLAN_ZERO_BRIDGE.md).
 
 | Slice | State |
 | --- | --- |
 | S1 usage events (#1118) | in progress on the Zero fork |
 | S2–S6 bridge and web UI | done |
-| S7–S10, S12, S14, S15 | designed |
-| S11 mode restore (#1125) | blocked upstream |
-| S13 frame limits (#923) | following PR #944 |
+| S14 proxy, token, login | done locally ([#1](https://github.com/FabioLeitao/zero-bridge/issues/1)) |
+| S17 local gate | done locally ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13)) |
+| S14b, S19, S16, S18, S6b, S7 | designed, in that order ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11), [#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S8–S10, S12, S15 | designed ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
+| S11 mode restore | blocked ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), upstream #1125) |
+| S13 frame limits | following ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), PR #944) |
 
 ## Tests
 
@@ -60,13 +63,17 @@ Headless Chrome check (Node 22+, no npm), against a bridge that is already liste
 node bridge/web/e2e/check.mjs http://127.0.0.1:8765/
 ```
 
+## Hooks
+
+A clone does not install the hooks. Run `make hooks` once. The pre-commit hook checks staged Go files and the fast hygiene letters. The pre-push hook runs `make check`. Skipping either hook is forbidden.
+
 ## License
 
 [MIT](LICENSE). Copyright (c) 2026 Fabio Tavares Leitao.
 
 ## Relation to Zero
 
-The bridge speaks the public ACP stdio API (`zero acp`). It does not vendor Zero.
+The bridge speaks ACP over stdio. Gitlawb's Zero (`zero acp`) is the recommended reference harness, not a dependency of the design. The repository stays `zero-bridge`. The expansion may change in this doc: Z.E.R.O. = Zero-lock-in Edge for Remote Operation. Other readings: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. This project is not affiliated with or endorsed by Gitlawb or Twigpine. It does not vendor Zero.
 
 Related upstream work, with no promise that this repo will land it:
 

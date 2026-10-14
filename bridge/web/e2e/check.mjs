@@ -91,6 +91,29 @@ try {
   await send("Runtime.enable");
   await send("Page.navigate", { url });
 
+  const e2eToken = process.env.ZB_E2E_TOKEN || "";
+  await waitFor("(typeof sessionId === 'string' && sessionId.length > 0) || (document.getElementById('login') && document.getElementById('login').hidden === false)", 8000);
+  const loginVisible = await evalJs("!!(document.getElementById('login') && document.getElementById('login').hidden === false)");
+  if (loginVisible) {
+    if (!e2eToken) fail("login-required", "page is waiting for a token");
+    result.loginScreen = await evalJs("document.getElementById('token').type === 'password' && document.getElementById('token').autocomplete === 'off'");
+    if (!result.loginScreen) fail("login-field", "token field is not a password input");
+    await evalJs(`(function () {
+      document.getElementById('token').value = "wrong-token-value-not-the-real-one";
+      document.getElementById('login-button').click();
+      return true;
+    })()`);
+    const wrong = await waitFor("document.getElementById('login-error').textContent.length > 0", 8000);
+    result.loginWrong = Boolean(wrong);
+    if (!wrong) fail("login-wrong", await evalJs("document.getElementById('login-error').textContent"));
+    await evalJs(`(function () {
+      const el = document.getElementById('token');
+      el.value = ${JSON.stringify(e2eToken)};
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      return true;
+    })()`);
+  }
+
   const booted = await waitFor("typeof sessionId === 'string' && sessionId.length > 0", 8000);
   result.sessionBooted = Boolean(booted);
   result.title = await evalJs("document.title");
@@ -231,6 +254,18 @@ try {
   const viewOnly = await waitFor("document.body.textContent.indexOf('sessao somente leitura') >= 0", 8000);
   result.viewOnly = Boolean(viewOnly);
   if (!viewOnly) fail("view-only", "read-only notice missing");
+
+  if (e2eToken) {
+    await evalJs("document.getElementById('logout').click()");
+    const cleared = await waitFor("document.getElementById('login').hidden === false && document.getElementById('session-list').children.length === 0 && document.getElementById('log').textContent === '' && document.getElementById('workspace').value === ''", 8000);
+    result.logoutClears = Boolean(cleared);
+    if (!cleared) {
+      fail("logout-clear", await evalJs("JSON.stringify({login: document.getElementById('login').hidden, list: document.getElementById('session-list').textContent, log: document.getElementById('log').textContent, cwd: document.getElementById('workspace').value})"));
+    }
+    const stored = await evalJs(`localStorage.length === 0 && sessionStorage.length === 0 && location.href.indexOf(${JSON.stringify(e2eToken)}) < 0`);
+    result.tokenNotStored = stored === true;
+    if (stored !== true) fail("token-storage", stored);
+  }
 
   ws.close();
 } catch (err) {

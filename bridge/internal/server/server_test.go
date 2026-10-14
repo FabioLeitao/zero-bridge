@@ -11,6 +11,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1076,4 +1078,477 @@ func sseContainsType(lines []string, typ string) bool {
 		buf.WriteString(l)
 	}
 	return strings.Contains(buf.String(), typ)
+}
+
+const bearerToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+func TestLoginRateLimitBlocksCorrectToken(t *testing.T) {
+	now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	_, base, cleanup := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+		Now:               func() time.Time { return now },
+	})
+	defer cleanup()
+	post := func(token string) (*http.Response, []byte) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"`+token+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		return res, b
+	}
+	for i := 0; i < 5; i++ {
+		res, _ := post("wrong-token")
+		if res.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("fail %d status %d", i, res.StatusCode)
+		}
+	}
+	blocked, _ := post(bearerToken)
+	if blocked.StatusCode != http.StatusTooManyRequests || blocked.Header.Get("Retry-After") == "" || len(blocked.Cookies()) != 0 {
+		t.Fatalf("correct token while limited: %d retry %q cookies %d", blocked.StatusCode, blocked.Header.Get("Retry-After"), len(blocked.Cookies()))
+	}
+	now = now.Add(61 * time.Second)
+	okRes, _ := post(bearerToken)
+	if okRes.StatusCode != http.StatusOK {
+		t.Fatalf("after window %d", okRes.StatusCode)
+	}
+	got := false
+	for _, c := range okRes.Cookies() {
+		if c.Name == sessionCookie && c.Value != "" {
+			got = true
+		}
+	}
+	if !got {
+		t.Fatal("session cookie missing after the window")
+	}
+}
+
+func TestLoginRateLimitConcurrentWrongToken(t *testing.T) {
+	_, base, cleanup := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+	})
+	defer cleanup()
+	var unauthorized atomic.Int32
+	var limited atomic.Int32
+	var other atomic.Int32
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"wrong-token"}`))
+			if err != nil {
+				other.Add(1)
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				other.Add(1)
+				return
+			}
+			res.Body.Close()
+			switch res.StatusCode {
+			case http.StatusUnauthorized:
+				unauthorized.Add(1)
+			case http.StatusTooManyRequests:
+				limited.Add(1)
+			default:
+				other.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if other.Load() != 0 || unauthorized.Load() > 5 || unauthorized.Load()+limited.Load() != 50 {
+		t.Fatalf("401=%d 429=%d other=%d", unauthorized.Load(), limited.Load(), other.Load())
+	}
+}
+
+func TestV1RoutesRequireCredential(t *testing.T) {
+	_, base, cleanup := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+	})
+	defer cleanup()
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/v1/info"},
+		{http.MethodGet, "/v1/sessions"},
+		{http.MethodPost, "/v1/sessions"},
+		{http.MethodPost, "/v1/sessions/s1/prompt"},
+		{http.MethodGet, "/v1/sessions/s1/events"},
+		{http.MethodGet, "/v1/sessions/s1/permissions/pending"},
+		{http.MethodPost, "/v1/sessions/s1/permissions/r1"},
+		{http.MethodPost, "/v1/sessions/s1/mode"},
+		{http.MethodPost, "/v1/sessions/s1/load"},
+		{http.MethodPost, "/v1/sessions/s1/resume"},
+		{http.MethodPost, "/v1/logout"},
+	}
+	call := func(method, path, bearer string, cookie *http.Cookie) int {
+		t.Helper()
+		req, err := http.NewRequest(method, base+path, strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	for _, rt := range routes {
+		if got := call(rt.method, rt.path, "", nil); got != http.StatusUnauthorized {
+			t.Fatalf("%s %s without credential: %d", rt.method, rt.path, got)
+		}
+		if got := call(rt.method, rt.path, bearerToken, nil); got == http.StatusUnauthorized {
+			t.Fatalf("%s %s with bearer: 401", rt.method, rt.path)
+		}
+	}
+	loginReq, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"`+bearerToken+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRes, err := http.DefaultClient.Do(loginReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginRes.Body.Close()
+	var session *http.Cookie
+	for _, c := range loginRes.Cookies() {
+		if c.Name == sessionCookie {
+			session = c
+		}
+	}
+	if session == nil {
+		t.Fatal("login cookie missing")
+	}
+	for _, rt := range routes {
+		if rt.method != http.MethodPost {
+			continue
+		}
+		if got := call(rt.method, rt.path, "", session); got != http.StatusForbidden {
+			t.Fatalf("%s %s cookie without Origin: %d", rt.method, rt.path, got)
+		}
+	}
+}
+
+func TestLoginCookieSession(t *testing.T) {
+	fixed := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	cfg := Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+		Now:               func() time.Time { return fixed },
+		PublicOrigins:     []string{"http://bridge.test:8780"},
+		AllowedHosts:      []string{"bridge.test"},
+	}
+	_, base, cleanup := startConfigured(t, cfg)
+	defer cleanup()
+	origin := "http://" + strings.TrimPrefix(base, "http://")
+	login := func(token string, extra func(*http.Request)) (*http.Response, []byte) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"`+token+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if extra != nil {
+			extra(req)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		return res, b
+	}
+	_, base2, cleanup2 := startConfigured(t, cfg)
+	defer cleanup2()
+	okRes, _ := login(bearerToken, nil)
+	if okRes.StatusCode != http.StatusOK {
+		t.Fatalf("login %d", okRes.StatusCode)
+	}
+	var session *http.Cookie
+	for _, c := range okRes.Cookies() {
+		if c.Name == sessionCookie {
+			session = c
+		}
+	}
+	if session == nil || !session.HttpOnly || session.SameSite != http.SameSiteStrictMode || session.Secure || session.Path != "/" || session.MaxAge != 43200 || len(session.Value) != 64 {
+		t.Fatalf("cookie %+v", session)
+	}
+	info := func(url string, c *http.Cookie, origin string) int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, url+"/v1/info", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c != nil {
+			req.AddCookie(c)
+		}
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if info(base, session, "") != http.StatusOK {
+		t.Fatal("cookie info")
+	}
+	if info(base2, session, "") != http.StatusUnauthorized {
+		t.Fatal("restart kept the session")
+	}
+	stReq, _ := http.NewRequest(http.MethodGet, base+"/v1/auth/status", nil)
+	stReq.AddCookie(session)
+	stRes, err := http.DefaultClient.Do(stReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stBody, _ := io.ReadAll(stRes.Body)
+	stRes.Body.Close()
+	if !strings.Contains(string(stBody), `"authenticated":true`) {
+		t.Fatalf("status %s", stBody)
+	}
+	outReq, _ := http.NewRequest(http.MethodPost, base+"/v1/logout", nil)
+	outReq.AddCookie(session)
+	outRes, err := http.DefaultClient.Do(outReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outRes.Body.Close()
+	if outRes.StatusCode != http.StatusForbidden {
+		t.Fatalf("csrf %d", outRes.StatusCode)
+	}
+	if info(base, session, "") != http.StatusOK {
+		t.Fatal("csrf logout dropped the session")
+	}
+	outReq, _ = http.NewRequest(http.MethodPost, base+"/v1/logout", nil)
+	outReq.AddCookie(session)
+	outReq.Header.Set("Origin", origin)
+	outRes, err = http.DefaultClient.Do(outReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outRes.Body.Close()
+	if outRes.StatusCode != http.StatusOK {
+		t.Fatalf("logout %d", outRes.StatusCode)
+	}
+	if info(base, session, "") != http.StatusUnauthorized {
+		t.Fatal("logout did not invalidate")
+	}
+	secRes, _ := login(bearerToken, func(r *http.Request) {
+		r.Header.Set("X-Forwarded-Proto", "https")
+	})
+	for _, c := range secRes.Cookies() {
+		if c.Name == sessionCookie && c.Secure {
+			t.Fatal("Secure without trust-proxy")
+		}
+	}
+	_, proxied, stop := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+		Now:               func() time.Time { return fixed },
+		TrustProxy:        true,
+	})
+	defer stop()
+	req, _ := http.NewRequest(http.MethodPost, proxied+"/v1/login", strings.NewReader(`{"token":"`+bearerToken+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	secure := false
+	for _, c := range res.Cookies() {
+		if c.Name == sessionCookie && c.Secure {
+			secure = true
+		}
+	}
+	if !secure {
+		t.Fatal("Secure missing behind trusted https")
+	}
+	before := runtime.NumGoroutine()
+	for i := 0; i < 2; i++ {
+		_, u, done := startConfigured(t, Config{Token: bearerToken, LoginFailureDelay: -1, Now: func() time.Time { return fixed }})
+		req, _ := http.NewRequest(http.MethodPost, u+"/v1/login", strings.NewReader(`{"token":"nope"}`))
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		done()
+	}
+	time.Sleep(200 * time.Millisecond)
+	if after := runtime.NumGoroutine(); after > before+8 {
+		t.Fatalf("goroutines %d -> %d", before, after)
+	}
+}
+
+func TestProxyHostRules(t *testing.T) {
+	if _, err := New(Config{Listen: "127.0.0.1:9", AllowedHosts: []string{"bridge.test"}}); err == nil || !strings.Contains(err.Error(), "token required when exposed via proxy") {
+		t.Fatalf("missing token: %v", err)
+	}
+	_, base, cleanup := startConfigured(t, Config{
+		Token:         bearerToken,
+		AllowedHosts:  []string{"bridge.test"},
+		PublicOrigins: []string{"http://bridge.test:8780"},
+	})
+	defer cleanup()
+	get := func(host, origin string) int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, base+"/health", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if host != "" {
+			req.Host = host
+		}
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if get("bridge.test", "") != http.StatusOK {
+		t.Fatal("listed host")
+	}
+	if get("", "") != http.StatusOK {
+		t.Fatal("loopback host")
+	}
+	if get("evil.example", "") != http.StatusForbidden {
+		t.Fatal("rebinding host")
+	}
+	if get("bridge.test", "http://bridge.test:8780") != http.StatusOK {
+		t.Fatal("listed origin")
+	}
+	if get("bridge.test", "http://bridge.test:9") != http.StatusForbidden {
+		t.Fatal("origin port")
+	}
+	if get("bridge.test", "https://bridge.test:8780") != http.StatusForbidden {
+		t.Fatal("origin scheme")
+	}
+	if get("bridge.test", "http://evil.test:8780") != http.StatusForbidden {
+		t.Fatal("origin host")
+	}
+}
+
+func TestBearerAuth(t *testing.T) {
+	if _, err := New(Config{Listen: "127.0.0.1:9", Token: "short"}); err == nil {
+		t.Fatal("short token accepted")
+	}
+	var logs bytes.Buffer
+	_, base, cleanup := startConfigured(t, Config{
+		Token: bearerToken,
+		ExtraEnv: []string{
+			"ZB_FAKE_LIST_ERROR=1",
+			"ZB_FAKE_ERROR_ECHO=" + bearerToken,
+		},
+		Logger: log.New(&logs, "", 0),
+	})
+	defer cleanup()
+	res, err := http.Get(base + "/v1/info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized || res.Header.Get("WWW-Authenticate") != "Bearer" || !strings.Contains(string(b), `"error":"unauthorized"`) {
+		t.Fatalf("missing %d %s %s", res.StatusCode, res.Header.Get("WWW-Authenticate"), b)
+	}
+	wrong, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong.Header.Set("Authorization", "Bearer not-the-token")
+	wrongRes, err := http.DefaultClient.Do(wrong)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongBody, _ := io.ReadAll(wrongRes.Body)
+	wrongRes.Body.Close()
+	if wrongRes.StatusCode != http.StatusUnauthorized || string(wrongBody) != string(b) {
+		t.Fatalf("wrong token %d %s", wrongRes.StatusCode, wrongBody)
+	}
+	okReq, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okReq.Header.Set("Authorization", "Bearer "+bearerToken)
+	okRes, err := http.DefaultClient.Do(okReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okRes.Body.Close()
+	if okRes.StatusCode != http.StatusOK {
+		t.Fatalf("bearer %d", okRes.StatusCode)
+	}
+	listReq, err := http.NewRequest(http.MethodGet, base+"/v1/sessions", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listReq.Header.Set("Authorization", "Bearer "+bearerToken)
+	listRes, err := http.DefaultClient.Do(listReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listBody, _ := io.ReadAll(listRes.Body)
+	listRes.Body.Close()
+	if strings.Contains(string(listBody), bearerToken) || !strings.Contains(string(listBody), "[redacted]") {
+		t.Fatalf("error body leaked")
+	}
+	health, err := http.Get(base + "/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	healthBody, _ := io.ReadAll(health.Body)
+	health.Body.Close()
+	if health.StatusCode != http.StatusOK || strings.Contains(string(healthBody), "agent") {
+		t.Fatalf("health %d %s", health.StatusCode, healthBody)
+	}
+	page, err := http.Get(base + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page.Body.Close()
+	if page.StatusCode != http.StatusOK {
+		t.Fatalf("static %d", page.StatusCode)
+	}
+	q, err := http.Get(base + "/v1/info?access_token=" + bearerToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.Body.Close()
+	if strings.Contains(logs.String(), bearerToken) {
+		t.Fatal("token appeared in the log")
+	}
 }

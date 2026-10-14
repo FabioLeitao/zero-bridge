@@ -87,7 +87,10 @@ button {
 
 button:disabled, select:disabled { opacity: 0.5; cursor: default; }
 
-#new-session { width: auto; margin-top: 0.35rem; background: transparent; color: var(--fg); border: 1px solid var(--line); }
+#new-session, #logout, #login-button { width: auto; margin-top: 0.35rem; background: transparent; color: var(--fg); border: 1px solid var(--line); }
+#login { display: flex; flex-direction: column; gap: 0.35rem; }
+#login[hidden] { display: none; }
+#login-error { color: var(--warn); min-height: 1.2rem; }
 
 :focus-visible {
   outline: 2px solid var(--focus);

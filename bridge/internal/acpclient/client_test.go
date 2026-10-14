@@ -27,6 +27,19 @@ func TestHelperProcess(t *testing.T) {
 	t.Skip("re-exec helper for fake zero acp")
 }
 
+func TestChildEnvOmitsBridgeToken(t *testing.T) {
+	t.Setenv("ZERO_BRIDGE_TOKEN", "parent-token-must-not-reach-the-child")
+	env := childEnv([]string{"ZERO_BRIDGE_TOKEN=extra-token-must-not-reach", "ZB_OK=1"})
+	for _, e := range env {
+		if strings.HasPrefix(e, "ZERO_BRIDGE_TOKEN=") {
+			t.Fatal("child env contains ZERO_BRIDGE_TOKEN")
+		}
+	}
+	if !strings.Contains(strings.Join(env, "\n"), "ZB_OK=1") {
+		t.Fatal("missing extra env")
+	}
+}
+
 func startFakeClient(t *testing.T) (*Client, func()) {
 	return startFakeClientOpts(t, Options{})
 }

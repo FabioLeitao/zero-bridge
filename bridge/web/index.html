@@ -23,10 +23,17 @@
   </aside>
   <main>
     <h1>zero-bridge</h1>
+    <div id="login" hidden>
+      <label for="token">Token</label>
+      <input id="token" name="token" type="password" autocomplete="off">
+      <button id="login-button" type="button">Entrar</button>
+      <p id="login-error"></p>
+    </div>
     <form id="session">
       <label for="workspace">Workspace</label>
       <input id="workspace" name="workspace" type="text" autocomplete="off" readonly>
       <button id="new-session" type="button">Nova sessao</button>
+      <button id="logout" type="button" hidden>Sair</button>
       <label for="mode">Mode</label>
       <select id="mode" disabled>
         <option value="auto">auto</option>

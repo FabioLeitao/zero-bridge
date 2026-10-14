@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Fast checks on what is about to be committed. Not the  full gate.
+# Do not create a temporary repository here. A caller that does must unset
+# GIT_DIR and GIT_INDEX_FILE first, or the new repository lands in this one.
+# Skipping this hook is forbidden.
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+mapfile -d '' -t staged < <(git diff --cached --name-only -z --diff-filter=ACMR || true)
+
+go_files=()
+if ((${#staged[@]})); then
+	for f in "${staged[@]}"; do
+		[[ -z "$f" ]] && continue
+		if [[ "$f" == *.go && -f "$f" ]]; then
+			go_files+=("$f")
+		fi
+		case "$f" in
+		bridge/web/*)
+			if [[ -f "$f" ]] && grep -E -n -e 'innerHTML' -e 'outerHTML' -e 'insertAdjacentHTML' -e 'document\.write' -e 'eval\(' -e 'new Function' -e 'setTimeout\([[:space:]]*["'\'']' -e 'setInterval\([[:space:]]*["'\'']' -e '(^|[[:space:]<])on[a-z]+=' -- "$f"; then
+				echo "pre-commit: UI sink in $f" >&2
+				exit 1
+			fi
+			;;
+		esac
+	done
+fi
+
+if ((${#go_files[@]})); then
+	unformatted=$(gofmt -l "${go_files[@]}" || true)
+	if [[ -n "$unformatted" ]]; then
+		echo "pre-commit: gofmt needed:" >&2
+		echo "$unformatted" >&2
+		exit 1
+	fi
+	pkgs=()
+	for f in "${go_files[@]}"; do
+		case "$f" in
+		bridge/*.go)
+			rel=${f#bridge/}
+			dir=$(dirname "$rel")
+			if [[ "$dir" == "." ]]; then
+				pkgs+=("./")
+			else
+				pkgs+=("./$dir")
+			fi
+			;;
+		esac
+	done
+	if ((${#pkgs[@]})); then
+		mapfile -t uniq < <(printf '%s\n' "${pkgs[@]}" | sort -u)
+		(cd "$root/bridge" && go vet "${uniq[@]}")
+	fi
+fi
+
+exec bash "$root/scripts/check-hygiene.sh" --root "$root" -a -b -f

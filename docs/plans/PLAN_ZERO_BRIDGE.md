@@ -13,10 +13,23 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S5a | done | `6930fa4` |
 | S5b | done | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
 | S6 | done | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
-| S7–S10, S12 | designed | sections below; not built |
-| S11 | blocked-external | [#1125](https://github.com/Twigpine/zero/issues/1125) had no `issue-approved` at plan time |
-| S13 | following | [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944) |
-| S14, S15 | designed | sections below; not built |
+| S6b | designed | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Not built. |
+| S7 | designed | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3). Proxy decision below. Not built. |
+| S8 | designed | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Not built. |
+| S9 | designed | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Not built. |
+| S10 | designed | [#6](https://github.com/FabioLeitao/zero-bridge/issues/6). Not built. |
+| S11 | blocked-external | [#7](https://github.com/FabioLeitao/zero-bridge/issues/7). Upstream [#1125](https://github.com/Twigpine/zero/issues/1125) had no `issue-approved` at plan time. |
+| S12 | designed | [#8](https://github.com/FabioLeitao/zero-bridge/issues/8). Not built. |
+| S13 | following | [#9](https://github.com/FabioLeitao/zero-bridge/issues/9). [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). |
+| S14 | done | [#1](https://github.com/FabioLeitao/zero-bridge/issues/1). [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt). Local only, not pushed. |
+| S14b | designed | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Not built. |
+| S15 | designed | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10). Not built. |
+| S16 | designed | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Not built. |
+| S17 | done | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` is the definition of done. Local only, not pushed. |
+| S18 | designed | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Not built. |
+| S19 | designed | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Not built. |
+
+**Name.** The repository stays `zero-bridge`. The expansion may change in this doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Other readings: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. Gitlawb's Zero is the recommended reference harness, not a dependency of the design. This project is not affiliated with or endorsed by Gitlawb or Twigpine.
 
 ## Purpose
 
@@ -45,10 +58,12 @@ Reference patterns (read-only, no code copy): Hermes `plugins/platforms/a2a`, `w
 ## Global rules
 
 1. **Place:** every slice names repo + path and why.
-2. **Sequence:** one linear order **S1…S15** (plus S5a/S5b); only one active slice; next slice starts after the previous **acceptance** passes. S14 and S15 are designed and are not the next build slice.
+2. **Sequence:** one linear order of **22 slices** (S1…S15 plus S5a/S5b, S6b, S14b, S16, S17, S18, and S19). Only one active slice; the next starts after the previous **acceptance** passes. S14 and S17 are done locally. Next build order: **S14b → S19 → S16 → S18 → S6b → S7**. S15 waits on an explicit operator go.
 3. **External block:** slices that need upstream triage/merge are marked **BLOQUEADA-EXTERNA**; execution skips to the next slice that does not depend on them (order in this doc is fixed).
 4. **Zero-cost prompts:** any slice that sends a real `session/prompt` (probe, HTTP, permissions, UI) must use a **local** model (Ollama) or a **`:free`** variant; never a paid provider. Transcripts and evidence must record provider/model only (never keys).
 5. **Never close unmerged PRs from this workstream:** if upstream lands overlapping work, merge `upstream/main` into the topic branch, shrink the PR to the remaining delta, and **stop for the operator** to decide next steps. Do not close open PRs without merge and do not close upstream issues from here.
+6. **Telemetry, from S16 onward:** every new route and every new event ships a span, a metric, and log fields. The core module stays stdlib-only. Export stays off unless the operator turns it on.
+7. **Definition of done:** `make check`. Every slice uses that target. `make check-advisory` (deadcode) stays outside it.
 
 ## Security posture (local bridge)
 
@@ -56,12 +71,13 @@ Each item is enforced in a **named slice** as an observable acceptance line.
 
 | Control | Slice |
 | --- | --- |
-| Default bind `127.0.0.1` only | S3, S7 |
-| No token ⇒ never bind non-loopback | S7 |
+| Default bind `127.0.0.1` only | S3, S7, S14 |
+| No token ⇒ never bind non-loopback | S7, S14 |
 | No permissive CORS (`Access-Control-Allow-Origin: *`) | S3, S4, S5, S7 |
 | `session/request_permission` exposed; default **deny**; timeout ⇒ deny | S4 |
 | Max JSON/frame/body size on HTTP and ACP relay | S3, S7 |
-| No secrets in logs (redact bearer, keys, env) | S3–S7, S8–S10 |
+| No secrets in logs (redact bearer, keys, env) | S3–S7, S8–S10, S16 |
+| Telemetry allowlist; no prompt, path, token, or session id | S16 |
 | Web client does not receive host environment variables | S5 |
 | Outbound A2A: `permission: prompt`; network only to configured peer URL | S8–S10 |
 
@@ -84,7 +100,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 ---
 
-## Linear sequence (S1…S15, plus S5a/S5b)
+## Linear sequence (22 slices)
 
 | ID | Track | Repo / path | Unlocks | External block |
 | --- | --- | --- | --- | --- |
@@ -95,7 +111,8 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S5a** | C3a | `zero-bridge` → `bridge/web/` | Minimal streaming chat (depends on S3 only) | — |
 | **S5b** | C3b | `zero-bridge` → `bridge/web/` | Permission card, plan, tool UI (depends on S4) | — |
 | **S6** | C4 | `zero-bridge` → `bridge/` | list/load/resume | — |
-| **S7** | C5 | `zero-bridge` → `bridge/a2a/` | A2A ingress + token gate | — |
+| **S6b** | C4b | `zero-bridge` → `bridge/` | Compact list, local alias, workspace on new session | — |
+| **S7** | C5 | `zero-bridge` → `bridge/a2a/` | A2A ingress behind the S14 proxy | — |
 | **S8** | B1 | `zero-bridge` → `plugin/a2a/` | `a2a_discover` tool | — |
 | **S9** | B2 | `zero-bridge` → `plugin/a2a/` | `a2a_call` tool | — |
 | **S10** | B3 | `zero-bridge` → `plugin/a2a/` | `a2a_list` tool | — |
@@ -103,9 +120,16 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S12** | A3 | `FabioLeitao/zero` topic branch → `internal/acp/` | Upstream #664 spec-draft mode | PR merge upstream |
 | **S13** | A4 | `FabioLeitao/zero` topic branch → `internal/acp/` | Upstream #923 resource limits | follow PR #944 |
 | **S14** | C6 | `zero-bridge` → `bridge/` | Proxy-ready allowlist, token, SSE flush | — |
-| **S15** | — | `zero-bridge` docs | Public checklist and Show and tell | explicit operator go |
+| **S14b** | C6b | `zero-bridge` → `bridge/` | Audit trail, Bearer limit, finite session lifetimes | — |
+| **S16** | C6c | `zero-bridge` → `bridge/obs/` | OTel traces, metrics, JSON logs | — |
+| **S17** | — | `zero-bridge` repo root | `make check`, hooks, CONTRIBUTING, AGENTS | — |
+| **S19** | C6e | `zero-bridge` → `bridge/` | `--agent-cmd`, profiles, capability gate | — |
+| **S18** | C6d | `zero-bridge` container | Image beside the proxy, read-only root | — |
+| **S15** | — | `zero-bridge` docs | Public checklist and Show and tell | waits on explicit operator go |
 
-**Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices (S2–S7) build the ponte only after that baseline. B (S8–S10) does not require the HTTP server. Remaining A slices follow; when **S11** is blocked, continue **S12**–**S13**, then return to **S11** after `issue-approved` on #1125.
+**Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices through S6, S14, and S17 are in the tree. Next build order is **S14b → S19 → S16 → S18 → S6b → S7**. S15 waits on an explicit operator go. B (S8–S10) does not require the HTTP server. When **S11** is blocked, continue **S12**–**S13**, then return to **S11** after `issue-approved` on #1125.
+
+Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15).
 
 ---
 
@@ -323,54 +347,145 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 **Stop:** If `session/list` filtering disagrees with Zero TUI, file upstream issue; bridge documents workspace filter rules.
 
-**Unlocks:** S7 can target stable session ids from A2A.
+**Unlocks:** S6b extends the list. S7 follows S6b.
+
+### S6b — session list at scale
+
+**Path:** `bridge/` session metadata, list filters, and `bridge/web/`. Designed only. Not built. [#2](https://github.com/FabioLeitao/zero-bridge/issues/2).
+
+**Decision:** alias, archived, and pinned are metadata of the bridge. Zero's ACP has no rename, archive, or delete. `zero sessions prune` stays out of scope. Zero does not change the cwd of an existing session. `session/load` and `session/resume` with another cwd fail with `session cwd does not match its persisted workspace`. The UI chooses a workspace only for a new session and shows the real cwd of the active session.
+
+**Acceptance**
+
+- `--state-dir` stores `sessions-meta.json` at mode `0600` in a `0700` directory. An entry that is all defaults is removed. A hostile alias comes back as text.
+- `POST /v1/sessions/{id}/meta` and `GET /v1/sessions` accept `q`, `archived`, and `limit`. Pinned rows come first. The cursor stays opaque.
+- `--workspace-root` bounds a new session's workspace and at most 8 additional directories. Load and resume do not retarget cwd.
+- The sidebar scrolls inside itself. Search, archive, pin, and rename are text-only. The page language is pt-BR.
+- The headless check fits 25 or more sessions, keeps a hostile title as text, hides an archived row, raises a pin, and keeps metadata across reload.
+
+**Stop:** Do not delete or prune sessions. Do not send a different cwd on load or resume.
+
+**Unlocks:** S7.
 
 ### S7 — C5 A2A ingress
 
-**Path:** `bridge/a2a/`.
+**Path:** `bridge/a2a/`. Designed only. Not built. [#3](https://github.com/FabioLeitao/zero-bridge/issues/3).
 
-**Precedent and open question:** Upstream non-loopback exposure (`daemon serve-remote`) is **TLS-only** with a bearer token from `$ZERO_DAEMON_REMOTE_TOKEN` or `_FILE` (never argv). S7 acceptance today requires only a bearer token outside loopback. **Open question:** should S7 also require TLS for non-loopback bind? Until decided, non-loopback bind stays **unsupported** (acceptance unchanged).
+**Decision:** the bridge never listens outside loopback. An external A2A client reaches it through the S14 reverse proxy and token. TLS ends at the proxy. `--listen` outside loopback still exits 2, with or without a token.
 
 **Acceptance**
 
-- `curl -sf http://127.0.0.1:8765/.well-known/agent-card.json` → **200**, JSON with `name` field.
-- JSON-RPC `message/send` on loopback with valid payload → **200** and task id; bridge issues `session/prompt` with zero-cost model.
-- Start with `--listen 0.0.0.0:8765` without `BRIDGE_TOKEN` (or equivalent) → process exits non-zero **or** listens only on 127.0.0.1 (document which; must not expose unauthenticated wide bind).
-- With token configured, non-loopback bind requires `Authorization: Bearer <token>`; missing header → **401**.
-- POST body larger than configured max → **413**.
+- `curl -sf http://127.0.0.1:8765/.well-known/agent-card.json` → **200**, JSON with a `name` field.
+- JSON-RPC `message/send` on loopback with a valid payload → **200** and a task id. The bridge issues `session/prompt` on a zero-cost model.
+- `--listen 0.0.0.0:8765` exits **2**.
+- Through the proxy, a missing credential is the same **401** as S14.
+- A POST body over the configured maximum → **413**.
 
-**Stop:** Do not implement full A2A task surface in one slice; `message/send` + Agent Card only.
+**Stop:** Agent Card and `message/send` only. Do not add a non-loopback listen mode.
 
-**Unlocks:** External A2A clients can reach Zero through the bridge.
+**Unlocks:** An external A2A client can call the proxied bridge.
 
 ### S14 — C6 proxy-ready
 
-**Path:** `bridge/` config and SSE headers. Designed only. Not implemented.
+**Path:** `bridge/` config, login cookie, and SSE headers. Done locally. Deploy guide: [../deploy/CADDY.md](../deploy/CADDY.md). Evidence: [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt).
 
-**Decision:** external access is only through a reverse proxy, the same pattern as Grafana and CouchDB on the T14. The bridge process stays on loopback.
+**Decision:** external access is only through a reverse proxy, the same pattern as Grafana and CouchDB on the T14. The bridge process stays on loopback (`--listen` outside loopback still exits 2). No TLS in the process.
 
 **Acceptance**
 
-- A host/origin allowlist is configurable and empty by default. Empty keeps today's loopback Host check.
-- The bridge has an authentication token. Missing or wrong token is rejected.
-- SSE responses include `X-Accel-Buffering: no`.
-- The docs include a Caddyfile example with `flush_interval -1` and no `encode` on the SSE route:
+- `--allowed-host` and `--public-origin` are repeatable and empty by default. Empty keeps the loopback Host check. Either flag without a token exits 2 (`token required when exposed via proxy`).
+- `--token-file` or `ZERO_BRIDGE_TOKEN`, not both. The file mode must be `0600`. The token string is at least 32 bytes. Missing and wrong Bearer credentials are the same **401** body. `GET /health` without a credential is only `{"ok":true}`.
+- The browser cookie is `zb_session` with `HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`. `Secure` is set only with `--trust-proxy` and `X-Forwarded-Proto: https`. Sessions are in memory.
+- Login rate limit is 5 failures per minute on `POST /v1/login` only. While the window is full, a correct token is also **429** with `Retry-After` and no cookie. Bearer requests on other `/v1/*` routes are not limited.
+- `--allowed-host` matches `Host` only. Without `--public-origin`, `POST /v1/login` with an `https` `Origin` is **403**. If the proxy sends the port in `Host`, the allowlist entry includes that port.
+- SSE responses include `X-Accel-Buffering: no`. The Caddy example uses `flush_interval -1`, no `encode` on the SSE route, and `request_body { max_size 2MB }`.
 
-```caddyfile
-example.com {
-	reverse_proxy 127.0.0.1:8765 {
-		flush_interval -1
-	}
-}
-```
+**Stop:** Do not bind `0.0.0.0`. Do not push this slice until the operator asks.
 
-**Stop:** Do not bind `0.0.0.0`. Do not start this slice without an explicit operator go.
+**Unlocks:** S17, which is done. Next build slice is S14b. S15 waits on an explicit operator go.
 
-**Unlocks:** S15 can publish a bridge that is safe to put behind a proxy.
+### S14b — auth hardening II
+
+**Path:** `bridge/` login and session lifetime. Designed only. Not built. [#11](https://github.com/FabioLeitao/zero-bridge/issues/11).
+
+**Acceptance**
+
+- A login audit trail records success, failure, and limit events and never records the secret.
+- The failure window also covers Bearer calls on `/v1/*`.
+- One call logs out every session, sessions can be revoked, and SIGHUP rotates the token.
+- Limits are always finite and come from a flag, the environment, or a config file: session TTL 12h with a 30-day cap, session idle 2h, max sessions 8, auth-fail window 1m, auth-fail limit 5. Zero, a negative value, or "unlimited" exits **2**.
+
+**Stop:** Do not accept an infinite lifetime or an unlimited failure window.
+
+**Unlocks:** S19.
+
+### S16 — observability
+
+**Path:** submodule `bridge/obs/` (its own `go.mod`). Designed only. Not built. [#12](https://github.com/FabioLeitao/zero-bridge/issues/12).
+
+**Decision:** the core module stays stdlib-only, with no third-party dependency. The OpenTelemetry SDK lives in `bridge/obs`. Hand-written OTLP/JSON is only if visibility or performance require it later.
+
+**Acceptance**
+
+- Traces for Tempo, Prometheus metrics, JSON `slog` lines with `trace_id` for Loki, a Grafana dashboard provisioned from this repo, and alerts.
+- OTLP push goes to `127.0.0.1:4318` and is off by default. A non-loopback endpoint requires an explicit flag.
+- An attribute allowlist. No prompt text, `rawInput`, paths, tokens, or session ids. Labels stay low-cardinality.
+- Every new route and event after this slice ships a span, a metric, and log fields.
+
+**Stop:** Do not put the SDK in the core `go.mod`. Do not export by default.
+
+**Unlocks:** S18.
+
+### S19 — harness-agnostic ACP bridge
+
+**Path:** `bridge/` agent command and profiles. Designed only. Not built. [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Gitlawb's Zero stays the recommended reference harness. It is not a dependency of the design.
+
+**Acceptance**
+
+- `--agent-cmd`, with profiles `zero` and `generic`.
+- A capability gate: a request the agent did not advertise returns **501** with `not supported by agent`.
+- Modes come from `availableModes`.
+- Fake-agent variants, plus one spike against a non-Zero ACP agent.
+- Candidates that exist on this host and are not yet exercised by the bridge: `zero acp`, `hermes acp` (`hermes-acp`), and `dsh --profile acp` (DeepSeek Harness). Claude Code is only reachable through a third-party adapter, is not verified, and stays out of the first spike because it spends quota.
+- Spike rule: isolated `HOME` and config, empty workspace, only `initialize` and `session/new`, no model call. Hermes runs update recovery on startup, so the spike never points at the real checkout or at `~/.hermes`.
+
+**Stop:** Do not call a model. Do not point Hermes at the real checkout or at `~/.hermes`.
+
+**Unlocks:** S16.
+
+### S18 — container image
+
+**Path:** container image for the bridge. Designed only. Not built. [#14](https://github.com/FabioLeitao/zero-bridge/issues/14).
+
+**Acceptance**
+
+- The container shares the proxy's network namespace. The bridge listens on `127.0.0.1` inside that namespace.
+- The Zero binary is mounted read-only. The token file is mode `0600`. The process is not root. The root filesystem is read-only. Capabilities are dropped (`cap_drop ALL`).
+
+**Stop:** Do not run the bridge as root on a writable root filesystem.
+
+**Unlocks:** S6b.
+
+### S17 — local gate
+
+**Path:** repo root (`Makefile`, `scripts/`, `.githooks/`, CONTRIBUTING, AGENTS, templates). Done locally. Not pushed. [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). S15 waits on an explicit operator go.
+
+**Acceptance**
+
+- `make check` from the repo root runs fmt-check, vet, build, `test -race`, pinned golangci-lint, pinned govulncheck, tidy-check, hygiene, and `git diff --check`. Deadcode is `make check-advisory`, not part of `make check`.
+- A hygiene script rejects personal paths, secret shapes, tracked agent artifacts, broken EN/pt_BR parity, and broken relative links. Commits in the range are signed, have no co-author trailer, and do not use a closing keyword before an issue number. The script is part of `make check`.
+- `make hooks` points Git at `.githooks/`. pre-push runs `make check` and is not skipped. `--no-verify` is forbidden. A clone does not install the hooks by itself.
+- `make e2e` runs the headless check with and without a token and stops the server by the recorded pid. `make mutate` applies a curated set of auth mutants on a copy and exits non-zero if one survives. Mutate is pre-PR, not pre-commit.
+- CONTRIBUTING and AGENTS exist in English and Portuguese. Pull-request and issue templates exist. This slice adds no GitHub Actions workflow.
+- External tools are pinned `go run pkg@version` only. The core `go.mod` stays stdlib-only. `bridge/obs` is the one module that may import the OpenTelemetry SDK.
+
+**Stop:** Do not add a workflow file. Do not document a way to skip the hooks.
+
+**Unlocks:** S14b. S15 waits on an explicit operator go. The operator opens the pull request that covers S14 and S17.
 
 ### S15 — publication
 
-**Path:** repo root docs. Designed only. Not implemented in the sense of changing visibility.
+**Path:** repo root docs. Designed only. Not implemented in the sense of changing visibility. Depends on S17.
 
 **Acceptance**
 
