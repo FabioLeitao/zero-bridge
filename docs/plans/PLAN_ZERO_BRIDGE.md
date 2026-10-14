@@ -293,10 +293,14 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 **Acceptance**
 
-- `curl -sf http://127.0.0.1:8765/v1/sessions` returns JSON array including a session created earlier in the same workspace.
-- `curl -sf -X POST .../v1/sessions/{id}/load` → **200** and `sessionId` matches.
-- `curl -sf -X POST .../v1/sessions/{id}/resume` → **200**; subsequent prompt POST (zero-cost) streams SSE events.
-- Restart only the bridge process (keep Zero data dir); `load` still works for the same id.
+- `GET /v1/sessions?cwd=<abs>&cursor=<opaque>` returns `{"sessions":[...],"nextCursor":""}`, not a bare array. `cwd` is optional; a relative value is **400**. Omitting `cwd` lists every session the agent returns. Loopback and the Host check still apply. The UI filter is "workspace atual" or "todos".
+- `POST /v1/sessions/{id}/load` takes an optional `{"workspace":"/abs"}`. Without it, the bridge pages `session/list` (at most 20 pages) to find the cwd. **200** `{"sessionId","mode","modes"}`. Events emitted during that call carry `"replay":true` on the same SSE log. Already attached: **409** `{"error":"already attached"}`. Unknown session: **404**. Any other agent error: **502**, redacted.
+- The hub log cap stays 1000, so a long replay can drop its oldest events. Load uses `Config.ReplayLogCap` (default 5000) for that hub only.
+- `POST .../resume` uses the same body and cwd discovery and does not replay. If this process is already attached, **200** `{"attached":true}`.
+- A later prompt uses the existing route. If the agent refuses a view-only session, the SSE `error` event carries the redacted message and the UI shows "sessao somente leitura".
+- The sidebar shows a title or a short id, the cwd basename, and `updatedAt`, plus refresh, "mais", "Retomar", and "Nova sessao". Session titles are untrusted text.
+- Restart only the bridge process (a new `zero acp` child, same Zero data). `GET` lists the earlier session and `load` replays the previous turn.
+- Evidence: [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt).
 
 **Stop:** If `session/list` filtering disagrees with Zero TUI, file upstream issue; bridge documents workspace filter rules.
 

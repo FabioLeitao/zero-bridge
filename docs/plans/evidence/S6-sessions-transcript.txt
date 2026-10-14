@@ -1,0 +1,58 @@
+S6 sessions transcript — 2026-10-14 00:32:14 -03
+
+Bridge commit (HEAD at the runs below):
+  241ee3c feat(bridge): web session sidebar
+
+Headless e2e (fake agent), commands shown before the run:
+  cd /home/leitao/Projects/dev/zero-bridge/bridge
+  go build -o /tmp/acpfake ./cmd/acpfake
+  tmux new-session -d -s zbridge-s6-fake \
+    "cd /home/leitao/Projects/dev/zero-bridge/bridge && ZB_FAKE_SCENARIO=rich ZB_FAKE_PERMISSION=1 go run ./cmd/zero-bridge --listen 127.0.0.1:8773 --zero-bin /tmp/acpfake --permission-timeout 3s"
+  node bridge/web/e2e/check.mjs http://127.0.0.1:8773/
+
+The first check against a process that had already attached sess-a2 reported resume-replay. That session was killed and started again. The clean run exited 0:
+  sessionTitleText true, replay true, resumed true, viewOnly true
+  xss undefined, imgCount 0, scriptCount 0, payloadAsText true
+  toolHead: read · list · <img ...> · completed
+  failures []
+
+Real zero, commands shown before the run (port 8772, not 8765/8766):
+  mkdir -p /tmp/zbridge-s6
+  tmux new-session -d -s zbridge-s6-real \
+    "cd /home/leitao/Projects/dev/zero-bridge/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8772 --workspace /tmp/zbridge-s6"
+  POST /v1/sessions {"workspace":"/tmp/zbridge-s6"}
+    → 200 {"mode":"auto","modes":["auto","ask","plan"],"sessionId":"zero_20261014033243_1791948763816894520_1"}
+  POST .../prompt {"text":"Reply with the single word pong."}
+    → 202. The turn ended stopReason end_turn. The visible answer was pong.
+    Five MCP servers logged a connect timeout and were skipped. No permission request.
+
+Restart (new zero acp child; Zero's own session store kept):
+  tmux kill-session -t zbridge-s6-real
+  tmux new-session -d -s zbridge-s6-real \
+    "cd /home/leitao/Projects/dev/zero-bridge/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8772 --workspace /tmp/zbridge-s6"
+  GET /v1/sessions?cwd=/tmp/zbridge-s6
+    → 200 {"nextCursor":"","sessions":[{"sessionId":"zero_20261014033243_1791948763816894520_1","cwd":"/tmp/zbridge-s6","title":"ACP session","updatedAt":"2026-10-14T03:32:54Z","_meta":{"modelId":"openrouter/free","createdAt":"2026-10-14T03:32:43Z"}}]}
+  POST .../load {}
+    → 200 {"mode":"auto","modes":["auto","ask","plan"],"sessionId":"zero_20261014033243_1791948763816894520_1"}
+  SSE replay, in order, both replay true:
+    user_message_chunk "Reply with the single word pong."
+    agent_message_chunk "pong"
+  The live turn had also emitted thought chunks and MCP warnings. Load did not replay those.
+  POST .../prompt {"text":"Reply with the single word ping."}
+    → 202. Later agent_message_chunk "ping", then stop end_turn. Those events were not replay.
+  POST .../resume {}
+    → 200 {"attached":true}
+  The SSE buffer stayed at two replay:true events (seq 1 and 2). Resume did not replay.
+
+_meta.modelId was openrouter/free. The bridge leaves the provider alone unless Ollama lists granite4.2:3b-cpu-ctx16k. This run inherited the active profile.
+
+zbridge-s6-real was stopped after the notes. 8772 and 8773 were closed.
+
+Restart of the long-running servers (commands shown before):
+  tmux kill-session -t zbridge-s5a-real
+  tmux kill-session -t zbridge-s5a-fake
+  tmux new-session -d -s zbridge-s5a-real \
+    "cd /home/leitao/Projects/dev/zero-bridge/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765"
+  tmux new-session -d -s zbridge-s5a-fake \
+    "cd /home/leitao/Projects/dev/zero-bridge/bridge && ZB_FAKE_TEXT='<img src=x onerror=\"window.__xss=1\">' go run ./cmd/zero-bridge --listen 127.0.0.1:8766 --zero-bin /tmp/acpfake"
+  GET /health on 8765 and 8766 both returned 200. Left running.

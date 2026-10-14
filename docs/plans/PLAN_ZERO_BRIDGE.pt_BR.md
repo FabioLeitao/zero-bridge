@@ -278,10 +278,14 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 **Aceite**
 
-- `GET /v1/sessions` lista sessão criada antes no mesmo workspace.
-- `POST .../load` → **200**, `sessionId` correto.
-- `POST .../resume` → **200**; prompt seguinte (zero-custo) gera SSE.
-- Reiniciar só o bridge; `load` ainda funciona para o mesmo id.
+- `GET /v1/sessions?cwd=<abs>&cursor=<opaco>` devolve `{"sessions":[...],"nextCursor":""}`, não um array solto. `cwd` é opcional; caminho relativo é **400**. Sem `cwd`, lista todas as sessões que o agente devolver. Loopback e o check de Host continuam valendo. O filtro da UI é "workspace atual" ou "todos".
+- `POST /v1/sessions/{id}/load` aceita `{"workspace":"/abs"}` opcional. Sem isso, a ponte pagina `session/list` (no máximo 20 páginas) para achar o cwd. **200** `{"sessionId","mode","modes"}`. Eventos emitidos durante essa chamada levam `"replay":true` no mesmo log SSE. Já anexada: **409** `{"error":"already attached"}`. Sessão desconhecida: **404**. Qualquer outro erro do agente: **502**, redigido.
+- O teto do log do hub continua 1000, então um replay longo pode perder o começo. O load usa `Config.ReplayLogCap` (padrão 5000) só nesse hub.
+- `POST .../resume` usa o mesmo corpo e a mesma descoberta de cwd, sem replay. Se este processo já está anexado, **200** `{"attached":true}`.
+- O prompt seguinte usa a rota que já existe. Se o agente recusar uma sessão somente leitura, o evento SSE `error` leva a mensagem redigida e a UI mostra "sessao somente leitura".
+- A barra mostra título ou id curto, o basename do cwd e `updatedAt`, mais atualizar, "mais", "Retomar" e "Nova sessao". Título de sessão é texto não confiável.
+- Reiniciar só a ponte (novo filho `zero acp`, os mesmos dados do Zero). `GET` lista a sessão anterior e `load` reproduz o turno.
+- Evidência: [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt).
 
 **Parada:** divergência com TUI → issue upstream; documentar filtro de workspace.
 

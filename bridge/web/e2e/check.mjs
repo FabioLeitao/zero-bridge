@@ -172,6 +172,66 @@ try {
   result.expired = Boolean(expired);
   if (!expired) fail("expired", "timeout did not show expired");
 
+  await evalJs(`(function () {
+    const filter = document.getElementById('session-filter');
+    filter.value = 'all';
+    filter.dispatchEvent(new Event('change'));
+    return true;
+  })()`);
+  const listed = await waitFor("document.getElementById('session-list').textContent.indexOf('onerror') >= 0 && document.querySelectorAll('#session-list img, #session-list script').length === 0", 8000);
+  result.sessionTitleText = Boolean(listed);
+  if (!listed) fail("session-title", await evalJs("document.getElementById('session-list').textContent"));
+  const loaded = await evalJs(`(function () {
+    const open = Array.from(document.querySelectorAll('#session-list button')).find((b) => b.textContent.indexOf('onerror') >= 0);
+    if (!open) return false;
+    open.click();
+    return true;
+  })()`);
+  if (!loaded) fail("session-load-click", "hostile session button missing");
+  const replay = await waitFor("document.getElementById('log').textContent.indexOf('replay-user') >= 0 && document.getElementById('log').textContent.indexOf('historico') >= 0 && document.querySelectorAll('#log img').length === 0", 8000);
+  result.replay = Boolean(replay);
+  if (!replay) fail("replay", await evalJs("document.getElementById('log').textContent"));
+  if (!(await waitFor("document.getElementById('more-sessions').hidden === false", 3000))) {
+    fail("more", "pagination control stayed hidden");
+  }
+  const resumed = await evalJs(`(function () {
+    const item = Array.from(document.querySelectorAll('#session-list li')).find((li) => li.textContent.indexOf('alpha') >= 0);
+    if (!item) return false;
+    const resume = Array.from(item.querySelectorAll('button')).find((b) => b.textContent === 'Retomar');
+    if (!resume) return false;
+    resume.click();
+    return true;
+  })()`);
+  if (!resumed) fail("resume-click", "Retomar missing");
+  const resumedId = await waitFor("sessionId === 'sess-a2'", 8000);
+  result.resumed = Boolean(resumedId);
+  if (!resumedId) fail("resume", await evalJs("sessionId"));
+  if (await evalJs("document.getElementById('log').textContent.indexOf('replay-user') >= 0")) {
+    fail("resume-replay", "resume showed load history");
+  }
+  await evalJs("document.getElementById('more-sessions').click()");
+  if (!(await waitFor("document.getElementById('session-list').textContent.indexOf('beta') >= 0", 4000))) {
+    fail("more-page", await evalJs("document.getElementById('session-list').textContent"));
+  }
+  await evalJs("document.getElementById('more-sessions').click()");
+  const viewListed = await waitFor("document.getElementById('session-list').textContent.indexOf('locked') >= 0", 4000);
+  if (!viewListed) fail("view-list", "view-only session was not listed");
+  const viewClicked = await evalJs(`(function () {
+    const item = Array.from(document.querySelectorAll('#session-list li')).find((li) => li.textContent.indexOf('locked') >= 0);
+    if (!item) return false;
+    const open = Array.from(item.querySelectorAll('button')).find((b) => b.textContent !== 'Retomar');
+    if (!open) return false;
+    open.click();
+    return true;
+  })()`);
+  if (!viewClicked) fail("view-click", "locked session button missing");
+  if (!(await waitFor("sessionId === 'sess-view'", 8000))) fail("view-load", await evalJs("sessionId"));
+  if (!(await waitFor("document.getElementById('send').disabled === false", 8000))) fail("view-send", "composer disabled");
+  if (!(await sendPrompt("view-only-please"))) fail("view-prompt", "prompt failed");
+  const viewOnly = await waitFor("document.body.textContent.indexOf('sessao somente leitura') >= 0", 8000);
+  result.viewOnly = Boolean(viewOnly);
+  if (!viewOnly) fail("view-only", "read-only notice missing");
+
   ws.close();
 } catch (err) {
   result.error = String(err);
