@@ -279,7 +279,7 @@ func TestPromptEventsAndReplay(t *testing.T) {
 	if srv.sessions[sid].logLen() == 0 {
 		t.Fatal("expected session log entries after prompt")
 	}
-	lines := collectSSE(t, base+"/v1/sessions/"+sid+"/events", 5*time.Second)
+	lines := collectSSE(t, base+"/v1/sessions/"+sid+"/events")
 	if !sseContainsType(lines, "session/update") || !sseContainsType(lines, "stop") {
 		t.Fatalf("events %v", lines)
 	}
@@ -366,9 +366,13 @@ func postPromptAsync(base, sid, text string) {
 	}()
 }
 
-func collectSSE(t *testing.T, url string, timeout time.Duration) []string {
+// collectSSE reads until a stop event arrives. also lists event types that
+// must be present as well (permission tests pass permission_resolved).
+// The deadline is 15s so a loaded host can still finish a turn in flight.
+func collectSSE(t *testing.T, url string, also ...string) []string {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	const deadline = 15 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	res, err := http.DefaultClient.Do(req)
@@ -387,11 +391,21 @@ func collectSSE(t *testing.T, url string, timeout time.Duration) []string {
 		if strings.HasPrefix(line, "data: ") {
 			lines = append(lines, line)
 		}
-		if sseContainsType(lines, "stop") {
-			break
+		if sseHasType(lines, "stop") && sseHasAll(lines, also) {
+			return lines
 		}
 	}
-	return lines
+	t.Fatalf("sse missing stop within %s (also %v): %v", deadline, also, lines)
+	return nil
+}
+
+func sseHasAll(lines []string, types []string) bool {
+	for _, typ := range types {
+		if !sseHasType(lines, typ) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestConcurrentSessionsWhileSlowPrompt(t *testing.T) {
@@ -416,7 +430,7 @@ func TestConcurrentSessionsWhileSlowPrompt(t *testing.T) {
 	}
 	time.Sleep(2 * time.Second)
 	for _, sid := range []string{sidA, sidB} {
-		lines := collectSSE(t, base+"/v1/sessions/"+sid+"/events", 2*time.Second)
+		lines := collectSSE(t, base+"/v1/sessions/"+sid+"/events")
 		if !sseContainsType(lines, "stop") {
 			t.Fatalf("session %s missing stop: %v", sid, lines)
 		}
@@ -473,6 +487,17 @@ func TestJSONContentTypeExact(t *testing.T) {
 	if bad.StatusCode != http.StatusUnsupportedMediaType {
 		t.Fatalf("jsonx status %d", bad.StatusCode)
 	}
+}
+
+func sseHasType(lines []string, typ string) bool {
+	needle := `"type":"` + typ + `"`
+	needleSp := `"type": "` + typ + `"`
+	for _, line := range lines {
+		if strings.Contains(line, needle) || strings.Contains(line, needleSp) {
+			return true
+		}
+	}
+	return false
 }
 
 func sseContainsType(lines []string, typ string) bool {

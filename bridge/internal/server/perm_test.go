@@ -32,7 +32,7 @@ func TestPermissionAllowAndReplay(t *testing.T) {
 	if missing.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown %d", missing.StatusCode)
 	}
-	lines := collectSSE(t, base+"/v1/sessions/"+sid+"/events", 3*time.Second)
+	lines := collectSSE(t, base+"/v1/sessions/"+sid+"/events", "permission_resolved")
 	blob := strings.Join(lines, "\n")
 	if !strings.Contains(blob, "ALLOWED optionId=allow") || !strings.Contains(blob, "permission_request") || !strings.Contains(blob, "permission_resolved") {
 		t.Fatalf("sse %s", blob)
@@ -55,7 +55,7 @@ func TestPermissionDenyAndOtherSession(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("deny %d", res.StatusCode)
 	}
-	lines := collectSSE(t, base+"/v1/sessions/"+a+"/events", 3*time.Second)
+	lines := collectSSE(t, base+"/v1/sessions/"+a+"/events", "permission_resolved")
 	if !strings.Contains(strings.Join(lines, "\n"), "DENIED optionId=deny") {
 		t.Fatalf("sse %v", lines)
 	}
@@ -90,7 +90,7 @@ func TestAllowDoesNotSelectAlways(t *testing.T) {
 	if res.StatusCode != http.StatusOK || !strings.Contains(string(body), `"effective":"deny"`) {
 		t.Fatalf("allow body %d %s", res.StatusCode, body)
 	}
-	lines := collectSSE(t, base+"/v1/sessions/"+sid+"/events", 3*time.Second)
+	lines := collectSSE(t, base+"/v1/sessions/"+sid+"/events", "permission_resolved")
 	blob := strings.Join(lines, "\n")
 	if strings.Contains(blob, "always_allow") || strings.Contains(blob, `"decision":"allow"`) || strings.Contains(blob, "ALLOWED") {
 		t.Fatalf("widened grant: %s", blob)
