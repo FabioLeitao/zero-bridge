@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	headerCSP   = "default-src 'self'"
+	headerCSP   = "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 	headerCTO   = "nosniff"
 	headerCache = "no-store"
 )
@@ -19,6 +19,8 @@ func writeSecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Security-Policy", headerCSP)
 	w.Header().Set("X-Content-Type-Options", headerCTO)
 	w.Header().Set("Cache-Control", headerCache)
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Frame-Options", "DENY")
 }
 
 func allowedHosts(listenAddr string) ([]string, error) {

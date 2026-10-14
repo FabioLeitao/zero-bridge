@@ -16,6 +16,7 @@ import (
 
 	"zero-bridge/bridge/internal/acpclient"
 	"zero-bridge/bridge/internal/zeroenv"
+	"zero-bridge/bridge/web"
 )
 
 // Config configures the HTTP bridge server.
@@ -177,6 +178,12 @@ func (s *Server) sessionHub(id string) *sessionHub {
 // Handler returns the HTTP handler (after Boot).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", s.handleIndex)
+	mux.HandleFunc("/{$}", s.methodNotAllowed)
+	mux.HandleFunc("/app.js", s.methodNotAllowed)
+	mux.HandleFunc("/style.css", s.methodNotAllowed)
+	mux.HandleFunc("GET /app.js", s.handleFile("app.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /style.css", s.handleFile("style.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
@@ -185,7 +192,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, _ *http.Request) {
 		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/", "/app.js", "/style.css":
+			if r.Method != http.MethodGet {
+				s.methodNotAllowed(w, r)
+				return
+			}
+		}
 		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 	})
 	return s.withMiddleware(mux)
@@ -286,6 +300,29 @@ func (r *statusRecorder) WriteHeader(code int) {
 func (r *statusRecorder) Flush() {
 	if f, ok := r.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
+	}
+}
+
+func (s *Server) methodNotAllowed(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Allow", "GET")
+	s.writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+}
+
+func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	s.handleFile("index.html", "text/html; charset=utf-8")(w, r)
+}
+
+func (s *Server) handleFile(name, contentType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		b, err := web.Files.ReadFile(name)
+		if err != nil {
+			s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+			return
+		}
+		writeSecurityHeaders(w)
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(b)
 	}
 }
 
