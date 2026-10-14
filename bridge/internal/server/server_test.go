@@ -1250,6 +1250,86 @@ func TestV1RoutesRequireCredential(t *testing.T) {
 			t.Fatalf("%s %s cookie without Origin: %d", rt.method, rt.path, got)
 		}
 	}
+	for i, rt := range routes {
+		got := call(rt.method, rt.path, "wrong-bearer-token", nil)
+		want := http.StatusUnauthorized
+		if i >= 5 {
+			want = http.StatusTooManyRequests
+		}
+		if got != want {
+			t.Fatalf("%s %s wrong bearer %d: %d", rt.method, rt.path, i, got)
+		}
+	}
+	if got := call(http.MethodGet, "/v1/info", bearerToken, nil); got != http.StatusTooManyRequests {
+		t.Fatalf("correct bearer while limited: %d", got)
+	}
+	if got := call(http.MethodGet, "/v1/info", "", nil); got != http.StatusUnauthorized {
+		t.Fatalf("missing credential while limited: %d", got)
+	}
+}
+
+func TestBearerRateLimitConcurrentWrongToken(t *testing.T) {
+	var logs bytes.Buffer
+	_, base, cleanup := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+		Logger:            log.New(&logs, "", 0),
+	})
+	defer cleanup()
+	var unauthorized atomic.Int32
+	var limited atomic.Int32
+	var other atomic.Int32
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+			if err != nil {
+				other.Add(1)
+				return
+			}
+			req.Header.Set("Authorization", "Bearer wrong-bearer-token")
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				other.Add(1)
+				return
+			}
+			res.Body.Close()
+			switch res.StatusCode {
+			case http.StatusUnauthorized:
+				unauthorized.Add(1)
+			case http.StatusTooManyRequests:
+				limited.Add(1)
+			default:
+				other.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if other.Load() != 0 || unauthorized.Load() > 5 || unauthorized.Load()+limited.Load() != 50 {
+		t.Fatalf("401=%d 429=%d other=%d", unauthorized.Load(), limited.Load(), other.Load())
+	}
+	okReq, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okReq.Header.Set("Authorization", "Bearer "+bearerToken)
+	okRes, err := http.DefaultClient.Do(okReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okRes.Body.Close()
+	if okRes.StatusCode != http.StatusTooManyRequests || okRes.Header.Get("Retry-After") == "" {
+		t.Fatalf("correct bearer while limited: %d retry %q", okRes.StatusCode, okRes.Header.Get("Retry-After"))
+	}
+	text := logs.String()
+	if !strings.Contains(text, `"kind":"bearer_failure"`) || !strings.Contains(text, `"kind":"rate_limited"`) {
+		t.Fatalf("audit: %s", text)
+	}
+	if strings.Contains(text, bearerToken) || strings.Contains(text, "wrong-bearer-token") {
+		t.Fatal("secret in audit log")
+	}
 }
 
 func TestLoginCookieSession(t *testing.T) {

@@ -219,6 +219,44 @@ func (s *Server) cookieCSRF(r *http.Request) bool {
 	return originAllowed(origin, s.allowed, s.cfg.PublicOrigins)
 }
 
+// bearerGate counts a presented Bearer on a protected route before the
+// comparison. A full window rejects the request, including a later correct
+// token. A valid session cookie does not consume the counter. A missing
+// Authorization header stays a plain 401 so an empty probe is not a Bearer
+// failure.
+func (s *Server) bearerGate(r *http.Request) (bool, int) {
+	if s.cfg.Token == "" || isPublic(r) {
+		return false, 0
+	}
+	if r.URL.Path == "/v1/auth/status" && r.Method == http.MethodGet {
+		return false, 0
+	}
+	if r.URL.Path == "/v1/login" && r.Method == http.MethodPost {
+		return false, 0
+	}
+	if s.sessionOK(r) {
+		return false, 0
+	}
+	tok, ok := presentedBearer(r)
+	if !ok {
+		return false, 0
+	}
+	key := s.clientKey(r)
+	at, limited, retry := s.reserveLogin(key)
+	if limited {
+		s.recordAudit(auth.KindRateLimited, r, "window full")
+		s.sleepLoginFailure()
+		return true, retry
+	}
+	if !auth.Equal(s.cfg.Token, tok) {
+		s.recordAudit(auth.KindBearerFailure, r, "mismatch")
+		s.sleepLoginFailure()
+		return false, 0
+	}
+	s.releaseLogin(key, at)
+	return false, 0
+}
+
 func (s *Server) recordAudit(kind auth.Kind, r *http.Request, reason string) {
 	if s.audit == nil || r == nil {
 		return

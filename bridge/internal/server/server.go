@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -345,6 +346,12 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusForbidden, time.Since(start))
 			return
 		}
+		if blocked, retry := s.bearerGate(r); blocked {
+			rec.Header().Set("Retry-After", strconv.Itoa(retry))
+			s.writeJSON(rec, http.StatusTooManyRequests, map[string]any{"error": "too many requests"})
+			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusTooManyRequests, time.Since(start))
+			return
+		}
 		if !s.authorized(r) {
 			rec.Header().Set("WWW-Authenticate", "Bearer")
 			s.writeJSON(rec, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
@@ -439,13 +446,21 @@ func isPublic(r *http.Request) bool {
 	}
 }
 
-func (s *Server) hasBearer(r *http.Request) bool {
+func presentedBearer(r *http.Request) (string, bool) {
 	const prefix = "Bearer "
 	h := r.Header.Get("Authorization")
 	if len(h) <= len(prefix) || h[:len(prefix)] != prefix {
+		return "", false
+	}
+	return h[len(prefix):], true
+}
+
+func (s *Server) hasBearer(r *http.Request) bool {
+	tok, ok := presentedBearer(r)
+	if !ok {
 		return false
 	}
-	return auth.Equal(s.cfg.Token, h[len(prefix):])
+	return auth.Equal(s.cfg.Token, tok)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
