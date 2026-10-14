@@ -263,6 +263,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/auth/sessions", s.handleListAuthSessions)
 	mux.HandleFunc("DELETE /v1/auth/sessions/{handle}", s.handleRevokeAuthSession)
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
+	mux.HandleFunc("GET /v1/capabilities", s.handleCapabilities)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
 	mux.HandleFunc("POST /v1/sessions/{id}/load", s.handleLoad)
@@ -510,6 +511,48 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 var errSessionNotInList = errors.New("session not in list")
 
+func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
+	c, err := s.acpClient()
+	if err != nil {
+		s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "agent down"})
+		return
+	}
+	snap, ok := c.InitializeSnapshot()
+	if !ok {
+		s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "agent down"})
+		return
+	}
+	modes := c.DeclaredModes()
+	if modes == nil {
+		modes = []acpclient.Mode{}
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"profile":       s.cfg.Profile,
+		"agent":         map[string]string{"name": snap.AgentInfo.Name, "version": snap.AgentInfo.Version},
+		"loadSession":   snap.Capabilities.LoadSession,
+		"sessionList":   snap.Capabilities.List(),
+		"sessionResume": snap.Capabilities.Resume(),
+		"prompt":        snap.Capabilities.PromptCapabilities,
+		"modes":         modes,
+	})
+}
+
+func (s *Server) agentCaps() (acpclient.AgentCapabilities, bool) {
+	c, err := s.acpClient()
+	if err != nil {
+		return acpclient.AgentCapabilities{}, false
+	}
+	snap, ok := c.InitializeSnapshot()
+	if !ok {
+		return acpclient.AgentCapabilities{}, false
+	}
+	return snap.Capabilities, true
+}
+
+func (s *Server) notSupported(w http.ResponseWriter) {
+	s.writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "not supported by agent"})
+}
+
 func (s *Server) handleLoad(w http.ResponseWriter, r *http.Request) {
 	s.handleAttach(w, r, true)
 }
@@ -519,6 +562,11 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAttach(w http.ResponseWriter, r *http.Request, replay bool) {
+	caps, ok := s.agentCaps()
+	if !ok || (replay && !caps.LoadSession) || (!replay && !caps.Resume()) {
+		s.notSupported(w)
+		return
+	}
 	id := r.PathValue("id")
 	if id == "" {
 		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
@@ -698,6 +746,11 @@ func modeResponse(id string, res modePayload) map[string]any {
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	caps, ok := s.agentCaps()
+	if !ok || !caps.List() {
+		s.notSupported(w)
+		return
+	}
 	cwd := r.URL.Query().Get("cwd")
 	if cwd != "" && !filepath.IsAbs(cwd) {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "cwd must be an absolute path"})
@@ -801,6 +854,16 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 	}
 	if hub.promptInProgress() {
 		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
+		return
+	}
+	c, err := s.acpClient()
+	if err != nil {
+		s.notSupported(w)
+		return
+	}
+	offer, hasOffer := c.SessionOffer(id)
+	if !hasOffer || len(offer.Modes) == 0 {
+		s.notSupported(w)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)

@@ -86,6 +86,8 @@ type agentState struct {
 	seenInit bool
 	snap     InitializeSnapshot
 	sessions map[string]SessionOffer
+	seenMode map[string]bool
+	modes    []Mode
 }
 
 func (c *Client) noteResult(method string, params any, raw json.RawMessage) {
@@ -139,8 +141,26 @@ func (c *Client) noteResult(method string, params any, raw json.RawMessage) {
 			c.state.sessions = map[string]SessionOffer{}
 		}
 		c.state.sessions[id] = offer
+		for _, m := range offer.Modes {
+			if m.ID == "" || c.state.seenMode[m.ID] {
+				continue
+			}
+			if c.state.seenMode == nil {
+				c.state.seenMode = map[string]bool{}
+			}
+			c.state.seenMode[m.ID] = true
+			c.state.modes = append(c.state.modes, m)
+		}
 		c.state.mu.Unlock()
 	}
+}
+
+// DeclaredModes returns mode ids the agent announced, in first-seen order.
+// It does not include a session id.
+func (c *Client) DeclaredModes() []Mode {
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	return append([]Mode(nil), c.state.modes...)
 }
 
 func sessionIDParam(params any) string {

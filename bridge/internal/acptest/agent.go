@@ -39,31 +39,20 @@ func runAgent(r io.Reader, w io.Writer) {
 		switch env.Method {
 		case "initialize":
 			writeResp(w, env.ID, map[string]any{
-				"protocolVersion": 1,
-				"agentCapabilities": map[string]any{
-					"loadSession": false,
-					"promptCapabilities": map[string]any{
-						"image": false,
-					},
-				},
-				"agentInfo": map[string]string{"name": "acptest", "version": "0"},
+				"protocolVersion":   1,
+				"agentCapabilities": fakeCapabilities(),
+				"agentInfo":         map[string]string{"name": "acptest", "version": "0"},
 			})
 			if os.Getenv("ZB_FAKE_AGENT_EXIT") == "1" {
 				os.Exit(0)
 			}
 		case "session/new":
 			n := nextSessionID.Add(1)
-			writeResp(w, env.ID, map[string]any{
-				"sessionId": fmt.Sprintf("sess-acptest-%d", n),
-				"modes": map[string]any{
-					"currentModeId": "auto",
-					"availableModes": []map[string]string{
-						{"id": "auto", "name": "Auto"},
-						{"id": "ask", "name": "Ask"},
-						{"id": "plan", "name": "Plan"},
-					},
-				},
-			})
+			body := map[string]any{"sessionId": fmt.Sprintf("sess-acptest-%d", n)}
+			if os.Getenv("ZB_FAKE_NO_MODES") != "1" {
+				body["modes"] = modeResult("auto")["modes"]
+			}
+			writeResp(w, env.ID, body)
 		case "session/set_mode":
 			var setReq struct {
 				Params struct {
@@ -287,6 +276,28 @@ func listPage(cwd, cursor string) ([]map[string]any, string) {
 		next = filtered[end-1].id
 	}
 	return out, next
+}
+
+func fakeCapabilities() map[string]any {
+	caps := map[string]any{
+		"loadSession": os.Getenv("ZB_FAKE_NO_LOAD") != "1",
+		"promptCapabilities": map[string]any{
+			"image":           false,
+			"audio":           false,
+			"embeddedContext": false,
+		},
+	}
+	sess := map[string]any{}
+	if os.Getenv("ZB_FAKE_NO_LIST") != "1" {
+		sess["list"] = map[string]any{}
+	}
+	if os.Getenv("ZB_FAKE_NO_RESUME") != "1" {
+		sess["resume"] = map[string]any{}
+	}
+	if len(sess) > 0 {
+		caps["sessionCapabilities"] = sess
+	}
+	return caps
 }
 
 func modeResult(current string) map[string]any {
