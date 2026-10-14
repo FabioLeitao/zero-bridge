@@ -46,6 +46,84 @@ func TestFakeTextAndKinds(t *testing.T) {
 	}
 }
 
+func TestRichScenario(t *testing.T) {
+	t.Setenv("ZB_FAKE_SCENARIO", "rich")
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"session/prompt","params":{"sessionId":"s"}}` + "\n")
+	var out bytes.Buffer
+	runAgent(in, &out)
+	s := out.String()
+	hostile := hostileJSON(hostilePayload())
+	for _, want := range []string{
+		"agent_thought_chunk",
+		`"toolCallId":"tc-text"`,
+		"tool_call_update",
+		`"status":"completed"`,
+		`"type":"content"`,
+		`"type":"diff"`,
+		`"oldText":"old"`,
+		`"sessionUpdate":"plan"`,
+		`"status":"pending"`,
+		`"status":"in_progress"`,
+		hostile,
+		"rich-done",
+	} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("missing %q in %s", want, s)
+		}
+	}
+}
+
+func TestRichPermissionHostile(t *testing.T) {
+	t.Setenv("ZB_FAKE_SCENARIO", "rich")
+	t.Setenv("ZB_FAKE_PERMISSION", "1")
+	stdinR, stdinW := io.Pipe()
+	stdoutR, stdoutW := io.Pipe()
+	go runAgent(stdinR, stdoutW)
+	if _, err := io.WriteString(stdinW, `{"jsonrpc":"2.0","id":1,"method":"session/prompt","params":{"sessionId":"s"}}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	sc := bufio.NewScanner(stdoutR)
+	hostile := hostileJSON(hostilePayload())
+	var sawReq bool
+	var final strings.Builder
+	for sc.Scan() {
+		line := sc.Text()
+		final.WriteString(line)
+		final.WriteByte('\n')
+		if !strings.Contains(line, "session/request_permission") {
+			if strings.Contains(line, "end_turn") {
+				break
+			}
+			continue
+		}
+		sawReq = true
+		if !strings.Contains(line, hostile) {
+			t.Fatalf("permission missing hostile text: %s", line)
+		}
+		var msg struct {
+			ID json.RawMessage `json:"id"`
+		}
+		if json.Unmarshal([]byte(line), &msg) != nil || len(msg.ID) == 0 {
+			t.Fatal("permission id")
+		}
+		if _, err := io.WriteString(stdinW, `{"jsonrpc":"2.0","id":`+string(msg.ID)+`,"result":{"outcome":{"outcome":"selected","optionId":"deny"}}}`+"\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !sawReq {
+		t.Fatal("no permission request")
+	}
+	out := final.String()
+	if !strings.Contains(out, `"type":"diff"`) || !strings.Contains(out, hostile) || !strings.Contains(out, "DENIED optionId=deny") {
+		t.Fatalf("transcript %s", out)
+	}
+}
+
+func hostileJSON(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b[1 : len(b)-1])
+}
+
 func TestPermissionRound(t *testing.T) {
 	pr, pw := io.Pipe()
 	or, ow := io.Pipe()

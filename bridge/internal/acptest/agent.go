@@ -67,6 +67,10 @@ func runAgent(r io.Reader, w io.Writer) {
 			if ms := slowMillis(); ms > 0 {
 				time.Sleep(time.Duration(ms) * time.Millisecond)
 			}
+			if os.Getenv("ZB_FAKE_SCENARIO") == "rich" {
+				richPrompt(reader, w, sid, env.ID)
+				continue
+			}
 			if os.Getenv("ZB_FAKE_PERMISSION") == "1" {
 				n := 1
 				if os.Getenv("ZB_FAKE_PERMISSION_N") == "2" {
@@ -131,7 +135,86 @@ func runAgent(r io.Reader, w io.Writer) {
 	}
 }
 
+// hostilePayload is untrusted text the UI must render as text, never as HTML.
+func hostilePayload() string {
+	return `<img src=x onerror="window.__xss=1"></script><script>window.__xss=2</script>`
+}
+
+func richPrompt(r *bufio.Reader, w io.Writer, sid string, id json.RawMessage) {
+	hostile := hostilePayload()
+	notify(w, "session/update", map[string]any{
+		"sessionId": sid,
+		"update": map[string]any{
+			"sessionUpdate": "agent_thought_chunk",
+			"content":       map[string]string{"type": "text", "text": "thinking"},
+		},
+	})
+	notify(w, "session/update", map[string]any{
+		"sessionId": sid,
+		"update": map[string]any{
+			"sessionUpdate": "tool_call",
+			"toolCallId":    "tc-text",
+			"title":         "list",
+			"kind":          "read",
+			"status":        "pending",
+		},
+	})
+	notify(w, "session/update", map[string]any{
+		"sessionId": sid,
+		"update": map[string]any{
+			"sessionUpdate": "tool_call_update",
+			"toolCallId":    "tc-text",
+			"title":         "list",
+			"kind":          "read",
+			"status":        "completed",
+			"content": []any{
+				map[string]any{"type": "content", "content": map[string]string{"type": "text", "text": "listed"}},
+			},
+		},
+	})
+	notify(w, "session/update", map[string]any{
+		"sessionId": sid,
+		"update": map[string]any{
+			"sessionUpdate": "tool_call",
+			"toolCallId":    "tc-edit",
+			"title":         "edit",
+			"kind":          "edit",
+			"status":        "completed",
+			"content": []any{
+				map[string]any{"type": "diff", "path": "hello.txt", "oldText": "old", "newText": hostile},
+			},
+		},
+	})
+	notify(w, "session/update", map[string]any{
+		"sessionId": sid,
+		"update": map[string]any{
+			"sessionUpdate": "plan",
+			"entries": []map[string]string{
+				{"content": "look", "priority": "high", "status": "pending"},
+				{"content": hostile, "priority": "medium", "status": "in_progress"},
+				{"content": "finish", "priority": "low", "status": "completed"},
+			},
+		},
+	})
+	text := "rich-done"
+	if os.Getenv("ZB_FAKE_PERMISSION") == "1" {
+		text = permissionRoundTool(r, w, sid, false, hostile, map[string]string{"path": hostile})
+	}
+	notify(w, "session/update", map[string]any{
+		"sessionId": sid,
+		"update": map[string]any{
+			"sessionUpdate": "agent_message_chunk",
+			"content":       map[string]string{"type": "text", "text": text},
+		},
+	})
+	writeResp(w, id, map[string]any{"stopReason": "end_turn"})
+}
+
 func permissionRound(r *bufio.Reader, w io.Writer, sessionID string, onlyAlways bool) string {
+	return permissionRoundTool(r, w, sessionID, onlyAlways, "write", map[string]string{"path": "x"})
+}
+
+func permissionRoundTool(r *bufio.Reader, w io.Writer, sessionID string, onlyAlways bool, title string, rawInput any) string {
 	id := nextPermID.Add(1)
 	options := []map[string]string{
 		{"optionId": "allow", "name": "Allow", "kind": "allow_once"},
@@ -152,10 +235,10 @@ func permissionRound(r *bufio.Reader, w io.Writer, sessionID string, onlyAlways 
 			"sessionId": sessionID,
 			"toolCall": map[string]any{
 				"toolCallId": "tc-perm",
-				"title":      "write",
+				"title":      title,
 				"kind":       "edit",
 				"status":     "pending",
-				"rawInput":   map[string]string{"path": "x"},
+				"rawInput":   rawInput,
 			},
 			"options": options,
 		},
