@@ -32,6 +32,19 @@ func TestFakeAgentInitializeAndPrompt(t *testing.T) {
 	}
 }
 
+func TestFakeTextAndKinds(t *testing.T) {
+	t.Setenv("ZB_FAKE_TEXT", "PAYLOAD")
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"session/prompt","params":{"sessionId":"s"}}` + "\n")
+	var out bytes.Buffer
+	runAgent(in, &out)
+	s := out.String()
+	for _, want := range []string{"PAYLOAD", "agent_thought_chunk", "tool_call", "plan"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("missing %s in %s", want, s)
+		}
+	}
+}
+
 func TestSlowMillisEnv(t *testing.T) {
 	t.Setenv("ZB_FAKE_AGENT_SLOW_MS", "not-a-number")
 	if slowMillis() != 0 {

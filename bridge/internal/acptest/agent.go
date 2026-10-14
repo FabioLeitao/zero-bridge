@@ -65,18 +65,39 @@ func runAgent(r io.Reader, w io.Writer) {
 			if ms := slowMillis(); ms > 0 {
 				time.Sleep(time.Duration(ms) * time.Millisecond)
 			}
+			text := os.Getenv("ZB_FAKE_TEXT")
+			if text == "" {
+				text = "OK"
+			}
 			notify(w, "session/update", map[string]any{
 				"sessionId": sid,
 				"update": map[string]any{
-					"sessionUpdate": "agent_message_chunk",
-					"content":       map[string]string{"type": "text", "text": "one"},
+					"sessionUpdate": "agent_thought_chunk",
+					"content":       map[string]string{"type": "text", "text": "thinking"},
+				},
+			})
+			notify(w, "session/update", map[string]any{
+				"sessionId": sid,
+				"update": map[string]any{
+					"sessionUpdate": "tool_call",
+					"toolCallId":    "tc1",
+					"title":         "noop",
+					"kind":          "other",
+					"status":        "pending",
+				},
+			})
+			notify(w, "session/update", map[string]any{
+				"sessionId": sid,
+				"update": map[string]any{
+					"sessionUpdate": "plan",
+					"entries":       []map[string]string{{"content": "reply", "status": "pending", "priority": "medium"}},
 				},
 			})
 			notify(w, "session/update", map[string]any{
 				"sessionId": sid,
 				"update": map[string]any{
 					"sessionUpdate": "agent_message_chunk",
-					"content":       map[string]string{"type": "text", "text": "two"},
+					"content":       map[string]string{"type": "text", "text": text},
 				},
 			})
 			writeResp(w, env.ID, map[string]any{"stopReason": "end_turn"})
