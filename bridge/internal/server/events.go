@@ -51,6 +51,12 @@ func (h *sessionHub) tryStartPrompt() bool {
 	return true
 }
 
+func (h *sessionHub) promptInProgress() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.promptBusy
+}
+
 func (h *sessionHub) endPrompt() {
 	h.mu.Lock()
 	h.promptBusy = false

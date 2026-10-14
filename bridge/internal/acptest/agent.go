@@ -53,7 +53,33 @@ func runAgent(r io.Reader, w io.Writer) {
 			}
 		case "session/new":
 			n := nextSessionID.Add(1)
-			writeResp(w, env.ID, map[string]any{"sessionId": fmt.Sprintf("sess-acptest-%d", n)})
+			writeResp(w, env.ID, map[string]any{
+				"sessionId": fmt.Sprintf("sess-acptest-%d", n),
+				"modes": map[string]any{
+					"currentModeId": "auto",
+					"availableModes": []map[string]string{
+						{"id": "auto", "name": "Auto"},
+						{"id": "ask", "name": "Ask"},
+						{"id": "plan", "name": "Plan"},
+					},
+				},
+			})
+		case "session/set_mode":
+			var setReq struct {
+				Params struct {
+					SessionID string `json:"sessionId"`
+					ModeID    string `json:"modeId"`
+				} `json:"params"`
+			}
+			_ = json.Unmarshal(line, &setReq)
+			notify(w, "session/update", map[string]any{
+				"sessionId": setReq.Params.SessionID,
+				"update": map[string]any{
+					"sessionUpdate": "current_mode_update",
+					"currentModeId": setReq.Params.ModeID,
+				},
+			})
+			writeResp(w, env.ID, map[string]any{})
 		case "session/prompt":
 			sid := "sess-acptest-1"
 			var req struct {

@@ -33,6 +33,20 @@ func TestFakeAgentInitializeAndPrompt(t *testing.T) {
 	}
 }
 
+func TestFakeSetMode(t *testing.T) {
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/tmp"}}` + "\n" +
+		`{"jsonrpc":"2.0","id":2,"method":"session/set_mode","params":{"sessionId":"s","modeId":"ask"}}` + "\n")
+	var out bytes.Buffer
+	runAgent(in, &out)
+	s := out.String()
+	if !strings.Contains(s, `"currentModeId":"auto"`) || !strings.Contains(s, `"id":"plan"`) {
+		t.Fatalf("session/new modes %s", s)
+	}
+	if !strings.Contains(s, `"currentModeId":"ask"`) || !strings.Contains(s, "current_mode_update") {
+		t.Fatalf("set_mode %s", s)
+	}
+}
+
 func TestFakeTextAndKinds(t *testing.T) {
 	t.Setenv("ZB_FAKE_TEXT", "PAYLOAD")
 	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"session/prompt","params":{"sessionId":"s"}}` + "\n")

@@ -199,6 +199,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
+	mux.HandleFunc("POST /v1/sessions/{id}/mode", s.handleMode)
 	mux.HandleFunc("GET /v1/sessions/{id}/events", s.handleEvents)
 	mux.HandleFunc("GET /v1/sessions/{id}/permissions/pending", s.handlePending)
 	mux.HandleFunc("POST /v1/sessions/{id}/permissions/{reqId}", s.handlePermission)
@@ -385,6 +386,12 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var res struct {
 		SessionID string `json:"sessionId"`
+		Modes     *struct {
+			CurrentModeID  string `json:"currentModeId"`
+			AvailableModes []struct {
+				ID string `json:"id"`
+			} `json:"availableModes"`
+		} `json:"modes"`
 	}
 	if err := s.acpCall(r.Context(), "session/new", map[string]any{
 		"cwd":        body.Workspace,
@@ -406,7 +413,60 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.sessions[res.SessionID] = hub
 	s.mu.Unlock()
-	s.writeJSON(w, http.StatusOK, map[string]any{"sessionId": res.SessionID})
+	out := map[string]any{"sessionId": res.SessionID}
+	if res.Modes != nil {
+		ids := make([]string, 0, len(res.Modes.AvailableModes))
+		for _, m := range res.Modes.AvailableModes {
+			if m.ID != "" {
+				ids = append(ids, m.ID)
+			}
+		}
+		out["mode"] = res.Modes.CurrentModeID
+		out["modes"] = ids
+	}
+	s.writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(r) {
+		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
+		return
+	}
+	id := r.PathValue("id")
+	hub := s.sessionHub(id)
+	if hub == nil {
+		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+		return
+	}
+	if hub.promptInProgress() {
+		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	switch body.Mode {
+	case "auto", "ask", "plan":
+	default:
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "mode must be auto, ask, or plan"})
+		return
+	}
+	var ignored map[string]any
+	if err := s.acpCall(r.Context(), "session/set_mode", map[string]any{
+		"sessionId": id,
+		"modeId":    body.Mode,
+	}, &ignored); err != nil {
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": Redact(err.Error())})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mode": body.Mode})
 }
 
 func validateWorkspace(p string) error {

@@ -160,6 +160,136 @@ func TestForbiddenHost(t *testing.T) {
 	}
 }
 
+func TestSessionMode(t *testing.T) {
+	_, base, cleanup := startTestServer(t, nil)
+	defer cleanup()
+	dir := t.TempDir()
+	res, err := http.Post(base+"/v1/sessions", "application/json", strings.NewReader(`{"workspace":"`+dir+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var created struct {
+		SessionID string   `json:"sessionId"`
+		Mode      string   `json:"mode"`
+		Modes     []string `json:"modes"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Mode != "auto" || len(created.Modes) != 3 {
+		t.Fatalf("modes %+v", created)
+	}
+	sid := created.SessionID
+	postMode := func(body, ctype string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, base+"/v1/sessions/"+sid+"/mode", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ctype != "" {
+			req.Header.Set("Content-Type", ctype)
+		}
+		got, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	plain := postMode(`{"mode":"ask"}`, "")
+	plain.Body.Close()
+	if plain.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("415 %d", plain.StatusCode)
+	}
+	bad := postMode(`{"mode":"unsafe"}`, "application/json")
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unsafe %d", bad.StatusCode)
+	}
+	extra := postMode(`{"mode":"ask","x":1}`, "application/json")
+	extra.Body.Close()
+	if extra.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown field %d", extra.StatusCode)
+	}
+	noSession, err := http.Post(base+"/v1/sessions/nope/mode", "application/json", strings.NewReader(`{"mode":"ask"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	noSession.Body.Close()
+	if noSession.StatusCode != http.StatusNotFound {
+		t.Fatalf("404 %d", noSession.StatusCode)
+	}
+	hostReq, _ := http.NewRequest(http.MethodPost, base+"/v1/sessions/"+sid+"/mode", strings.NewReader(`{"mode":"ask"}`))
+	hostReq.Header.Set("Content-Type", "application/json")
+	hostReq.Host = "evil.example:1"
+	hostRes, err := http.DefaultClient.Do(hostReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostRes.Body.Close()
+	if hostRes.StatusCode != http.StatusForbidden {
+		t.Fatalf("host %d", hostRes.StatusCode)
+	}
+	originReq, _ := http.NewRequest(http.MethodPost, base+"/v1/sessions/"+sid+"/mode", strings.NewReader(`{"mode":"ask"}`))
+	originReq.Header.Set("Content-Type", "application/json")
+	originReq.Header.Set("Origin", "http://evil.example")
+	originRes, err := http.DefaultClient.Do(originReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originRes.Body.Close()
+	if originRes.StatusCode != http.StatusForbidden {
+		t.Fatalf("origin %d", originRes.StatusCode)
+	}
+	okRes := postMode(`{"mode":"ask"}`, "application/json")
+	defer okRes.Body.Close()
+	if okRes.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(okRes.Body)
+		t.Fatalf("ask %d %s", okRes.StatusCode, b)
+	}
+	var okBody struct {
+		OK   bool   `json:"ok"`
+		Mode string `json:"mode"`
+	}
+	if err := json.NewDecoder(okRes.Body).Decode(&okBody); err != nil {
+		t.Fatal(err)
+	}
+	if !okBody.OK || okBody.Mode != "ask" {
+		t.Fatalf("body %+v", okBody)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	evReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/sessions/"+sid+"/events", nil)
+	evRes, err := http.DefaultClient.Do(evReq)
+	if err != nil && ctx.Err() == nil {
+		t.Fatal(err)
+	}
+	if evRes != nil {
+		b, _ := io.ReadAll(evRes.Body)
+		evRes.Body.Close()
+		if !strings.Contains(string(b), `"currentModeId":"ask"`) {
+			t.Fatalf("sse %s", b)
+		}
+	}
+}
+
+func TestModeConflictsWithPrompt(t *testing.T) {
+	_, base, cleanup := startTestServer(t, []string{"ZB_FAKE_AGENT_SLOW_MS=400"})
+	defer cleanup()
+	dir := t.TempDir()
+	sid := createSession(t, base, dir)
+	postPromptAsync(base, sid, "one")
+	time.Sleep(30 * time.Millisecond)
+	res, err := http.Post(base+"/v1/sessions/"+sid+"/mode", "application/json", strings.NewReader(`{"mode":"plan"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+}
+
 func TestPromptRequiresJSON(t *testing.T) {
 	_, base, cleanup := startTestServer(t, nil)
 	defer cleanup()
