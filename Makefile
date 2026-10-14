@@ -1,6 +1,9 @@
 # Local gate for zero-bridge. Future CI calls `make check` and does not grow a second list.
 # Pinned tools run with `go run pkg@version`. Nothing is installed globally.
 # Versions follow the Zero upstream Makefile (read 2026-10-14).
+# GOTOOLCHAIN=go1.26.9 may download that toolchain from the network the first
+# time an analyzer target runs. Offline: warm the cache once, with network,
+# via `make lint-static`. vet, build, and test stay on the local Go.
 DEADCODE_VERSION := v0.46.0
 GOLANGCI_LINT_VERSION := v2.12.2
 GOVULNCHECK_VERSION := v1.3.0
@@ -11,19 +14,20 @@ GO_VERSION := $(shell awk '/^go /{print $$2; exit}' $(BRIDGE)/go.mod)
 # go.mod says "go 1.22", a language version, not a toolchain (go1.22.x).
 # The pinned staticcheck inside golangci-lint v2.12.2 panics on Go 1.27's
 # std package poll. Analyzers use Go 1.26.9, the Zero upstream/main toolchain
-# these tool pins were read against. vet, build, and test stay on the local Go.
+# these tool pins were read against.
 TOOL_GO_TOOLCHAIN := go1.26.9
 GO_FILES := $(shell git -C $(ROOT) ls-files 'bridge/*.go' 'bridge/**/*.go')
 
 .DEFAULT_GOAL := help
-.PHONY: help fmt fmt-check vet build test test-quick lint-static deadcode vulncheck tidy-check diff-check check
+.PHONY: help fmt fmt-check vet build test test-quick lint-static deadcode vulncheck tidy-check diff-check check check-advisory
 
 lint-static deadcode vulncheck: export GOTOOLCHAIN = $(TOOL_GO_TOOLCHAIN)
 lint-static deadcode vulncheck: export GOWORK = off
 
 help:
 	@echo "Pinned: deadcode $(DEADCODE_VERSION), golangci-lint $(GOLANGCI_LINT_VERSION), govulncheck $(GOVULNCHECK_VERSION); analyzer toolchain $(TOOL_GO_TOOLCHAIN); go.mod language $(GO_VERSION)"
-	@echo "Targets: fmt, fmt-check, vet, build, test, test-quick, lint-static, deadcode, vulncheck, tidy-check, diff-check, check"
+	@echo "Targets: fmt, fmt-check, vet, build, test, test-quick, lint-static, deadcode, vulncheck, tidy-check, diff-check, check, check-advisory"
+	@echo "check-advisory is deadcode only. It is not part of check: -test=false reports test-only helpers."
 
 fmt:
 	gofmt -w $(GO_FILES)
@@ -53,19 +57,13 @@ deadcode:
 vulncheck:
 	cd $(BRIDGE) && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
+# Go 1.23+: -diff exits non-zero when tidy would edit, and it does not write.
 tidy-check:
-	@cd $(BRIDGE) && \
-	cp go.mod go.mod.tidycheck && \
-	if [ -f go.sum ]; then cp go.sum go.sum.tidycheck; else : > go.sum.tidycheck; fi && \
-	go mod tidy && \
-	status=0; \
-	cmp -s go.mod go.mod.tidycheck || status=1; \
-	if [ -f go.sum ]; then cmp -s go.sum go.sum.tidycheck || status=1; fi; \
-	mv go.mod.tidycheck go.mod; \
-	if [ -s go.sum.tidycheck ]; then mv go.sum.tidycheck go.sum; else rm -f go.sum go.sum.tidycheck; fi; \
-	if [ $$status -ne 0 ]; then echo "go.mod is not tidy"; exit 1; fi
+	cd $(BRIDGE) && go mod tidy -diff
 
 diff-check:
 	git -C $(ROOT) diff HEAD --check
 
-check: fmt-check vet build test lint-static vulncheck diff-check
+check: fmt-check vet build test lint-static vulncheck tidy-check diff-check
+
+check-advisory: deadcode
