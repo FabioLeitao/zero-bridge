@@ -4,10 +4,10 @@ Bridge commit (HEAD at the runs below):
   241ee3c feat(bridge): web session sidebar
 
 Headless e2e (fake agent), commands shown before the run:
-  cd /home/leitao/Projects/dev/zero-bridge/bridge
+  cd <repo>/bridge
   go build -o /tmp/acpfake ./cmd/acpfake
   tmux new-session -d -s zbridge-s6-fake \
-    "cd /home/leitao/Projects/dev/zero-bridge/bridge && ZB_FAKE_SCENARIO=rich ZB_FAKE_PERMISSION=1 go run ./cmd/zero-bridge --listen 127.0.0.1:8773 --zero-bin /tmp/acpfake --permission-timeout 3s"
+    "cd <repo>/bridge && ZB_FAKE_SCENARIO=rich ZB_FAKE_PERMISSION=1 go run ./cmd/zero-bridge --listen 127.0.0.1:8773 --zero-bin /tmp/acpfake --permission-timeout 3s"
   node bridge/web/e2e/check.mjs http://127.0.0.1:8773/
 
 The first check against a process that had already attached sess-a2 reported resume-replay. That session was killed and started again. The clean run exited 0:
@@ -19,7 +19,7 @@ The first check against a process that had already attached sess-a2 reported res
 Real zero, commands shown before the run (port 8772, not 8765/8766):
   mkdir -p /tmp/zbridge-s6
   tmux new-session -d -s zbridge-s6-real \
-    "cd /home/leitao/Projects/dev/zero-bridge/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8772 --workspace /tmp/zbridge-s6"
+    "cd <repo>/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8772 --workspace /tmp/zbridge-s6"
   POST /v1/sessions {"workspace":"/tmp/zbridge-s6"}
     → 200 {"mode":"auto","modes":["auto","ask","plan"],"sessionId":"zero_20261014033243_1791948763816894520_1"}
   POST .../prompt {"text":"Reply with the single word pong."}
@@ -29,7 +29,7 @@ Real zero, commands shown before the run (port 8772, not 8765/8766):
 Restart (new zero acp child; Zero's own session store kept):
   tmux kill-session -t zbridge-s6-real
   tmux new-session -d -s zbridge-s6-real \
-    "cd /home/leitao/Projects/dev/zero-bridge/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8772 --workspace /tmp/zbridge-s6"
+    "cd <repo>/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8772 --workspace /tmp/zbridge-s6"
   GET /v1/sessions?cwd=/tmp/zbridge-s6
     → 200 {"nextCursor":"","sessions":[{"sessionId":"zero_20261014033243_1791948763816894520_1","cwd":"/tmp/zbridge-s6","title":"ACP session","updatedAt":"2026-10-14T03:32:54Z","_meta":{"modelId":"openrouter/free","createdAt":"2026-10-14T03:32:43Z"}}]}
   POST .../load {}
@@ -52,7 +52,7 @@ Restart of the long-running servers (commands shown before):
   tmux kill-session -t zbridge-s5a-real
   tmux kill-session -t zbridge-s5a-fake
   tmux new-session -d -s zbridge-s5a-real \
-    "cd /home/leitao/Projects/dev/zero-bridge/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765"
+    "cd <repo>/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765"
   tmux new-session -d -s zbridge-s5a-fake \
-    "cd /home/leitao/Projects/dev/zero-bridge/bridge && ZB_FAKE_TEXT='<img src=x onerror=\"window.__xss=1\">' go run ./cmd/zero-bridge --listen 127.0.0.1:8766 --zero-bin /tmp/acpfake"
+    "cd <repo>/bridge && ZB_FAKE_TEXT='<img src=x onerror=\"window.__xss=1\">' go run ./cmd/zero-bridge --listen 127.0.0.1:8766 --zero-bin /tmp/acpfake"
   GET /health on 8765 and 8766 both returned 200. Left running.

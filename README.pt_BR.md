@@ -1,18 +1,78 @@
 # zero-bridge
 
-Ponte local em torno do [Zero](https://github.com/Twigpine/zero): um programa Go pequeno que pode expor `zero acp` via HTTP/SSE e, opcionalmente, A2A de entrada, além de plugin tools do Zero para A2A de saída. O Zero continua sendo o agente; este repositório não faz fork nem altera o core daqui.
+Ponte HTTP/SSE local e UI web para [`zero acp`](https://github.com/Twigpine/zero). Um filho `zero acp` de longa duração guarda sessões, tools e credenciais do provedor. Este repositório não faz fork nem altera o Zero.
 
-**Nada está implementado ainda.** Não há `go.mod`, servidor nem esqueleto de plugin nesta árvore.
+English: [README.md](README.md). Plano das fatias: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
 
-## Plano
+## Executar
 
-Fatias incrementais (trilhas A/B/C) em [docs/plans/PLAN_ZERO_BRIDGE.md](docs/plans/PLAN_ZERO_BRIDGE.md) (inglês, canônico). Português: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
+Em `bridge/` (módulo Go `zero-bridge/bridge`):
+
+```bash
+cd bridge
+go run ./cmd/zero-bridge --listen 127.0.0.1:8765
+```
+
+Abra http://127.0.0.1:8765/. Flags:
+
+| Flag | Padrão | Papel |
+| --- | --- | --- |
+| `--listen` | `127.0.0.1:8765` | Endereço de loopback. Qualquer outro host sai com código **2**. |
+| `--workspace` | um diretório temporário novo | Diretório absoluto da sessão nova quando o cliente não manda um. |
+| `--zero-bin` | `zero` | Binário do `zero acp`, ou um dublê de teste. |
+| `--permission-timeout` | `60s` | Quanto uma permissão já exposta espera antes de a ponte negar. |
+
+Use um modelo local ou uma variante `:free`. A ponte define `ZERO_PROVIDER=granite-local` só quando o Ollama lista `granite4.2:3b-cpu-ctx16k`. Senão o filho herda o perfil ativo do Zero. Não aponte prompts para um provedor pago.
+
+## Segurança
+
+- `--listen` tem de ser loopback (`127.0.0.1`, `localhost` ou `::1`). Outro host sai com código **2**.
+- `Host` tem de ser `127.0.0.1:<porta>` ou `localhost:<porta>`. Se houver `Origin`, tem de ser o mesmo host e a mesma porta. Caso contrário a resposta é **403**.
+- Corpos JSON exigem `Content-Type: application/json` (`415` se não for).
+- As respostas mandam `Content-Security-Policy: default-src 'self'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` e `Cache-Control: no-store`.
+- As respostas não mandam `Access-Control-Allow-Origin`.
+- Uma permissão só é allow quando o agente ofereceu `allow_once` com option id `allow`. Qualquer outro allow vira deny efetivo. Timeout, abort e stop negam. Não viram allow.
+- A página insere texto do modelo e das tools só com `textContent` e `createTextNode`.
+- Ainda **não há token de autenticação**. Qualquer processo do mesmo usuário que alcance a porta pode chamar a API. Não publique em `0.0.0.0` e não coloque na rede sem proxy reverso e token. Isso está desenhado na S14 e não está implementado.
+
+## Estado
+
+S2–S6 estão nesta árvore. S7–S12 e S14–S15 estão só desenhadas. S11 está bloqueada no #1125 do upstream. S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe e SHAs de evidência: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
+
+| Fatia | Estado |
+| --- | --- |
+| S1 usage (#1118) | em andamento no fork do Zero |
+| S2–S6 ponte e UI web | feita |
+| S7–S10, S12, S14, S15 | desenhada |
+| S11 restaurar modo (#1125) | bloqueada-externa |
+| S13 limites de frame (#923) | acompanhando o PR #944 |
+
+## Testes
+
+```bash
+cd bridge
+go test -race ./...
+```
+
+Check headless no Chrome (Node 22+, sem npm), contra uma ponte que já esteja escutando: [bridge/web/e2e/README.md](bridge/web/e2e/README.md).
+
+```bash
+node bridge/web/e2e/check.mjs http://127.0.0.1:8765/
+```
 
 ## Licença
 
-Ainda não definida. O [zero-handoff](https://github.com/FabioLeitao/zero-handoff) não traz arquivo `LICENSE`; este repo segue a mesma postura até o operador escolher.
+[MIT](LICENSE). Copyright (c) 2026 Fabio Tavares Leitao.
 
-## Trabalho relacionado (fora do escopo aqui)
+## Relação com o Zero
 
-- Correções de ACP e PRs no upstream: branches de tópico no fork do Zero, não neste repo.
-- Handoff de sessão sem socket: [zero-handoff](https://github.com/FabioLeitao/zero-handoff).
+A ponte fala a API pública ACP em stdio (`zero acp`). Não vendoriza o Zero.
+
+Trabalho upstream relacionado, sem promessa de que este repositório vá entregá-lo:
+
+- [#1118](https://github.com/Twigpine/zero/issues/1118) — persistência de usage de tokens no ACP.
+- [#664](https://github.com/Twigpine/zero/issues/664) — modo spec-draft.
+- [#923](https://github.com/Twigpine/zero/issues/923) — limites de frame e de goroutines no ACP, hoje no [PR #944](https://github.com/Twigpine/zero/pull/944).
+- Avisos de MCP na subida (`MCP server … unavailable`, cerca de 8s cada) chegam como `agent_message_chunk`. Vários deles somam dezenas de segundos antes da primeira resposta. A página mostra linhas que começam com `[zero warning]` como notas. Relacionado: [#825](https://github.com/Twigpine/zero/issues/825).
+
+Handoff de sessão sem socket de escuta é outro projeto: [zero-handoff](https://github.com/FabioLeitao/zero-handoff).

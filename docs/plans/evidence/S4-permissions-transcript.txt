@@ -5,10 +5,10 @@ Bridge commit (HEAD at run):
   includes 772ea03 fix(bridge): permission deadline, effective decision and JSON-safe redaction
 
 Commands (fake agent, shown before the run):
-  cd /home/leitao/Projects/dev/zero-bridge/bridge
+  cd <repo>/bridge
   go build -o /tmp/acpfake ./cmd/acpfake
   tmux new-session -d -s zbridge-s4 \
-    "cd /home/leitao/Projects/dev/zero-bridge/bridge && ZB_FAKE_PERMISSION=1 go run ./cmd/zero-bridge --listen 127.0.0.1:8767 --zero-bin /tmp/acpfake --permission-timeout 5s"
+    "cd <repo>/bridge && ZB_FAKE_PERMISSION=1 go run ./cmd/zero-bridge --listen 127.0.0.1:8767 --zero-bin /tmp/acpfake --permission-timeout 5s"
   mkdir -p /tmp/zbridge-s4
   curl -sf -X POST http://127.0.0.1:8767/v1/sessions \
     -H 'Content-Type: application/json' -d '{"workspace":"/tmp/zbridge-s4"}'

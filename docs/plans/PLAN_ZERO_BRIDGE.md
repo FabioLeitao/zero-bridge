@@ -2,6 +2,22 @@
 
 English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BRIDGE.pt_BR.md).
 
+**Status** (2026-10-14). States: done, in progress, designed, blocked-external, following.
+
+| ID | State | Evidence |
+| --- | --- | --- |
+| S1 | in progress | Fork patch `03d618be` recorded in the evidence table below. [#1118](https://github.com/Twigpine/zero/issues/1118) was still open on 2026-10-13. |
+| S2 | done | [evidence/S2-acpprobe-transcript.txt](evidence/S2-acpprobe-transcript.txt) `3523ee8` |
+| S3 | done | [evidence/S3-curl-transcript.txt](evidence/S3-curl-transcript.txt) `2f6b02a` |
+| S4 | done | [evidence/S4-permissions-transcript.txt](evidence/S4-permissions-transcript.txt) `5cfe8f8` |
+| S5a | done | `6930fa4` |
+| S5b | done | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
+| S6 | done | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
+| S7–S10, S12 | designed | sections below; not built |
+| S11 | blocked-external | [#1125](https://github.com/Twigpine/zero/issues/1125) had no `issue-approved` at plan time |
+| S13 | following | [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944) |
+| S14, S15 | designed | sections below; not built |
+
 ## Purpose
 
 Give Zero a **local** web UI and optional **A2A ingress** by wrapping `zero acp` (stdio JSON-RPC), without changing Zero’s core from this repository. Separately, add **outbound A2A** as Zero **plugin tools**. Complete **upstream ACP gaps** on the Zero fork (track A).
@@ -29,7 +45,7 @@ Reference patterns (read-only, no code copy): Hermes `plugins/platforms/a2a`, `w
 ## Global rules
 
 1. **Place:** every slice names repo + path and why.
-2. **Sequence:** one linear order **S1…S13**; only one active slice; next slice starts after the previous **acceptance** passes.
+2. **Sequence:** one linear order **S1…S15** (plus S5a/S5b); only one active slice; next slice starts after the previous **acceptance** passes. S14 and S15 are designed and are not the next build slice.
 3. **External block:** slices that need upstream triage/merge are marked **BLOQUEADA-EXTERNA**; execution skips to the next slice that does not depend on them (order in this doc is fixed).
 4. **Zero-cost prompts:** any slice that sends a real `session/prompt` (probe, HTTP, permissions, UI) must use a **local** model (Ollama) or a **`:free`** variant; never a paid provider. Transcripts and evidence must record provider/model only (never keys).
 5. **Never close unmerged PRs from this workstream:** if upstream lands overlapping work, merge `upstream/main` into the topic branch, shrink the PR to the remaining delta, and **stop for the operator** to decide next steps. Do not close open PRs without merge and do not close upstream issues from here.
@@ -68,7 +84,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 ---
 
-## Linear sequence (S1…S13, plus S5a/S5b)
+## Linear sequence (S1…S15, plus S5a/S5b)
 
 | ID | Track | Repo / path | Unlocks | External block |
 | --- | --- | --- | --- | --- |
@@ -85,7 +101,9 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S10** | B3 | `zero-bridge` → `plugin/a2a/` | `a2a_list` tool | — |
 | **S11** | A2 | `FabioLeitao/zero` topic branch → `internal/acp/`, `internal/sessions/` | Upstream #1125 mode restore | **BLOQUEADA-EXTERNA** (no `issue-approved` on #1125 at plan time) |
 | **S12** | A3 | `FabioLeitao/zero` topic branch → `internal/acp/` | Upstream #664 spec-draft mode | PR merge upstream |
-| **S13** | A4 | `FabioLeitao/zero` topic branch → `internal/acp/` | Upstream #923 resource limits | PR merge upstream |
+| **S13** | A4 | `FabioLeitao/zero` topic branch → `internal/acp/` | Upstream #923 resource limits | follow PR #944 |
+| **S14** | C6 | `zero-bridge` → `bridge/` | Proxy-ready allowlist, token, SSE flush | — |
+| **S15** | — | `zero-bridge` docs | Public checklist and Show and tell | explicit operator go |
 
 **Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices (S2–S7) build the ponte only after that baseline. B (S8–S10) does not require the HTTP server. Remaining A slices follow; when **S11** is blocked, continue **S12**–**S13**, then return to **S11** after `issue-approved` on #1125.
 
@@ -157,7 +175,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 **Verified state:** Open; `issue-approved`.
 
-**Branch:** `fix/acp-frame-and-concurrency-limits` from `upstream/main`.
+**Branch:** follow [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944) (approved by jatmn and Vasanthdev2004; the block is a rebase of 73 commits). Test the bridge against the rebased PR locally.
 
 **Work:** max frame size, max frames per request, per-session concurrency semaphore in ACP read path (`internal/acp/` connection layer; likely `jsonrpc` handling).
 
@@ -200,7 +218,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 **Path:** `bridge/cmd/zero-bridge/` (or equivalent main), `bridge/internal/server/`.
 
-**Upstream decision:** [#622](https://github.com/Twigpine/zero/issues/622) closed with no HTTP control plane in current upstream scope, so this HTTP surface lives **only in zero-bridge** and must not become an upstream issue, PR, or Discussion. Security posture follows the remote-daemon precedent: opt-in, never open by default, secrets from environment or file (not argv).
+**Upstream decision:** [#622](https://github.com/Twigpine/zero/issues/622) closed as not planned. The HTTP control plane is not proposed as an upstream feature or PR. A Show and tell for this external project in Discussions is allowed only with an explicit go from the operator. Security posture follows the remote-daemon precedent: opt-in, never open by default, secrets from environment or file (not argv).
 
 UI patterns (SSE-only, no WebSocket): see [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md).
 
@@ -281,7 +299,8 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 - `POST /v1/sessions/{id}/mode` body `{"mode":"auto|ask|plan"}` calls `session/set_mode`. Other ids, including `unsafe`, are **400**. **409** while a prompt is in progress. **404** / **415** follow the other JSON routes.
 - One permission card. Allow/Deny call S4. Enter on the card does not approve. A resolved card becomes a compact history line. Timeout text is **expired**.
 - Plan checklist and tool rows (diff as `-`/`+` text) update in place. The mode `<select>` follows `current_mode_update` and posts the mode route. Workspace is read-only; "Nova sessao" opens a new session.
-- Headless check: [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) (HEAD `c63f17a`, fake agent on `127.0.0.1:8769`). `window.__xss` stayed undefined. Real `zero acp` in mode `ask` did not emit `session/request_permission` for one "create hello.txt" prompt.
+- Headless check: [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) (HEAD `c63f17a`, fake agent on `127.0.0.1:8769`). `window.__xss` stayed undefined. Real `zero acp` in mode `ask` did not emit `session/request_permission` for a create-file prompt (S4 and S5b transcripts) or for a `date` prompt in those same runs.
+- Real zero also emits `MCP server … unavailable … 8s` as `agent_message_chunk`. Five of those warnings cost about 40s at the start of a session (related to [#825](https://github.com/Twigpine/zero/issues/825)). The page treats a line that starts with `[zero warning]` as a note, not as assistant text.
 
 **Stop:** Do not start S5b before S4 permission HTTP exists.
 
@@ -323,6 +342,47 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 **Stop:** Do not implement full A2A task surface in one slice; `message/send` + Agent Card only.
 
 **Unlocks:** External A2A clients can reach Zero through the bridge.
+
+### S14 — C6 proxy-ready
+
+**Path:** `bridge/` config and SSE headers. Designed only. Not implemented.
+
+**Decision:** external access is only through a reverse proxy, the same pattern as Grafana and CouchDB on the T14. The bridge process stays on loopback.
+
+**Acceptance**
+
+- A host/origin allowlist is configurable and empty by default. Empty keeps today's loopback Host check.
+- The bridge has an authentication token. Missing or wrong token is rejected.
+- SSE responses include `X-Accel-Buffering: no`.
+- The docs include a Caddyfile example with `flush_interval -1` and no `encode` on the SSE route:
+
+```caddyfile
+example.com {
+	reverse_proxy 127.0.0.1:8765 {
+		flush_interval -1
+	}
+}
+```
+
+**Stop:** Do not bind `0.0.0.0`. Do not start this slice without an explicit operator go.
+
+**Unlocks:** S15 can publish a bridge that is safe to put behind a proxy.
+
+### S15 — publication
+
+**Path:** repo root docs. Designed only. Not implemented in the sense of changing visibility.
+
+**Acceptance**
+
+- `LICENSE` is MIT.
+- `README.md` and `README.pt_BR.md` describe the bridge that exists.
+- A secret scan and a personal-path scan are clean.
+- Public visibility happens only with an explicit operator go.
+- A Show and tell on `Twigpine/zero` uses the Discussion category "Show and tell", and only with an explicit operator go.
+
+**Stop:** Do not change visibility, push a public announcement, or open the discussion from this slice without that go.
+
+**Unlocks:** People can find the project from the Zero discussion list.
 
 ---
 

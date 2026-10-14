@@ -4,10 +4,10 @@ Bridge commit (HEAD at run):
   c63f17a test(bridge): headless chrome e2e check for the web UI
 
 Commands (shown before the run):
-  cd /home/leitao/Projects/dev/zero-bridge/bridge
+  cd <repo>/bridge
   go build -o /tmp/acpfake ./cmd/acpfake
   tmux new-session -d -s zbridge-s5b-fake \
-    "cd /home/leitao/Projects/dev/zero-bridge/bridge && ZB_FAKE_SCENARIO=rich ZB_FAKE_PERMISSION=1 go run ./cmd/zero-bridge --listen 127.0.0.1:8769 --zero-bin /tmp/acpfake --permission-timeout 3s"
+    "cd <repo>/bridge && ZB_FAKE_SCENARIO=rich ZB_FAKE_PERMISSION=1 go run ./cmd/zero-bridge --listen 127.0.0.1:8769 --zero-bin /tmp/acpfake --permission-timeout 3s"
   node bridge/web/e2e/check.mjs http://127.0.0.1:8769/
 
 check.mjs exit 0:
@@ -34,9 +34,9 @@ S5a servers:
   The previous tmux sessions zbridge-s5a-real and zbridge-s5a-fake were already gone, and 8765/8766 were closed, before the restart commands ran.
   Recreated with the new embedded UI:
     tmux new-session -d -s zbridge-s5a-real \
-      "cd /home/leitao/Projects/dev/zero-bridge/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765"
+      "cd <repo>/bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8765"
     tmux new-session -d -s zbridge-s5a-fake \
-      "cd /home/leitao/Projects/dev/zero-bridge/bridge && ZB_FAKE_TEXT='<img src=x onerror=\"window.__xss=1\">' go run ./cmd/zero-bridge --listen 127.0.0.1:8766 --zero-bin /tmp/acpfake"
+      "cd <repo>/bridge && ZB_FAKE_TEXT='<img src=x onerror=\"window.__xss=1\">' go run ./cmd/zero-bridge --listen 127.0.0.1:8766 --zero-bin /tmp/acpfake"
   Both /health returned 200. Left running.
 
 Real zero on 127.0.0.1:8765 (one try, not forced):

@@ -2,6 +2,22 @@
 
 Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRIDGE.md).
 
+**Estado** (2026-10-14). Valores: feita, em andamento, desenhada, bloqueada-externa, acompanhando.
+
+| ID | Estado | Evidência |
+| --- | --- | --- |
+| S1 | em andamento | Patch do fork `03d618be`, na tabela de evidência abaixo. [#1118](https://github.com/Twigpine/zero/issues/1118) ainda estava aberta em 2026-10-13. |
+| S2 | feita | [evidence/S2-acpprobe-transcript.txt](evidence/S2-acpprobe-transcript.txt) `3523ee8` |
+| S3 | feita | [evidence/S3-curl-transcript.txt](evidence/S3-curl-transcript.txt) `2f6b02a` |
+| S4 | feita | [evidence/S4-permissions-transcript.txt](evidence/S4-permissions-transcript.txt) `5cfe8f8` |
+| S5a | feita | `6930fa4` |
+| S5b | feita | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
+| S6 | feita | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
+| S7–S10, S12 | desenhada | seções abaixo; não construídas |
+| S11 | bloqueada-externa | [#1125](https://github.com/Twigpine/zero/issues/1125) sem `issue-approved` na época do plano |
+| S13 | acompanhando | [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944) |
+| S14, S15 | desenhada | seções abaixo; não construídas |
+
 ## Objetivo
 
 Oferecer ao Zero uma **web UI local** e **A2A de entrada** opcional via `zero acp` (JSON-RPC em stdio), sem alterar o core do Zero a partir deste repositório. Adicionar **A2A de saída** como plugin tools. Completar lacunas **ACP no upstream** no fork (trilha A).
@@ -29,7 +45,7 @@ Referências somente leitura: Hermes `plugins/platforms/a2a`, `web/`, `acp_adapt
 ## Regras globais
 
 1. **Lugar:** cada fatia declara repo + caminho.
-2. **Sequência:** **S1…S13** linear; uma fatia ativa; aceite antes da seguinte.
+2. **Sequência:** **S1…S15** linear (mais S5a/S5b); uma fatia ativa; aceite antes da seguinte. S14 e S15 estão desenhadas e não são a próxima fatia a construir.
 3. **Bloqueio externo:** **BLOQUEADA-EXTERNA** pula para a próxima fatia independente.
 4. **Custo zero:** qualquer `session/prompt` real usa modelo **local** (Ollama) ou **`:free`**; nunca provedor pago. Evidências registram provedor/modelo, nunca chaves.
 5. **Nunca fechar PR sem merge:** se o upstream absorver trabalho parecido, fazer merge de `upstream/main` na branch de tópico, reduzir o PR ao delta restante e **parar para o operador**. Não fechar PR aberto sem merge nem fechar issues do upstream daqui.
@@ -59,7 +75,7 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 
 ---
 
-## Sequência linear (S1…S13, mais S5a/S5b)
+## Sequência linear (S1…S15, mais S5a/S5b)
 
 | ID | Trilha | Repo / caminho | Destrava | Bloqueio |
 | --- | --- | --- | --- | --- |
@@ -76,7 +92,9 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 | **S10** | B3 | `plugin/a2a/` | `a2a_list` | — |
 | **S11** | A2 | fork → `internal/acp/`, `internal/sessions/` | #1125 modo | **BLOQUEADA-EXTERNA** |
 | **S12** | A3 | fork → `internal/acp/` | #664 spec-draft | merge upstream |
-| **S13** | A4 | fork → `internal/acp/` | #923 limites | merge upstream |
+| **S13** | A4 | fork → `internal/acp/` | #923 limites | acompanhar PR #944 |
+| **S14** | C6 | `bridge/` | allowlist, token e flush de SSE atrás de proxy | — |
+| **S15** | — | docs | checklist de publicação e Show and tell | go explícito do operador |
 
 **Ordem:** S1 destrava contagem de usage para S2–S7. B (S8–S10) não depende do HTTP. Com S11 bloqueada, seguir S12–S13 e voltar à S11 após `issue-approved` em #1125.
 
@@ -144,7 +162,7 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 
 **Estado:** aberta; `issue-approved`.
 
-**Branch:** `fix/acp-frame-and-concurrency-limits` de `upstream/main`.
+**Branch:** acompanhar [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944) (aprovado por jatmn e Vasanthdev2004; o bloqueio é o rebase de 73 commits). Testar a ponte contra o PR rebaseado, localmente.
 
 **Testes:** `internal/acp/jsonrpc_test.go` — `TestACPRejectsOversizedFrame`; `internal/acp/agent_test.go` — `TestACPLimitsConcurrentInFlightRequests`; checklist com `go test -race`.
 
@@ -185,7 +203,7 @@ Módulo `bridge/go.mod`.
 
 **Caminho:** `bridge/cmd/zero-bridge/`, `bridge/internal/server/`.
 
-**Decisão do upstream:** #622 fechada sem plano de control plane HTTP no escopo atual do upstream; esta superfície HTTP vive **só no zero-bridge** e não deve virar issue, PR ou Discussion no upstream. Postura de segurança segue o precedente do daemon remoto: opt-in, nunca aberta por padrão, segredo por variável de ambiente ou arquivo (não argv).
+**Decisão do upstream:** #622 fechada como não planejada. O control plane HTTP não é proposto como feature nem como PR no upstream. Um Show and tell deste projeto externo em Discussions só é permitido com go explícito do operador. Postura de segurança segue o precedente do daemon remoto: opt-in, nunca aberta por padrão, segredo por variável de ambiente ou arquivo (não argv).
 
 Padrões de UI (só SSE, sem WebSocket): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md).
 
@@ -266,7 +284,8 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 - `POST /v1/sessions/{id}/mode` com `{"mode":"auto|ask|plan"}` chama `session/set_mode`. Outro id, inclusive `unsafe`, é **400**. **409** com prompt em andamento. **404** / **415** seguem as outras rotas JSON.
 - Um cartão de permissão. Allow/Deny chamam a S4. Enter no cartão não aprova. Cartão resolvido vira linha compacta no histórico. Timeout mostra **expired**.
 - Checklist de plano e linhas de tool (diff como texto `-`/`+`) atualizam no lugar. O `<select>` de modo segue `current_mode_update` e posta a rota. Workspace é somente leitura; "Nova sessao" abre outra sessão.
-- Check headless: [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) (HEAD `c63f17a`, agente falso em `127.0.0.1:8769`). `window.__xss` ficou undefined. O `zero acp` real em modo `ask` não emitiu `session/request_permission` num prompt pedindo para criar `hello.txt`.
+- Check headless: [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) (HEAD `c63f17a`, agente falso em `127.0.0.1:8769`). `window.__xss` ficou undefined. O `zero acp` real em modo `ask` não emitiu `session/request_permission` num prompt de criar arquivo (transcrições S4 e S5b) nem num prompt de `date` nessas mesmas rodadas.
+- O zero real também manda `MCP server … unavailable … 8s` como `agent_message_chunk`. Cinco desses avisos custam cerca de 40s no começo da sessão (relacionado a [#825](https://github.com/Twigpine/zero/issues/825)). A página trata linha que começa com `[zero warning]` como nota, não como texto do assistente.
 
 **Parada:** não iniciar S5b antes da API HTTP de permissão da S4.
 
@@ -308,6 +327,47 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 **Parada:** escopo só Agent Card + `message/send`.
 
 **Destrava:** clientes A2A externos.
+
+### S14 — C6 proxy-ready
+
+**Caminho:** config e cabeçalhos SSE em `bridge/`. Só desenhada. Não implementada.
+
+**Decisão:** acesso externo só via proxy reverso, o mesmo padrão de Grafana e CouchDB no T14. O processo da ponte continua em loopback.
+
+**Aceite**
+
+- Lista de hosts/origins configurável e vazia por padrão. Vazia mantém o check de Host em loopback de hoje.
+- A ponte tem um token de autenticação. Token ausente ou errado é recusado.
+- Respostas SSE incluem `X-Accel-Buffering: no`.
+- A doc traz um exemplo de Caddyfile com `flush_interval -1` e sem `encode` na rota SSE:
+
+```caddyfile
+example.com {
+	reverse_proxy 127.0.0.1:8765 {
+		flush_interval -1
+	}
+}
+```
+
+**Parada:** não fazer bind em `0.0.0.0`. Não iniciar esta fatia sem go explícito do operador.
+
+**Destrava:** a S15 pode publicar uma ponte segura para ficar atrás de um proxy.
+
+### S15 — publicação
+
+**Caminho:** docs na raiz do repo. Só desenhada. Não muda visibilidade.
+
+**Aceite**
+
+- `LICENSE` é MIT.
+- `README.md` e `README.pt_BR.md` descrevem a ponte que existe.
+- Scan de segredos e scan de caminhos pessoais limpos.
+- Visibilidade pública só com go explícito do operador.
+- Show and tell em `Twigpine/zero` na categoria "Show and tell", e só com go explícito do operador.
+
+**Parada:** não mudar visibilidade, não anunciar em público e não abrir a discussion a partir desta fatia sem esse go.
+
+**Destrava:** o projeto pode ser achado na lista de discussions do Zero.
 
 ---
 
