@@ -34,6 +34,12 @@
       <input id="workspace" name="workspace" type="text" autocomplete="off" readonly>
       <button id="new-session" type="button">Nova sessao</button>
       <button id="logout" type="button" hidden>Sair</button>
+      <section id="auth-sessions" hidden aria-labelledby="auth-sessions-title">
+        <h2 id="auth-sessions-title">Sessoes deste acesso</h2>
+        <p id="auth-sessions-status" role="status" aria-live="polite"></p>
+        <ul id="auth-session-list" aria-label="Sessoes ativas"></ul>
+        <button id="logout-all" type="button">Sair de todos os dispositivos</button>
+      </section>
       <label for="mode">Mode</label>
       <select id="mode" disabled>
         <option value="auto">auto</option>

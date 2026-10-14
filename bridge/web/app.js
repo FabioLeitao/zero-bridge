@@ -5,6 +5,10 @@ const tokenEl = document.getElementById("token");
 const loginBtn = document.getElementById("login-button");
 const loginError = document.getElementById("login-error");
 const logoutBtn = document.getElementById("logout");
+const authSessionsEl = document.getElementById("auth-sessions");
+const authSessionListEl = document.getElementById("auth-session-list");
+const authSessionStatusEl = document.getElementById("auth-sessions-status");
+const logoutAllBtn = document.getElementById("logout-all");
 const logEl = document.getElementById("log");
 const form = document.getElementById("composer");
 const textEl = document.getElementById("text");
@@ -43,6 +47,7 @@ function showLogin(message) {
   loginEl.hidden = false;
   logoutBtn.hidden = true;
   loginError.textContent = message || "";
+  setAuthSessionsVisible(false);
 }
 
 function hideLogin() {
@@ -50,6 +55,110 @@ function hideLogin() {
   tokenEl.value = "";
   loginError.textContent = "";
   logoutBtn.hidden = !authRequired;
+  if (authRequired) {
+    setAuthSessionsVisible(true);
+    refreshAuthSessions().catch(function () {
+      showAuthSessionError();
+    });
+  } else {
+    setAuthSessionsVisible(false);
+  }
+}
+
+function setAuthSessionsVisible(on) {
+  authSessionsEl.hidden = !on;
+  if (!on) {
+    clearAuthSessionList();
+    authSessionStatusEl.textContent = "";
+  }
+}
+
+function clearAuthSessionList() {
+  while (authSessionListEl.firstChild) {
+    authSessionListEl.removeChild(authSessionListEl.firstChild);
+  }
+}
+
+function shortHandle(handle) {
+  const value = String(handle || "");
+  const dot = value.indexOf(".");
+  const body = dot >= 0 ? value.slice(dot + 1) : value;
+  return body.slice(0, 8);
+}
+
+function stamp(value) {
+  const text = String(value || "");
+  if (text.length < 16) {
+    return text;
+  }
+  return text.slice(0, 16).replace("T", " ");
+}
+
+function renderAuthSessions(sessions) {
+  clearAuthSessionList();
+  const rows = Array.isArray(sessions) ? sessions : [];
+  if (rows.length === 0) {
+    authSessionStatusEl.textContent = "nenhuma sessao ativa";
+    return;
+  }
+  authSessionStatusEl.textContent = "";
+  rows.forEach(function (sess) {
+    const handle = String(sess.handle || "");
+    const li = document.createElement("li");
+    const id = document.createElement("p");
+    id.textContent = shortHandle(handle);
+    const times = document.createElement("p");
+    times.textContent = "criada " + stamp(sess.created) + " ultimo uso " + stamp(sess.last) + " expira " + stamp(sess.expires);
+    const revoke = document.createElement("button");
+    revoke.type = "button";
+    revoke.textContent = "Revogar";
+    revoke.setAttribute("aria-label", "Revogar sessao " + shortHandle(handle));
+    revoke.addEventListener("click", function () {
+      revokeAuthSession(handle);
+    });
+    li.appendChild(id);
+    li.appendChild(times);
+    li.appendChild(revoke);
+    authSessionListEl.appendChild(li);
+  });
+}
+
+function showAuthSessionError() {
+  clearAuthSessionList();
+  authSessionStatusEl.textContent = "nao foi possivel listar as sessoes";
+}
+
+async function refreshAuthSessions() {
+  if (!authRequired) {
+    setAuthSessionsVisible(false);
+    return;
+  }
+  setAuthSessionsVisible(true);
+  const res = await api("/v1/auth/sessions");
+  if (res.status === 401) {
+    return;
+  }
+  if (!res.ok) {
+    showAuthSessionError();
+    return;
+  }
+  const data = await res.json();
+  renderAuthSessions(data.sessions || []);
+}
+
+function revokeAuthSession(handle) {
+  api("/v1/auth/sessions/" + encodeURIComponent(handle), { method: "DELETE" }).then(function (res) {
+    if (res.status === 401) {
+      return;
+    }
+    if (!res.ok) {
+      showAuthSessionError();
+      return;
+    }
+    return refreshAuthSessions();
+  }).catch(function () {
+    showAuthSessionError();
+  });
 }
 
 async function api(url, opts) {
@@ -924,6 +1033,21 @@ logoutBtn.addEventListener("click", function () {
     showLogin("");
   }).catch(function (err) {
     note(String(err && err.message ? err.message : err));
+  });
+});
+
+logoutAllBtn.addEventListener("click", function () {
+  api("/v1/logout-all", { method: "POST" }).then(function (res) {
+    if (res.status === 401) {
+      return;
+    }
+    if (!res.ok) {
+      showAuthSessionError();
+      return;
+    }
+    showLogin("");
+  }).catch(function () {
+    showAuthSessionError();
   });
 });
 

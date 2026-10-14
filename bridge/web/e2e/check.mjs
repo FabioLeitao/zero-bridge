@@ -255,6 +255,53 @@ try {
   result.viewOnly = Boolean(viewOnly);
   if (!viewOnly) fail("view-only", "read-only notice missing");
 
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 320,
+    height: 640,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  const fits = await evalJs("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1");
+  result.narrow = fits === true;
+  if (fits !== true) {
+    fail("narrow-320", await evalJs("document.documentElement.scrollWidth + '/' + document.documentElement.clientWidth"));
+  }
+
+  if (!e2eToken) {
+    const hidden = await evalJs("document.getElementById('auth-sessions').hidden === true");
+    result.authSessionsHidden = hidden === true;
+    if (hidden !== true) fail("auth-sessions-hidden", hidden);
+  } else {
+    const devices = await waitFor("document.getElementById('auth-sessions').hidden === false && document.querySelectorAll('#auth-session-list li').length >= 1 && document.getElementById('auth-session-list').textContent.indexOf('criada') >= 0 && document.getElementById('auth-session-list').textContent.indexOf('ultimo uso') >= 0 && document.getElementById('auth-session-list').textContent.indexOf('expira') >= 0", 8000);
+    result.authSessions = Boolean(devices);
+    if (!devices) fail("auth-sessions", await evalJs("document.getElementById('auth-sessions').textContent"));
+    const aria = await evalJs(`(function () {
+      const button = document.querySelector('#auth-session-list button');
+      const id = document.querySelector('#auth-session-list p');
+      if (!button || !id) return false;
+      return button.textContent === 'Revogar' && button.getAttribute('aria-label').indexOf('Revogar sessao ') === 0 && id.textContent.length === 8;
+    })()`);
+    result.authSessionId = aria === true;
+    if (aria !== true) fail("auth-session-id", await evalJs("document.getElementById('auth-session-list').textContent"));
+    const states = await evalJs(`(function () {
+      renderAuthSessions([]);
+      const empty = document.getElementById('auth-sessions-status').textContent === 'nenhuma sessao ativa' && document.querySelectorAll('#auth-session-list li').length === 0;
+      showAuthSessionError();
+      const error = document.getElementById('auth-sessions-status').textContent === 'nao foi possivel listar as sessoes' && document.querySelectorAll('#auth-session-list li').length === 0;
+      return empty && error;
+    })()`);
+    result.authSessionStates = states === true;
+    if (states !== true) fail("auth-session-states", states);
+    await evalJs("refreshAuthSessions()");
+    if (!(await waitFor("document.querySelectorAll('#auth-session-list li').length >= 1", 8000))) {
+      fail("auth-sessions-restored", await evalJs("document.getElementById('auth-sessions-status').textContent"));
+    }
+    await evalJs("document.getElementById('logout-all').click()");
+    const allOut = await waitFor("document.getElementById('login').hidden === false && document.getElementById('auth-sessions').hidden === true", 8000);
+    result.logoutAll = Boolean(allOut);
+    if (!allOut) fail("logout-all", await evalJs("JSON.stringify({login: document.getElementById('login').hidden, panel: document.getElementById('auth-sessions').hidden})"));
+  }
+
   if (e2eToken) {
     await evalJs("document.getElementById('logout').click()");
     const cleared = await waitFor("document.getElementById('login').hidden === false && document.getElementById('session-list').children.length === 0 && document.getElementById('log').textContent === '' && document.getElementById('workspace').value === ''", 8000);
