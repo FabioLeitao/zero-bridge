@@ -255,7 +255,8 @@ func (b *Broker) finish(it *item, decision string) {
 
 // finishLocked records the effective decision. allow stays allow only when an
 // offered option is kind allow_once with optionId "allow"; otherwise the
-// recorded decision is deny and the agent receives that deny.
+// recorded decision is deny and the agent receives that deny. History and the
+// event are published before done is closed, so Wait's return observes them.
 func (b *Broker) finishLocked(it *item, decision string) string {
 	it.once.Do(func() {
 		effective := effectiveDecision(decision, it.options)
@@ -263,13 +264,13 @@ func (b *Broker) finishLocked(it *item, decision string) string {
 		it.decision = effective
 		it.res = acpResult(effective, it.options)
 		it.resMu.Unlock()
-		close(it.done)
 		if st := b.sessions[it.sessionID]; st != nil {
 			st.pushHist(it.id, effective)
 		}
 		b.emitLocked(Event{
 			Type: "permission_resolved", SessionID: it.sessionID, ReqID: it.id, Decision: effective,
 		})
+		close(it.done)
 	})
 	it.resMu.Lock()
 	effective := it.decision
