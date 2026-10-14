@@ -209,20 +209,27 @@ Padrões de UI (só SSE, sem WebSocket): [OPEN_WEBUI_NOTES.pt_BR.md](../research
 
 ### S4 — C2 permissões
 
-**Caminho:** `bridge/internal/permissions/`.
+**Caminho:** `bridge/internal/permissions/`, `bridge/internal/acpclient/` (pedidos de entrada saem do read loop; deny escolhe uma option recebida de kind `reject_once`, senão `cancelled`), `bridge/internal/server/` e `bridge/cmd/zero-bridge/` (`--permission-timeout`).
 
 Referência de UX: [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_BR.md) (padrão `tool_approval.py`).
 
-**Aceite** (prompt que dispara permissão, modelo zero-custo):
+**Escolhas documentadas**
 
-- Cada pedido pendente tem `reqId` estável na URL.
-- `POST .../permissions/{reqId}` com `{"decision":"allow"}` → HTTP **200**, `{"ok":true}`; turno ACP permite.
-- Com `"decision":"deny"` → HTTP **200**; turno nega execução da tool.
-- Segundo POST no mesmo `{reqId}` já resolvido → HTTP **409**, corpo indica já resolvido.
-- `{reqId}` desconhecido → HTTP **404**.
-- Sem POST no timeout (padrão 60s) → bridge envia **deny** ao ACP; HTTP **408** ou **200** com `timeout` (documentar no commit da fatia); UI S5 mostra **expirado**.
-- No máximo **uma** permissão pendente em `GET .../permissions/pending` (ou evento SSE); a seguinte só após fechar a anterior.
-- Sem decisão HTTP antes do fim do turno → **deny** (padrão).
+- `reqId` são 16 bytes aleatórios em hex (128 bits) e nunca se repetem.
+- Por sessão: no máximo um pedido exposto e uma fila FIFO de **8**. Estouro é deny imediato. Ids na fila ficam ocultos (`GET` só mostra `queued`; `POST` de um id ainda enfileirado é **404**).
+- Os últimos **256** reqIds resolvidos por sessão ficam na memória (`allow`, `deny`, `expired`, `aborted`). Os mais antigos viram **404**.
+- HTTP `allow` só seleciona option de kind `allow_once` com `optionId` exatamente `allow`. `allow_always`, `allow_for_session`, prefixo e strict viram deny. HTTP `deny` seleciona kind `reject_once`; se essa option não existir, o desfecho é `cancelled`.
+- Timeout padrão **60s** (`--permission-timeout`). Ao expirar, a ponte nega ao agente e emite `permission_resolved` com decision `expired`. POST tardio é HTTP **409** `{"ok":false,"reason":"expired"}` (não 408).
+- Fim do turno, filho morto, Shutdown ou erro de conexão abortam todo pedido aberto como deny. Não há allow por padrão.
+
+**Aceite**
+
+- Transcrição ao vivo: [evidence/S4-permissions-transcript.txt](evidence/S4-permissions-transcript.txt) (HEAD `25f4818`, agente falso em `127.0.0.1:8767`, `--permission-timeout 5s`).
+- `GET /v1/sessions/{id}/permissions/pending` → `{"pending":{reqId,toolCall,decisions:["allow","deny"],expiresAt}|null,"queued":N}`.
+- `POST .../permissions/{reqId}` com `{"decision":"allow"|"deny"}` (`Content-Type: application/json`, campos desconhecidos rejeitados, corpo até 4 KiB): **200** `{"ok":true}`; repetição **409** `{"ok":false,"reason":"already resolved"}`; desconhecido, outra sessão ou ainda na fila **404**; decisão inválida **400**; content-type ruim **415**.
+- Mesmos Host, Origin e cabeçalhos de segurança da S3. `rawInput` de tool só chega ao SSE, depois de `Redact`, e nunca ao log.
+- O log SSE da sessão carrega `permission_request` e `permission_resolved` (mesmo replay e seq dos outros eventos).
+- Um prompt zero-custo no `zero acp` real não emitiu `session/request_permission` (registrado na transcrição).
 
 **Parada:** mudança no wire de permissão → corrigir adaptador; pausar até S2 passar de novo.
 

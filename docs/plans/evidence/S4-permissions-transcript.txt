@@ -1,0 +1,54 @@
+S4 live curl transcript — 2026-10-13 22:14:27 -03
+
+Bridge commit (HEAD at run):
+  25f4818 feat(bridge): permission routes and events (S4)
+
+Commands (fake agent, shown before the run):
+  cd /home/leitao/Projects/dev/zero-bridge/bridge
+  go build -o /tmp/acpfake ./cmd/acpfake
+  tmux new-session -d -s zbridge-s4 \
+    "cd /home/leitao/Projects/dev/zero-bridge/bridge && ZB_FAKE_PERMISSION=1 go run ./cmd/zero-bridge --listen 127.0.0.1:8767 --zero-bin /tmp/acpfake --permission-timeout 5s"
+  mkdir -p /tmp/zbridge-s4
+  curl -sf -X POST http://127.0.0.1:8767/v1/sessions \
+    -H 'Content-Type: application/json' -d '{"workspace":"/tmp/zbridge-s4"}'
+  curl -sf -X POST http://127.0.0.1:8767/v1/sessions/$SID/prompt \
+    -H 'Content-Type: application/json' -d '{"text":"go"}'
+  curl -sf http://127.0.0.1:8767/v1/sessions/$SID/permissions/pending
+  curl -sf -X POST http://127.0.0.1:8767/v1/sessions/$SID/permissions/$REQ \
+    -H 'Content-Type: application/json' -d '{"decision":"allow"}'
+  # same POST again
+  # POST .../permissions/deadbeefdeadbeefdeadbeefdeadbeef -d '{"decision":"deny"}'
+  # new prompt "go2", pending, POST deny
+  # new prompt "go3", no POST for >5s, then late POST allow
+  tmux kill-session -t zbridge-s4
+
+HTTP (session sess-acptest-1):
+  GET /health → 200 (ready)
+  POST /v1/sessions → 200 {"sessionId":"sess-acptest-1"}
+  POST .../prompt "go" → 202 {"ok":true}
+  GET .../permissions/pending → pending reqId 1d89ec66f895bfada04dd7bac9e40144 queued 0
+  POST allow → 200 {"ok":true}
+  POST allow again → 409 {"ok":false,"reason":"already resolved"}
+  POST unknown reqId deadbeefdeadbeefdeadbeefdeadbeef → 404 {"error":"not found"}
+  POST .../prompt "go2" → 202 {"ok":true}
+  GET pending → reqId 3667ce56b5bcf152c204670c6855439e
+  POST deny → 200 {"ok":true}
+  POST .../prompt "go3" → 202 {"ok":true}
+  GET pending → reqId bf3e51c20f7ca3ddef54ba09ac911385
+  sleep 6s, late POST allow → 409 {"ok":false,"reason":"expired"}
+
+Real zero (one zero-cost prompt, then the server was stopped):
+  tmux new-session -d -s zbridge-s4-real \
+    "cd bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8768 --permission-timeout 20s"
+  POST /v1/sessions workspace /tmp/zbridge-s4-real
+    → sessionId zero_20261014011506_1791940506187153768_1
+  POST prompt: "Create a file named hello.txt in this workspace containing the single word hi. Use a tool; do not just describe it."
+    → 202 {"ok":true}
+  GET .../permissions/pending polled for 20s → no pending request
+  nao observado com zero real
+  tmux kill-session -t zbridge-s4-real
+
+After both kill-session:
+  TCP 8767 and 8768 closed.
+  Remaining listeners 127.0.0.1:8765 and 127.0.0.1:8766 belong to tmux zbridge-s5a-real and zbridge-s5a-fake (left running).
+  Their children (`zero acp` and `/tmp/acpfake acp`) are parented by those bridges, not orphans of this run.
