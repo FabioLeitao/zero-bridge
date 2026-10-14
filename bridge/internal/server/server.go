@@ -26,6 +26,9 @@ import (
 type Config struct {
 	Listen            string
 	ZeroBin           string
+	AgentCmd          string
+	AgentArgs         []string
+	Profile           string
 	Workspace         string
 	ExtraEnv          []string
 	EventLogCap       int
@@ -79,6 +82,13 @@ type Server struct {
 func New(cfg Config) (*Server, error) {
 	if cfg.ZeroBin == "" {
 		cfg.ZeroBin = "zero"
+	}
+	switch cfg.Profile {
+	case "":
+		cfg.Profile = "zero"
+	case "zero", "generic":
+	default:
+		return nil, fmt.Errorf("unknown profile %q", cfg.Profile)
 	}
 	if cfg.Keepalive <= 0 {
 		cfg.Keepalive = 15 * time.Second
@@ -140,11 +150,13 @@ func (s *Server) Boot(ctx context.Context) error {
 		extra = zeroenv.ProviderEnv()
 	}
 	client, err := acpclient.Start(ctx, acpclient.Options{
-		ZeroBin:  s.cfg.ZeroBin,
-		ExtraEnv: extra,
-		Timeout:  0,
-		Notify:   s.onNotify,
-		Inbound:  permInbound{s},
+		ZeroBin:   s.cfg.ZeroBin,
+		AgentCmd:  s.cfg.AgentCmd,
+		AgentArgs: s.cfg.AgentArgs,
+		ExtraEnv:  extra,
+		Timeout:   0,
+		Notify:    s.onNotify,
+		Inbound:   permInbound{s},
 	})
 	if err != nil {
 		return err
