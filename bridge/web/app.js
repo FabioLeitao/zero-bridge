@@ -1,5 +1,10 @@
 "use strict";
 
+const loginEl = document.getElementById("login");
+const tokenEl = document.getElementById("token");
+const loginBtn = document.getElementById("login-button");
+const loginError = document.getElementById("login-error");
+const logoutBtn = document.getElementById("logout");
 const logEl = document.getElementById("log");
 const form = document.getElementById("composer");
 const textEl = document.getElementById("text");
@@ -17,6 +22,31 @@ const sidebarEl = document.getElementById("sidebar");
 let sessionCursor = "";
 
 let sessionId = "";
+let authRequired = false;
+
+function showLogin(message) {
+  abortStream();
+  sessionId = "";
+  loginEl.hidden = false;
+  logoutBtn.hidden = true;
+  loginError.textContent = message || "";
+}
+
+function hideLogin() {
+  loginEl.hidden = true;
+  tokenEl.value = "";
+  loginError.textContent = "";
+  logoutBtn.hidden = !authRequired;
+}
+
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  const path = String(url);
+  if (res.status === 401 && path.indexOf("/v1/login") < 0 && path.indexOf("/v1/auth/status") < 0) {
+    showLogin("sessao expirada");
+  }
+  return res;
+}
 let seen = new Set();
 let assistant = null;
 let thoughtBody = null;
@@ -50,7 +80,23 @@ function note(value) {
 }
 
 async function boot() {
-  const infoRes = await fetch("/v1/info");
+  const statusRes = await api("/v1/auth/status");
+  if (!statusRes.ok) {
+    note("auth status failed");
+    return;
+  }
+  const status = await statusRes.json();
+  authRequired = status.auth === true;
+  if (authRequired && status.authenticated !== true) {
+    showLogin("");
+    return;
+  }
+  hideLogin();
+  await startWorkspace();
+}
+
+async function startWorkspace() {
+  const infoRes = await api("/v1/info");
   if (!infoRes.ok) {
     note("info failed");
     return;
@@ -59,7 +105,7 @@ async function boot() {
   workspaceEl.value = info.defaultWorkspace || "";
   await refreshSessions();
   const body = JSON.stringify({ workspace: workspaceEl.value });
-  const ses = await fetch("/v1/sessions", {
+  const ses = await api("/v1/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body
@@ -112,7 +158,7 @@ async function openSession() {
   abortStream();
   clearView();
   const body = JSON.stringify({ workspace: workspaceEl.value });
-  const ses = await fetch("/v1/sessions", {
+  const ses = await api("/v1/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body
@@ -188,7 +234,7 @@ async function pageSessions(more) {
   if (more && sessionCursor) {
     params.set("cursor", sessionCursor);
   }
-  const res = await fetch("/v1/sessions?" + params.toString());
+  const res = await api("/v1/sessions?" + params.toString());
   if (!res.ok) {
     note("list failed " + res.status);
     return;
@@ -234,7 +280,7 @@ async function loadSession(id) {
   }
   abortStream();
   clearView();
-  const res = await fetch("/v1/sessions/" + encodeURIComponent(id) + "/load", {
+  const res = await api("/v1/sessions/" + encodeURIComponent(id) + "/load", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}"
@@ -261,7 +307,7 @@ async function resumeSession(id) {
   if (!id) {
     return;
   }
-  const res = await fetch("/v1/sessions/" + encodeURIComponent(id) + "/resume", {
+  const res = await api("/v1/sessions/" + encodeURIComponent(id) + "/resume", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}"
@@ -299,7 +345,7 @@ function connect(attempt) {
     return;
   }
   const gen = streamGen;
-  fetch("/v1/sessions/" + encodeURIComponent(sessionId) + "/events")
+  api("/v1/sessions/" + encodeURIComponent(sessionId) + "/events")
     .then(function (res) {
       if (gen !== streamGen) {
         return;
@@ -697,7 +743,7 @@ function showPermission(msg) {
   function post(decision) {
     allowBtn.disabled = true;
     denyBtn.disabled = true;
-    fetch("/v1/sessions/" + encodeURIComponent(sessionId) + "/permissions/" + encodeURIComponent(reqId), {
+    api("/v1/sessions/" + encodeURIComponent(sessionId) + "/permissions/" + encodeURIComponent(reqId), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ decision: decision })
@@ -775,7 +821,7 @@ modeEl.addEventListener("change", function () {
   }
   const mode = modeEl.value;
   modeEl.disabled = true;
-  fetch("/v1/sessions/" + encodeURIComponent(sessionId) + "/mode", {
+  api("/v1/sessions/" + encodeURIComponent(sessionId) + "/mode", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode: mode })
@@ -821,6 +867,39 @@ sessionFilterEl.addEventListener("change", function () {
   });
 });
 
+loginBtn.addEventListener("click", function () {
+  const token = tokenEl.value;
+  loginError.textContent = "";
+  api("/v1/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: token })
+  }).then(function (res) {
+    if (res.status === 429) {
+      loginError.textContent = "muitas tentativas";
+      return;
+    }
+    if (!res.ok) {
+      loginError.textContent = "token recusado";
+      return;
+    }
+    tokenEl.value = "";
+    hideLogin();
+    return startWorkspace();
+  }).catch(function (err) {
+    loginError.textContent = String(err && err.message ? err.message : err);
+  });
+});
+
+logoutBtn.addEventListener("click", function () {
+  api("/v1/logout", { method: "POST" }).then(function () {
+    clearView();
+    showLogin("");
+  }).catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+});
+
 newSessionBtn.addEventListener("click", function () {
   openSession().catch(function (err) {
     note(String(err && err.message ? err.message : err));
@@ -839,7 +918,7 @@ form.addEventListener("submit", function (ev) {
   modeEl.disabled = true;
   assistant = null;
   thoughtBody = null;
-  fetch("/v1/sessions/" + encodeURIComponent(sessionId) + "/prompt", {
+  api("/v1/sessions/" + encodeURIComponent(sessionId) + "/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text: text })
