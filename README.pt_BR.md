@@ -37,18 +37,18 @@ Use um modelo local ou uma variante `:free`. A ponte define `ZERO_PROVIDER=grani
 
 ## Estado
 
-S2–S6, S14 e S17 estão nesta árvore. S14 e S17 são só locais e não foram empurradas. Próxima ordem de construção: S14b, S19, S16, S18, S6b, S7. A S11 está bloqueada no #1125 do upstream. A S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
+S2–S6, S14 e S17 estão na main. S14 e S17 entraram na [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). Próxima ordem de construção: S14b, S19, S16, S18, S6b, S7. A S11 está feita no upstream, na [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). A S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
 
 | Fatia | Estado |
 | --- | --- |
-| S1 usage (#1118) | em andamento no fork do Zero |
+| S1 usage (#1118) | em andamento; [PR #1137](https://github.com/Twigpine/zero/pull/1137) do upstream está aberta |
 | S2–S6 ponte e UI web | feita |
-| S14 proxy, token, login | feita localmente ([#1](https://github.com/FabioLeitao/zero-bridge/issues/1)) |
-| S17 gate local | feita localmente ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13)) |
+| S14 proxy, token, login | na main ([#1](https://github.com/FabioLeitao/zero-bridge/issues/1), [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16)) |
+| S17 gate local | na main ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13), [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16)) |
 | S14b, S19, S16, S18, S6b, S7 | desenhadas, nessa ordem ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11), [#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
 | S8–S10, S12, S15 | desenhadas ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
-| S11 restaurar modo | bloqueada ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), upstream #1125) |
-| S13 limites de frame | acompanhando ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), PR #944) |
+| S11 restaurar modo | feita no upstream ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134)) |
+| S13 limites de frame | acompanhando ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), [PR #944](https://github.com/Twigpine/zero/pull/944) aberta) |
 
 ## Testes
 
@@ -77,9 +77,9 @@ A ponte fala ACP em stdio. O Zero do Gitlawb (`zero acp`) é o harness recomenda
 
 Trabalho upstream relacionado, sem promessa de que este repositório vá entregá-lo:
 
-- [#1118](https://github.com/Twigpine/zero/issues/1118) — persistência de usage de tokens no ACP.
+- [#1118](https://github.com/Twigpine/zero/issues/1118) — persistência de usage de tokens no ACP. [PR #1137](https://github.com/Twigpine/zero/pull/1137) aberta.
 - [#664](https://github.com/Twigpine/zero/issues/664) — modo spec-draft.
-- [#923](https://github.com/Twigpine/zero/issues/923) — limites de frame e de goroutines no ACP, hoje no [PR #944](https://github.com/Twigpine/zero/pull/944).
+- [#923](https://github.com/Twigpine/zero/issues/923) — limites de frame e de goroutines no ACP, ainda na [PR #944](https://github.com/Twigpine/zero/pull/944) aberta.
 - Avisos de MCP na subida (`MCP server … unavailable`, cerca de 8s cada) chegam como `agent_message_chunk`. Vários deles somam dezenas de segundos antes da primeira resposta. A página mostra linhas que começam com `[zero warning]` como notas. Relacionado: [#825](https://github.com/Twigpine/zero/issues/825).
 
 Handoff de sessão sem socket de escuta é outro projeto: [zero-handoff](https://github.com/FabioLeitao/zero-handoff).

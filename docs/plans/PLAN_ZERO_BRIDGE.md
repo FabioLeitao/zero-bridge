@@ -2,11 +2,11 @@
 
 English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BRIDGE.pt_BR.md).
 
-**Status** (2026-10-14). States: done, in progress, designed, blocked-external, following.
+**Status** (2026-10-14). States: done, done upstream, in progress, designed, blocked-external, following.
 
 | ID | State | Evidence |
 | --- | --- | --- |
-| S1 | in progress | Fork patch `03d618be` recorded in the evidence table below. [#1118](https://github.com/Twigpine/zero/issues/1118) was still open on 2026-10-13. |
+| S1 | in progress | Fork patch `03d618be` recorded in the evidence table below. [#1118](https://github.com/Twigpine/zero/issues/1118) is still open. Open [PR #1137](https://github.com/Twigpine/zero/pull/1137). |
 | S2 | done | [evidence/S2-acpprobe-transcript.txt](evidence/S2-acpprobe-transcript.txt) `3523ee8` |
 | S3 | done | [evidence/S3-curl-transcript.txt](evidence/S3-curl-transcript.txt) `2f6b02a` |
 | S4 | done | [evidence/S4-permissions-transcript.txt](evidence/S4-permissions-transcript.txt) `5cfe8f8` |
@@ -18,14 +18,14 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S8 | designed | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Not built. |
 | S9 | designed | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Not built. |
 | S10 | designed | [#6](https://github.com/FabioLeitao/zero-bridge/issues/6). Not built. |
-| S11 | blocked-external | [#7](https://github.com/FabioLeitao/zero-bridge/issues/7). Upstream [#1125](https://github.com/Twigpine/zero/issues/1125) had no `issue-approved` at plan time. |
+| S11 | done upstream | [#7](https://github.com/FabioLeitao/zero-bridge/issues/7). Upstream [#1125](https://github.com/Twigpine/zero/issues/1125) is closed by merged [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). |
 | S12 | designed | [#8](https://github.com/FabioLeitao/zero-bridge/issues/8). Not built. |
 | S13 | following | [#9](https://github.com/FabioLeitao/zero-bridge/issues/9). [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). |
-| S14 | done | [#1](https://github.com/FabioLeitao/zero-bridge/issues/1). [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt). Local only, not pushed. |
+| S14 | done | [#1](https://github.com/FabioLeitao/zero-bridge/issues/1). [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt). Merged in PR #16. |
 | S14b | designed | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Not built. |
 | S15 | designed | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10). Not built. |
 | S16 | designed | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Not built. |
-| S17 | done | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` is the definition of done. Local only, not pushed. |
+| S17 | done | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` is the definition of done. Merged in PR #16. |
 | S18 | designed | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Not built. |
 | S19 | designed | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Not built. |
 
@@ -58,7 +58,7 @@ Reference patterns (read-only, no code copy): Hermes `plugins/platforms/a2a`, `w
 ## Global rules
 
 1. **Place:** every slice names repo + path and why.
-2. **Sequence:** one linear order of **22 slices** (S1…S15 plus S5a/S5b, S6b, S14b, S16, S17, S18, and S19). Only one active slice; the next starts after the previous **acceptance** passes. S14 and S17 are done locally. Next build order: **S14b → S19 → S16 → S18 → S6b → S7**. S15 waits on an explicit operator go.
+2. **Sequence:** one linear order of **22 slices** (S1…S15 plus S5a/S5b, S6b, S14b, S16, S17, S18, and S19). Only one active slice; the next starts after the previous **acceptance** passes. S14 and S17 are on main (PR #16). Next build order: **S14b → S19 → S16 → S18 → S6b → S7**. S15 waits on an explicit operator go.
 3. **External block:** slices that need upstream triage/merge are marked **BLOQUEADA-EXTERNA**; execution skips to the next slice that does not depend on them (order in this doc is fixed).
 4. **Zero-cost prompts:** any slice that sends a real `session/prompt` (probe, HTTP, permissions, UI) must use a **local** model (Ollama) or a **`:free`** variant; never a paid provider. Transcripts and evidence must record provider/model only (never keys).
 5. **Never close unmerged PRs from this workstream:** if upstream lands overlapping work, merge `upstream/main` into the topic branch, shrink the PR to the remaining delta, and **stop for the operator** to decide next steps. Do not close open PRs without merge and do not close upstream issues from here.
@@ -116,7 +116,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S8** | B1 | `zero-bridge` → `plugin/a2a/` | `a2a_discover` tool | — |
 | **S9** | B2 | `zero-bridge` → `plugin/a2a/` | `a2a_call` tool | — |
 | **S10** | B3 | `zero-bridge` → `plugin/a2a/` | `a2a_list` tool | — |
-| **S11** | A2 | `FabioLeitao/zero` topic branch → `internal/acp/`, `internal/sessions/` | Upstream #1125 mode restore | **BLOQUEADA-EXTERNA** (no `issue-approved` on #1125 at plan time) |
+| **S11** | A2 | `FabioLeitao/zero` topic branch → `internal/acp/`, `internal/sessions/` | Upstream #1125 mode restore | done upstream ([#1134](https://github.com/Twigpine/zero/pull/1134)) |
 | **S12** | A3 | `FabioLeitao/zero` topic branch → `internal/acp/` | Upstream #664 spec-draft mode | PR merge upstream |
 | **S13** | A4 | `FabioLeitao/zero` topic branch → `internal/acp/` | Upstream #923 resource limits | follow PR #944 |
 | **S14** | C6 | `zero-bridge` → `bridge/` | Proxy-ready allowlist, token, SSE flush | — |
@@ -127,7 +127,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S18** | C6d | `zero-bridge` container | Image beside the proxy, read-only root | — |
 | **S15** | — | `zero-bridge` docs | Public checklist and Show and tell | waits on explicit operator go |
 
-**Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices through S6, S14, and S17 are in the tree. Next build order is **S14b → S19 → S16 → S18 → S6b → S7**. S15 waits on an explicit operator go. B (S8–S10) does not require the HTTP server. When **S11** is blocked, continue **S12**–**S13**, then return to **S11** after `issue-approved` on #1125.
+**Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices through S6, S14, and S17 are on main. Next build order is **S14b → S19 → S16 → S18 → S6b → S7**. S15 waits on an explicit operator go. B (S8–S10) does not require the HTTP server. **S11** is done upstream in [#1134](https://github.com/Twigpine/zero/pull/1134). The bridge still has to verify against a build that contains that merge.
 
 Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15).
 
@@ -139,7 +139,7 @@ Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/iss
 
 ### S1 — A1 Issue #1118 token usage persistence
 
-**Verified state (2026-10-13):** [#1118](https://github.com/Twigpine/zero/issues/1118) open; label `issue-approved`. Maintainer confirmation (2026-10-12, Vasanthdev2004): set `OnUsage` in `runTurn`, enqueue via the same `queue` as other turn events, payload like non-escalating `zero exec` **without** the `model` key; regression test drives a real `session/prompt` with two usages; wire forwarding ([#929](https://github.com/Twigpine/zero/issues/929)) stays out of scope.
+**Verified state (2026-10-14):** [#1118](https://github.com/Twigpine/zero/issues/1118) is still open; label `issue-approved`. Open [Twigpine/zero#1137](https://github.com/Twigpine/zero/pull/1137) carries the fix and is not merged. Maintainer confirmation (2026-10-12, Vasanthdev2004): set `OnUsage` in `runTurn`, enqueue via the same `queue` as other turn events, payload like non-escalating `zero exec` **without** the `model` key; regression test drives a real `session/prompt` with two usages; wire forwarding ([#929](https://github.com/Twigpine/zero/issues/929)) stays out of scope.
 
 **Branch state (read-only `git` on fork clone):**
 
@@ -159,11 +159,11 @@ Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/iss
 
 ### S11 — A2 Issue #1125 plan/ask mode after restart
 
-**Verified state:** Open; **no** `issue-approved`. **BLOQUEADA-EXTERNA** until the label appears.
+**Verified state (2026-10-14):** Done upstream. [#1125](https://github.com/Twigpine/zero/issues/1125) is closed. Merged [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134) is the fix. This repository does not implement it. Remaining bridge work is to verify against a build that contains #1134.
 
-**Branch (when unblocked):** `fix/acp-persist-permission-mode` from `upstream/main`.
+**Branch:** no topic branch in this repo. The upstream fix is #1134.
 
-**Work:** Persist permission mode in session metadata (`internal/sessions/store.go`); restore in `activatePersistedSession` / `registerSession` (`internal/acp/agent.go`). PR first to `FabioLeitao/zero`.
+**Work:** recorded design, already landed in #1134: persist permission mode in session metadata (`internal/sessions/store.go`); restore in `activatePersistedSession` / `registerSession` (`internal/acp/agent.go`).
 
 **Tests:** add `TestACPPermissionModeSurvivesProcessRestart` in `internal/acp/agent_test.go` (pattern: `TestACPModelConfigOptionsCatalogSelectionAndLoad` restart harness + `TestACPSetModeUpdatesSession` mode assertions).
 
@@ -172,7 +172,7 @@ Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/iss
 - `go test ./internal/acp/ -run TestACPPermissionModeSurvivesProcessRestart -count=1` passes.
 - After `session/set_mode` with `plan`, simulated ACP process restart, `session/load` → response `modes.currentModeId` is `plan` (not `auto`).
 
-**Stop:** If upstream triage says mode is client-owned only, record that decision in this plan under S11 and **stop for the operator** (no PR/issue close from here).
+**Stop:** #1134 is merged. Do not open a fork pull request for this slice.
 
 **Unlocks:** Bridge S6 load/resume reflects the mode the user chose.
 
@@ -387,7 +387,7 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 ### S14 — C6 proxy-ready
 
-**Path:** `bridge/` config, login cookie, and SSE headers. Done locally. Deploy guide: [../deploy/CADDY.md](../deploy/CADDY.md). Evidence: [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt).
+**Path:** `bridge/` config, login cookie, and SSE headers. Merged in PR #16. Deploy guide: [../deploy/CADDY.md](../deploy/CADDY.md). Evidence: [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt).
 
 **Decision:** external access is only through a reverse proxy, the same pattern as Grafana and CouchDB on the T14. The bridge process stays on loopback (`--listen` outside loopback still exits 2). No TLS in the process.
 
@@ -400,7 +400,7 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 - `--allowed-host` matches `Host` only. Without `--public-origin`, `POST /v1/login` with an `https` `Origin` is **403**. If the proxy sends the port in `Host`, the allowlist entry includes that port.
 - SSE responses include `X-Accel-Buffering: no`. The Caddy example uses `flush_interval -1`, no `encode` on the SSE route, and `request_body { max_size 2MB }`.
 
-**Stop:** Do not bind `0.0.0.0`. Do not push this slice until the operator asks.
+**Stop:** Do not bind `0.0.0.0`. Merged in PR #16.
 
 **Unlocks:** S17, which is done. Next build slice is S14b. S15 waits on an explicit operator go.
 
@@ -468,7 +468,7 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 ### S17 — local gate
 
-**Path:** repo root (`Makefile`, `scripts/`, `.githooks/`, CONTRIBUTING, AGENTS, templates). Done locally. Not pushed. [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). S15 waits on an explicit operator go.
+**Path:** repo root (`Makefile`, `scripts/`, `.githooks/`, CONTRIBUTING, AGENTS, templates). Merged in PR #16. [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). S15 waits on an explicit operator go.
 
 **Acceptance**
 
@@ -481,7 +481,7 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 **Stop:** Do not add a workflow file. Do not document a way to skip the hooks.
 
-**Unlocks:** S14b. S15 waits on an explicit operator go. The operator opens the pull request that covers S14 and S17.
+**Unlocks:** S14b. S15 waits on an explicit operator go. Merged in PR #16.
 
 ### S15 — publication
 
@@ -572,8 +572,8 @@ Separate module tree from `bridge/` (plugin manifest + tool binaries). Layout fo
 | Hermes ACP stdout reserved | `hermes-agent/acp_adapter/entry.py` ~3–4 |
 | DSH profiles and packages | `gh api` `docs/architecture.md` |
 | DSH `apps/web` | `gh api` listing |
-| #1118 open + `issue-approved` + maintainer shape 2026-10-12 | `gh issue view 1118`; comment Vasanthdev2004 2026-10-12 |
-| #1125 open, no `issue-approved` | `gh issue view 1125` |
+| #1118 open + `issue-approved` + open PR #1137 | `gh issue view 1118`; `gh pr view 1137` |
+| #1125 closed by merged #1134 | `gh pr view 1134` |
 | #664, #923 open + `issue-approved` | `gh issue view` |
 | `feat/acp-usage-events` = `11482096`, acp patch ≡ `03d618be` | `git diff 03d618be 11482096 -- internal/acp/` empty |
 | Branch 1 ahead / 27 behind `upstream/main` | `git rev-list` on fork clone |
