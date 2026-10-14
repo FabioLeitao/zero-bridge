@@ -36,6 +36,9 @@ type Config struct {
 	Token             string
 	AllowedHosts      []string
 	PublicOrigins     []string
+	TrustProxy        bool
+	Now               func() time.Time
+	LoginFailureDelay time.Duration
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -55,6 +58,8 @@ type Server struct {
 	workspace      string
 	workspaceOwned bool
 	perms          *permissions.Broker
+	login          *loginState
+	loginDelay     time.Duration
 }
 
 // New builds a Server; call Boot before serving.
@@ -76,6 +81,13 @@ func New(cfg Config) (*Server, error) {
 	if err := validateExposure(cfg); err != nil {
 		return nil, err
 	}
+	delay := cfg.LoginFailureDelay
+	if delay == 0 {
+		delay = 200 * time.Millisecond
+	}
+	if delay < 0 {
+		delay = 0
+	}
 	listen, err := ResolveListen(cfg.Listen)
 	if err != nil {
 		return nil, err
@@ -93,6 +105,8 @@ func New(cfg Config) (*Server, error) {
 		serveCtx:    serveCtx,
 		serveCancel: serveCancel,
 		perms:       permissions.New(cfg.PermissionTimeout),
+		login:       newLoginState(),
+		loginDelay:  delay,
 	}
 	s.perms.OnEvent = s.onPermission
 	return s, nil
@@ -209,6 +223,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /app.js", s.handleFile("app.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /style.css", s.handleFile("style.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /v1/auth/status", s.handleAuthStatus)
+	mux.HandleFunc("POST /v1/login", s.handleLogin)
+	mux.HandleFunc("POST /v1/logout", s.handleLogout)
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
@@ -312,6 +329,11 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusForbidden, time.Since(start))
 			return
 		}
+		if !s.cookieCSRF(r) {
+			s.writeJSON(rec, http.StatusForbidden, map[string]any{"error": "forbidden"})
+			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusForbidden, time.Since(start))
+			return
+		}
 		if !s.authorized(r) {
 			rec.Header().Set("WWW-Authenticate", "Bearer")
 			s.writeJSON(rec, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
@@ -385,7 +407,13 @@ func (s *Server) authorized(r *http.Request) bool {
 	if s.cfg.Token == "" || isPublic(r) {
 		return true
 	}
-	return s.hasBearer(r)
+	if r.URL.Path == "/v1/auth/status" && r.Method == http.MethodGet {
+		return true
+	}
+	if r.URL.Path == "/v1/login" && r.Method == http.MethodPost {
+		return true
+	}
+	return s.hasBearer(r) || s.sessionOK(r)
 }
 
 func isPublic(r *http.Request) bool {
@@ -410,7 +438,7 @@ func (s *Server) hasBearer(r *http.Request) bool {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Token != "" && !s.hasBearer(r) {
+	if s.cfg.Token != "" && !s.hasBearer(r) && !s.sessionOK(r) {
 		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}

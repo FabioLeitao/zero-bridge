@@ -43,6 +43,7 @@ func run() int {
 	tokenFile := ""
 	var allowedHosts []string
 	var publicOrigins []string
+	trustProxy := false
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "--listen":
@@ -71,6 +72,8 @@ func run() int {
 				return 2
 			}
 			permTimeout = d
+		case "--trust-proxy":
+			trustProxy = true
 		case "--allowed-host":
 			if i+1 >= len(os.Args) {
 				fmt.Fprintln(os.Stderr, "missing value for --allowed-host")
@@ -121,6 +124,7 @@ func run() int {
 		Token:             token,
 		AllowedHosts:      allowedHosts,
 		PublicOrigins:     publicOrigins,
+		TrustProxy:        trustProxy,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
