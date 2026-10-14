@@ -63,6 +63,10 @@ Headless Chrome check (Node 22+, no npm), against a bridge that is already liste
 node bridge/web/e2e/check.mjs http://127.0.0.1:8765/
 ```
 
+## Hooks
+
+A clone does not install the hooks. Run `make hooks` once. The pre-commit hook checks staged Go files and the fast hygiene letters. The pre-push hook runs `make check`. Skipping either hook is forbidden.
+
 ## License
 
 [MIT](LICENSE). Copyright (c) 2026 Fabio Tavares Leitao.

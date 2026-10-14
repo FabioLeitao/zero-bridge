@@ -63,6 +63,10 @@ Check headless no Chrome (Node 22+, sem npm), contra uma ponte que já esteja es
 node bridge/web/e2e/check.mjs http://127.0.0.1:8765/
 ```
 
+## Ganchos
+
+Um clone não instala os ganchos. Rode `make hooks` uma vez. O pre-commit confere os arquivos Go no stage e as letras rápidas da higiene. O pre-push roda `make check`. Pular qualquer um dos dois é proibido.
+
 ## Licença
 
 [MIT](LICENSE). Copyright (c) 2026 Fabio Tavares Leitao.

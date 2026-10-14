@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Full gate. Skipping this hook is forbidden.
+# Do not create a temporary repository here. A caller that does must unset
+# GIT_DIR and GIT_INDEX_FILE first, or the new repository lands in this one.
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+exec make check
