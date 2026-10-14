@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -33,12 +34,19 @@ type Config struct {
 	Keepalive         time.Duration
 	PermissionTimeout time.Duration
 	Logger            *log.Logger
+	Audit             auth.Sink
 	Token             string
+	TokenFile         string // set only for --token-file; empty when the token came from the environment
 	AllowedHosts      []string
 	PublicOrigins     []string
 	TrustProxy        bool
 	Now               func() time.Time
 	LoginFailureDelay time.Duration
+	SessionTTL        time.Duration
+	SessionIdle       time.Duration
+	MaxSessions       int
+	AuthFailWindow    time.Duration
+	AuthFailLimit     int
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -60,6 +68,11 @@ type Server struct {
 	perms          *permissions.Broker
 	login          *loginState
 	loginDelay     time.Duration
+	audit          auth.Sink
+	tokenMu        sync.RWMutex
+	token          string
+	prevToken      string
+	reloadDone     chan struct{}
 }
 
 // New builds a Server; call Boot before serving.
@@ -72,6 +85,12 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = log.New(io.Discard, "", 0)
+	}
+	if cfg.Audit == nil {
+		cfg.Audit = auth.NewLogSink(cfg.Logger)
+	}
+	if err := applyLimitDefaults(&cfg); err != nil {
+		return nil, err
 	}
 	if cfg.Token != "" {
 		if err := auth.Validate(cfg.Token); err != nil {
@@ -107,6 +126,8 @@ func New(cfg Config) (*Server, error) {
 		perms:       permissions.New(cfg.PermissionTimeout),
 		login:       newLoginState(),
 		loginDelay:  delay,
+		audit:       cfg.Audit,
+		token:       cfg.Token,
 	}
 	s.perms.OnEvent = s.onPermission
 	return s, nil
@@ -226,6 +247,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("POST /v1/login", s.handleLogin)
 	mux.HandleFunc("POST /v1/logout", s.handleLogout)
+	mux.HandleFunc("POST /v1/logout-all", s.handleLogoutAll)
+	mux.HandleFunc("GET /v1/auth/sessions", s.handleListAuthSessions)
+	mux.HandleFunc("DELETE /v1/auth/sessions/{handle}", s.handleRevokeAuthSession)
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
@@ -275,6 +299,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s.serveCancel != nil {
 		s.serveCancel()
 	}
+	s.waitReload(ctx)
 	var err error
 	if s.httpSrv != nil {
 		err = s.httpSrv.Shutdown(ctx)
@@ -293,6 +318,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	if s.workspaceOwned && s.workspace != "" {
 		_ = os.RemoveAll(s.workspace)
+	}
+	if cl, ok := s.audit.(auth.Closer); ok {
+		if cerr := cl.Close(); err == nil {
+			err = cerr
+		}
 	}
 	return err
 }
@@ -332,6 +362,12 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 		if !s.cookieCSRF(r) {
 			s.writeJSON(rec, http.StatusForbidden, map[string]any{"error": "forbidden"})
 			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusForbidden, time.Since(start))
+			return
+		}
+		if blocked, retry := s.bearerGate(r); blocked {
+			rec.Header().Set("Retry-After", strconv.Itoa(retry))
+			s.writeJSON(rec, http.StatusTooManyRequests, map[string]any{"error": "too many requests"})
+			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusTooManyRequests, time.Since(start))
 			return
 		}
 		if !s.authorized(r) {
@@ -400,11 +436,14 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) redact(msg string) string {
-	return RedactSecrets(msg, s.cfg.Token)
+	s.tokenMu.RLock()
+	cur, prev := s.token, s.prevToken
+	s.tokenMu.RUnlock()
+	return RedactSecrets(msg, cur, prev)
 }
 
 func (s *Server) authorized(r *http.Request) bool {
-	if s.cfg.Token == "" || isPublic(r) {
+	if s.currentToken() == "" || isPublic(r) {
 		return true
 	}
 	if r.URL.Path == "/v1/auth/status" && r.Method == http.MethodGet {
@@ -428,17 +467,25 @@ func isPublic(r *http.Request) bool {
 	}
 }
 
-func (s *Server) hasBearer(r *http.Request) bool {
+func presentedBearer(r *http.Request) (string, bool) {
 	const prefix = "Bearer "
 	h := r.Header.Get("Authorization")
 	if len(h) <= len(prefix) || h[:len(prefix)] != prefix {
+		return "", false
+	}
+	return h[len(prefix):], true
+}
+
+func (s *Server) hasBearer(r *http.Request) bool {
+	tok, ok := presentedBearer(r)
+	if !ok {
 		return false
 	}
-	return auth.Equal(s.cfg.Token, h[len(prefix):])
+	return auth.Equal(s.currentToken(), tok)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Token != "" && !s.hasBearer(r) && !s.sessionOK(r) {
+	if s.currentToken() != "" && !s.hasBearer(r) && !s.sessionOK(r) {
 		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}

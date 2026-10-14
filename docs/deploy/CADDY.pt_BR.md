@@ -26,6 +26,13 @@ Suba a ponte com `--token-file` **ou** a variável `ZERO_BRIDGE_TOKEN`. Os dois 
 | `--allowed-host host[:port]` | Repetível. `Host` exato, sem distinção de maiúsculas, além do host de loopback. |
 | `--public-origin scheme://host[:port]` | Repetível. `Origin` exato (esquema, host e porta). |
 | `--trust-proxy` | Confia em `X-Forwarded-Proto` para o cookie `Secure`, e no primeiro endereço de `X-Forwarded-For` como chave do limite de login. Desligado por padrão. |
+| `--audit-log` | Arquivo opcional de auditoria. Criado em `0600`. Um arquivo existente que o grupo ou os outros possam ler é recusado. |
+| `--config` | Arquivo de limites (`session-ttl`, `session-idle`, `max-sessions`, `auth-fail-window`, `auth-fail-limit`). Flag, depois ambiente, depois esse arquivo, depois o padrão. |
+| `--session-ttl` | Vida absoluta do cookie. Padrão `12h`, teto `720h`. |
+| `--session-idle` | Ociosidade deslizante. Padrão `2h`. Não pode ser maior que o TTL. |
+| `--max-sessions` | Cookies simultâneos. Padrão `8`, teto `64`. O mais antigo é despejado. |
+| `--auth-fail-window` | Janela compartilhada de login e Bearer. Padrão `1m`, piso `1s`, teto `1h`. |
+| `--auth-fail-limit` | Falhas guardadas nessa janela. Padrão `5`, teto `100`. |
 
 Qualquer `--allowed-host` ou `--public-origin` sem token sai **2**: `token required when exposed via proxy`. Lista vazia mantém o check de Host em loopback.
 
@@ -37,9 +44,9 @@ Se o proxy repassa a porta no `Host` (`bridge.example:443`), a entrada da lista 
 
 Com token, `/v1/*` e as ações da UI exigem `Authorization: Bearer <token>` ou o cookie de login. `GET /health` continua público e o corpo é só `{"ok":true}`. `GET /`, `/app.js` e `/style.css` continuam públicos. `POST /v1/login` e `GET /v1/auth/status` são as outras exceções.
 
-`POST /v1/login` com `{"token":"<segredo>"}` define `zb_session` (`HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`). `Secure` só entra com `--trust-proxy` e `X-Forwarded-Proto: https`. As sessões ficam em memória; um restart as derruba. `POST /v1/logout` apaga o cookie. Um POST autenticado pelo cookie exige `Origin` presente e permitido. Um request com Bearer não exige.
+`POST /v1/login` com `{"token":"<segredo>"}` define `zb_session` (`HttpOnly; SameSite=Strict; Path=/`). `Max-Age` acompanha `--session-ttl` (12h, portanto 43200, salvo se a flag mudar). `Secure` só entra com `--trust-proxy` e `X-Forwarded-Proto: https`. As sessões ficam em memória; um restart as derruba. `POST /v1/logout` apaga o cookie atual. `POST /v1/logout-all` apaga todos os cookies e deixa o token Bearer válido. `GET /v1/auth/sessions` lista um handle público, a criação, o último uso e a expiração. `DELETE /v1/auth/sessions/{handle}` revoga uma sessão. O handle não é o cookie e não é um prefixo dele. Um POST ou DELETE autenticado pelo cookie exige `Origin` presente e permitido. Um request com Bearer não exige.
 
-Falhas de login: no máximo 5 por minuto por cliente, só em `POST /v1/login`. A 6ª tentativa é **429** com `Retry-After`, inclusive com o token certo, e não grava cookie. Chamadas Bearer nas outras rotas `/v1/*` não entram nesse limite.
+Falhas de login e Bearer errado em `/v1/*` compartilham uma janela, 5 por minuto por cliente por padrão. Janela cheia responde **429** com `Retry-After`, inclusive um token certo que chegue depois. `SIGHUP` relê só `--token-file`. Sucesso troca o token e derruba todas as sessões. Arquivo inválido mantém o token atual. `ZERO_BRIDGE_TOKEN` não gira. Os mesmos eventos vão para o log do processo e, se existir, para `--audit-log`. Uma linha não traz token nem id de sessão.
 
 ## Caddyfile
 

@@ -1,0 +1,71 @@
+S14b auth transcript — 2026-10-14
+
+Bridge commit at the run: d63bd0d test: e2e and mutate for S14b
+
+The operator's loopback servers on 8765 and 8766 were not used. This run did not bind them and did not stop them. The test bridge listened on 127.0.0.1 with an ephemeral port. The agent was the fake ACP double. No model call. Cost: zero.
+
+Commands (shown before the run):
+
+  umask 077
+  openssl rand -hex 32 > "$EV/token"
+  chmod 600 "$EV/token"
+  go build -o "$EV/zero-bridge" ./cmd/zero-bridge
+  go build -o "$EV/acpfake" ./cmd/acpfake
+
+  ZB_FAKE_AGENT=1 "$EV/zero-bridge" \
+    --listen 127.0.0.1:$PORT \
+    --zero-bin "$EV/acpfake" \
+    --token-file "$EV/token" \
+    --permission-timeout 3s
+
+  # seven wrong Bearer calls, same client, GET /v1/info
+  curl -s -o /dev/null -w '%{http_code}' \
+    -H 'Authorization: Bearer wrong-bearer-token-value' \
+    "http://127.0.0.1:$PORT/v1/info"
+
+  # fresh process, so the failure window is empty
+  curl -s -c "$EV/cj" -H 'Content-Type: application/json' \
+    --data-binary @"$EV/login.json" "http://127.0.0.1:$PORT/v1/login"
+  curl -s -b "$EV/cj" "http://127.0.0.1:$PORT/v1/info"
+  curl -s -b "$EV/cj" -H "Origin: http://127.0.0.1:$PORT" \
+    -X POST "http://127.0.0.1:$PORT/v1/logout-all"
+  curl -s -b "$EV/cj" "http://127.0.0.1:$PORT/v1/info"
+  curl -s -H "Authorization: Bearer <token-file>" "http://127.0.0.1:$PORT/v1/info"
+
+  # login again, rewrite the token file, then SIGHUP that pid
+  openssl rand -hex 32 > "$EV/token"
+  chmod 600 "$EV/token"
+  kill -HUP "$PID"
+  curl -s -H "Authorization: Bearer <old-token>" "http://127.0.0.1:$PORT/v1/info"
+  curl -s -H "Authorization: Bearer <new-token>" "http://127.0.0.1:$PORT/v1/info"
+  curl -s -b "$EV/cj" "http://127.0.0.1:$PORT/v1/info"
+
+  "$EV/zero-bridge" --listen 127.0.0.1:0 --zero-bin "$EV/acpfake" --session-ttl 0
+  "$EV/zero-bridge" --listen 127.0.0.1:0 --zero-bin "$EV/acpfake" --session-ttl -1
+  "$EV/zero-bridge" --listen 127.0.0.1:0 --zero-bin "$EV/acpfake" --session-ttl 720h1m
+
+  # stop only the recorded pid, after /proc/<pid>/cmdline showed $EV/zero-bridge
+
+Results:
+
+  Seven wrong Bearer calls: 401, 401, 401, 401, 401, 429, 429.
+  POST /v1/login -> 200. Cookie then GET /v1/info -> 200.
+  POST /v1/logout-all -> 200. The same cookie then GET /v1/info -> 401.
+  Bearer with the current token after logout-all -> 200.
+    logout-all drops the cookie. The bearer token stays valid until SIGHUP.
+  Login again -> 200. Cookie before SIGHUP -> 200.
+  SIGHUP after the token file was replaced:
+    old token -> 401
+    new token -> 200
+    cookie -> 401
+  The server log did not contain either token value.
+
+  --session-ttl 0     exit 2  session-ttl: must be greater than zero
+  --session-ttl -1    exit 2  session-ttl: must be greater than zero
+  --session-ttl 720h1m exit 2  session-ttl: 720h1m0s exceeds the cap 720h0m0s
+
+After the run the recorded pid was gone and the temporary directory was removed. No process from this run remained.
+
+Not covered here: a real TLS handshake, a hostile X-Forwarded-For client, and more than one bridge process.
+
+The absolute TTL check is pinned while idle stays fresh (a request every 8 minutes, death at the TTL with reason ttl). Removing that check dies on that case. An earlier note that the TTL mutant died only because idle had also elapsed described the old boundary test, not this one.

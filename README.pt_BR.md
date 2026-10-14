@@ -21,6 +21,14 @@ Abra http://127.0.0.1:8765/. Flags:
 | `--workspace` | um diretório temporário novo | Diretório absoluto da sessão nova quando o cliente não manda um. |
 | `--zero-bin` | `zero` | Binário do `zero acp`, ou um dublê de teste. |
 | `--permission-timeout` | `60s` | Quanto uma permissão já exposta espera antes de a ponte negar. |
+| `--token-file` | nenhum | Arquivo de token, modo `0600`. Não combine com `ZERO_BRIDGE_TOKEN`. `SIGHUP` relê só esse arquivo. |
+| `--audit-log` | nenhum | Arquivo extra de auditoria, modo `0600`, só append. Um arquivo existente mais aberto é recusado. |
+| `--config` | nenhum | Arquivo de limites. A flag ganha, depois o ambiente, depois esse arquivo, depois o padrão. |
+| `--session-ttl` | `12h` | Vida absoluta do cookie. Teto `720h` (30 dias). `0`, negativo ou `unlimited` sai **2**. |
+| `--session-idle` | `2h` | Ociosidade deslizante. Maior que zero e não maior que o TTL. |
+| `--max-sessions` | `8` | O cookie mais antigo é despejado. Teto `64`. |
+| `--auth-fail-window` | `1m` | Janela compartilhada de falha de login e Bearer. Piso `1s`, teto `1h`. |
+| `--auth-fail-limit` | `5` | Falhas guardadas nessa janela. Teto `100`. |
 
 Use um modelo local ou uma variante `:free`. A ponte define `ZERO_PROVIDER=granite-local` só quando o Ollama lista `granite4.2:3b-cpu-ctx16k`. Senão o filho herda o perfil ativo do Zero. Não aponte prompts para um provedor pago.
 
@@ -37,7 +45,7 @@ Use um modelo local ou uma variante `:free`. A ponte define `ZERO_PROVIDER=grani
 
 ## Estado
 
-S2–S6, S14 e S17 estão na main. S14 e S17 entraram na [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). Próxima ordem de construção: S14b, S19, S16, S18, S6b, S7. A S11 está feita no upstream, na [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). A S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
+S2–S6, S14 e S17 estão na main. S14 e S17 entraram na [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). A S14b está construída em `epic/s14b-auth-hardening-ii` e não foi mergeada. Depois dela, a ordem é S19, S16, S18, S6b, S7. A S11 está feita no upstream, na [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). A S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
 
 | Fatia | Estado |
 | --- | --- |
@@ -45,7 +53,7 @@ S2–S6, S14 e S17 estão na main. S14 e S17 entraram na [PR #16](https://github
 | S2–S6 ponte e UI web | feita |
 | S14 proxy, token, login | na main ([#1](https://github.com/FabioLeitao/zero-bridge/issues/1), [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16)) |
 | S17 gate local | na main ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13), [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16)) |
-| S14b, S19, S16, S18, S6b, S7 | desenhadas, nessa ordem ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11), [#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S14b, S19, S16, S18, S6b, S7 | A S14b está construída na branch e não foi mergeada ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11)). O resto está desenhado, nessa ordem ([#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
 | S8–S10, S12, S15 | desenhadas ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
 | S11 restaurar modo | feita no upstream ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134)) |
 | S13 limites de frame | acompanhando ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), [PR #944](https://github.com/Twigpine/zero/pull/944) aberta) |

@@ -22,7 +22,7 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S12 | desenhada | [#8](https://github.com/FabioLeitao/zero-bridge/issues/8). Não construída. |
 | S13 | acompanhando | [#9](https://github.com/FabioLeitao/zero-bridge/issues/9). [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). |
 | S14 | feita | [#1](https://github.com/FabioLeitao/zero-bridge/issues/1). [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt). Mergeada na PR #16. |
-| S14b | desenhada | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Não construída. |
+| S14b | em andamento | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Construída em `epic/s14b-auth-hardening-ii`, sem merge. [evidence/S14b-auth-transcript.txt](evidence/S14b-auth-transcript.txt). `fb24d4b` `085110b` `daefb32` `4940aad` `d49cf81` `d63bd0d`. |
 | S15 | desenhada | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10). Depende da S17. Não construída. |
 | S16 | desenhada | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Não construída. |
 | S17 | feita | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` é a definição de pronto. Mergeada na PR #16. |
@@ -391,14 +391,30 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 ### S14b — endurecimento de auth II
 
-**Caminho:** login e vida da sessão em `bridge/`. Só desenhada. Não construída. [#11](https://github.com/FabioLeitao/zero-bridge/issues/11).
+**Caminho:** login, auditoria e vida da sessão em `bridge/`. Construída em `epic/s14b-auth-hardening-ii`. Sem merge. [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Evidência: [evidence/S14b-auth-transcript.txt](evidence/S14b-auth-transcript.txt).
 
-**Aceite**
+Commits: `fb24d4b` modelo e sink de auditoria, `085110b` limite de Bearer em toda rota `/v1`, `daefb32` vidas finitas, `4940aad` logout-all, handle público e `SIGHUP`, `d49cf81` lista na web, `d63bd0d` e2e e mutantes.
+
+**Aceite** — cumprido na branch
 
 - A trilha de auditoria do login registra sucesso, falha e limite, e nunca registra o segredo.
 - A janela de falhas também cobre chamadas Bearer em `/v1/*`.
 - Uma chamada encerra todas as sessões, sessões podem ser revogadas, e SIGHUP gira o token.
 - Os limites são sempre finitos e vêm de flag, ambiente ou arquivo de config: TTL de sessão 12h com teto de 30 dias, ociosidade 2h, máximo de 8 sessões, janela de falha 1m, limite de falha 5. Zero, valor negativo ou "ilimitado" saem **2**.
+
+**Flags.** A precedência é a flag, depois o ambiente, depois `--config`, depois o padrão. `0`, um valor negativo e `unlimited` saem **2**.
+
+| Limite | Flag | Ambiente | Padrão | Teto |
+| --- | --- | --- | --- | --- |
+| TTL da sessão | `--session-ttl` | `ZERO_BRIDGE_SESSION_TTL` | 12h | 720h (30 dias). Um cookie roubado morre dentro de um mês. |
+| ociosidade | `--session-idle` | `ZERO_BRIDGE_SESSION_IDLE` | 2h | Não maior que o TTL, e no máximo 720h. Um navegador abandonado morre antes do fim absoluto. |
+| sessões | `--max-sessions` | `ZERO_BRIDGE_MAX_SESSIONS` | 8 | 64. Oito cobre alguns navegadores. Sessenta e quatro mantém o mapa como ferramenta de um operador. |
+| janela de falha | `--auth-fail-window` | `ZERO_BRIDGE_AUTH_FAIL_WINDOW` | 1m | Piso 1s, porque `Retry-After` é um número inteiro de segundos. Teto 1h, para um erro não virar um bloqueio de um dia. |
+| limite de falha | `--auth-fail-limit` | `ZERO_BRIDGE_AUTH_FAIL_LIMIT` | 5 | 100. O teto limita a lista de timestamps de um endereço compartilhado. |
+
+`--audit-log` acrescenta as mesmas linhas num arquivo `0600` e recusa um arquivo existente mais aberto. `SIGHUP` relê `--token-file` (modo `0600` e o tamanho de novo). Sucesso derruba todas as sessões e recusa o token antigo. Falha mantém o token atual e grava `token_reload_failed`. Um token que veio de `ZERO_BRIDGE_TOKEN` não gira.
+
+`POST /v1/logout-all` derruba todos os cookies e deixa o token Bearer válido até esse `SIGHUP`. `GET /v1/auth/sessions` lista um handle público, a criação, o último uso e a expiração. `DELETE /v1/auth/sessions/{handle}` revoga uma sessão. O handle não deriva do cookie. Um POST ou DELETE com cookie exige `Origin`. Bearer não exige.
 
 **Parada:** não aceitar vida infinita nem janela de falha sem limite.
 

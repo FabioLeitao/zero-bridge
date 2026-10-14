@@ -22,7 +22,7 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S12 | designed | [#8](https://github.com/FabioLeitao/zero-bridge/issues/8). Not built. |
 | S13 | following | [#9](https://github.com/FabioLeitao/zero-bridge/issues/9). [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). |
 | S14 | done | [#1](https://github.com/FabioLeitao/zero-bridge/issues/1). [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt). Merged in PR #16. |
-| S14b | designed | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Not built. |
+| S14b | in progress | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Built on `epic/s14b-auth-hardening-ii`, not merged. [evidence/S14b-auth-transcript.txt](evidence/S14b-auth-transcript.txt). `fb24d4b` `085110b` `daefb32` `4940aad` `d49cf81` `d63bd0d`. |
 | S15 | designed | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10). Not built. |
 | S16 | designed | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Not built. |
 | S17 | done | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` is the definition of done. Merged in PR #16. |
@@ -406,14 +406,30 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 ### S14b — auth hardening II
 
-**Path:** `bridge/` login and session lifetime. Designed only. Not built. [#11](https://github.com/FabioLeitao/zero-bridge/issues/11).
+**Path:** `bridge/` login, audit, and session lifetime. Built on `epic/s14b-auth-hardening-ii`. Not merged. [#11](https://github.com/FabioLeitao/zero-bridge/issues/11). Evidence: [evidence/S14b-auth-transcript.txt](evidence/S14b-auth-transcript.txt).
 
-**Acceptance**
+Commits: `fb24d4b` audit model and sink, `085110b` Bearer limit on every `/v1` route, `daefb32` finite lifetimes, `4940aad` logout-all, public session handle, and `SIGHUP`, `d49cf81` web session list, `d63bd0d` e2e and mutants.
+
+**Acceptance** — met on the branch
 
 - A login audit trail records success, failure, and limit events and never records the secret.
 - The failure window also covers Bearer calls on `/v1/*`.
 - One call logs out every session, sessions can be revoked, and SIGHUP rotates the token.
 - Limits are always finite and come from a flag, the environment, or a config file: session TTL 12h with a 30-day cap, session idle 2h, max sessions 8, auth-fail window 1m, auth-fail limit 5. Zero, a negative value, or "unlimited" exits **2**.
+
+**Flags.** Precedence is the flag, then the environment, then `--config`, then the default. `0`, a negative value, and `unlimited` exit **2**.
+
+| Limit | Flag | Environment | Default | Cap |
+| --- | --- | --- | --- | --- |
+| session TTL | `--session-ttl` | `ZERO_BRIDGE_SESSION_TTL` | 12h | 720h (30 days). A stolen cookie dies within a month. |
+| idle | `--session-idle` | `ZERO_BRIDGE_SESSION_IDLE` | 2h | Not longer than the TTL, and at most 720h. An abandoned browser dies before the absolute end. |
+| sessions | `--max-sessions` | `ZERO_BRIDGE_MAX_SESSIONS` | 8 | 64. Eight covers a few browsers. Sixty-four keeps the map a single-operator tool. |
+| failure window | `--auth-fail-window` | `ZERO_BRIDGE_AUTH_FAIL_WINDOW` | 1m | Floor 1s, because `Retry-After` is a whole number of seconds. Cap 1h, so a mistake is not a day-long lockout. |
+| failure limit | `--auth-fail-limit` | `ZERO_BRIDGE_AUTH_FAIL_LIMIT` | 5 | 100. The cap bounds the timestamp list for a shared address. |
+
+`--audit-log` appends the same lines to a `0600` file and refuses an existing file that is more open. `SIGHUP` re-reads `--token-file` (mode `0600` and the length check again). Success drops every session and rejects the old token. Failure keeps the current token and writes `token_reload_failed`. A token that came from `ZERO_BRIDGE_TOKEN` is not rotated.
+
+`POST /v1/logout-all` drops every cookie and leaves the bearer token valid until that `SIGHUP`. `GET /v1/auth/sessions` lists a public handle, created time, last use, and expiry. `DELETE /v1/auth/sessions/{handle}` revokes one session. The handle is not derived from the cookie. A cookie POST or DELETE requires `Origin`. Bearer does not.
 
 **Stop:** Do not accept an infinite lifetime or an unlimited failure window.
 

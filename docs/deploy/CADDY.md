@@ -26,6 +26,13 @@ Start the bridge with `--token-file` **or** the environment variable `ZERO_BRIDG
 | `--allowed-host host[:port]` | Repeatable. Exact `Host` match, case-insensitive, in addition to the loopback listen host. |
 | `--public-origin scheme://host[:port]` | Repeatable. Exact `Origin` match (scheme, host, and port). |
 | `--trust-proxy` | Trust `X-Forwarded-Proto` for the `Secure` cookie, and the first `X-Forwarded-For` address as the login rate-limit key. Off by default. |
+| `--audit-log` | Optional audit file. Created at `0600`. An existing file that group or others can read is refused. |
+| `--config` | Limit file (`session-ttl`, `session-idle`, `max-sessions`, `auth-fail-window`, `auth-fail-limit`). Flag, then environment, then this file, then the default. |
+| `--session-ttl` | Absolute cookie life. Default `12h`, cap `720h`. |
+| `--session-idle` | Sliding idle time. Default `2h`. It cannot be longer than the TTL. |
+| `--max-sessions` | Concurrent cookies. Default `8`, cap `64`. The oldest is evicted. |
+| `--auth-fail-window` | Shared login and Bearer window. Default `1m`, floor `1s`, cap `1h`. |
+| `--auth-fail-limit` | Failures kept in that window. Default `5`, cap `100`. |
 
 Any `--allowed-host` or `--public-origin` without a token exits **2**: `token required when exposed via proxy`. An empty list keeps the loopback Host check.
 
@@ -37,9 +44,9 @@ If the proxy forwards the port in `Host` (`bridge.example:443`), the allowlist e
 
 With a token set, `/v1/*` and the UI actions need `Authorization: Bearer <token>` or a login cookie. `GET /health` stays public and its body is only `{"ok":true}`. `GET /`, `/app.js`, and `/style.css` stay public. `POST /v1/login` and `GET /v1/auth/status` are the other exceptions.
 
-`POST /v1/login` with `{"token":"<secret>"}` sets `zb_session` (`HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`). `Secure` is set only when `--trust-proxy` is on and `X-Forwarded-Proto` is `https`. Sessions live in memory; a restart drops them. `POST /v1/logout` clears the cookie. A cookie-authenticated POST needs an `Origin` that is present and allowed. A Bearer request does not.
+`POST /v1/login` with `{"token":"<secret>"}` sets `zb_session` (`HttpOnly; SameSite=Strict; Path=/`). `Max-Age` matches `--session-ttl` (12h, so 43200, unless that flag changes). `Secure` is set only when `--trust-proxy` is on and `X-Forwarded-Proto` is `https`. Sessions live in memory; a restart drops them. `POST /v1/logout` clears the current cookie. `POST /v1/logout-all` clears every cookie and leaves the bearer token valid. `GET /v1/auth/sessions` lists a public handle, created time, last use, and expiry. `DELETE /v1/auth/sessions/{handle}` revokes one session. The handle is not the cookie and is not a prefix of it. A cookie-authenticated POST or DELETE needs an `Origin` that is present and allowed. A Bearer request does not.
 
-Login failures are limited to 5 per minute per client (`POST /v1/login` only). The 6th attempt is **429** with `Retry-After`, including a correct token, and it does not set a cookie. Bearer calls on other `/v1/*` routes are not rate limited.
+Login failures and wrong Bearer tokens on `/v1/*` share one window, 5 per minute per client by default. A full window returns **429** with `Retry-After`, including a later correct token. `SIGHUP` re-reads `--token-file` only. Success replaces the token and drops every session. A bad file keeps the current token. `ZERO_BRIDGE_TOKEN` is not rotated. The same events go to the process log and, when set, to `--audit-log`. A line has no token and no session id.
 
 ## Caddyfile
 

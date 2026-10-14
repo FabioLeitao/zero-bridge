@@ -7,12 +7,29 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/server"
 )
+
+func limitEnv() map[string]string {
+	out := map[string]string{}
+	for _, pair := range []struct{ key, env string }{
+		{"session-ttl", "ZERO_BRIDGE_SESSION_TTL"},
+		{"session-idle", "ZERO_BRIDGE_SESSION_IDLE"},
+		{"max-sessions", "ZERO_BRIDGE_MAX_SESSIONS"},
+		{"auth-fail-window", "ZERO_BRIDGE_AUTH_FAIL_WINDOW"},
+		{"auth-fail-limit", "ZERO_BRIDGE_AUTH_FAIL_LIMIT"},
+	} {
+		if v, ok := os.LookupEnv(pair.env); ok {
+			out[pair.key] = v
+		}
+	}
+	return out
+}
 
 func loadToken(tokenFile string) (string, error) {
 	envToken := os.Getenv("ZERO_BRIDGE_TOKEN")
@@ -41,6 +58,9 @@ func run() int {
 	workspace := ""
 	permTimeout := 60 * time.Second
 	tokenFile := ""
+	auditLog := ""
+	configPath := ""
+	limitFlags := map[string]string{}
 	var allowedHosts []string
 	var publicOrigins []string
 	trustProxy := false
@@ -95,6 +115,28 @@ func run() int {
 			}
 			i++
 			tokenFile = os.Args[i]
+		case "--audit-log":
+			if i+1 >= len(os.Args) {
+				fmt.Fprintln(os.Stderr, "missing value for --audit-log")
+				return 2
+			}
+			i++
+			auditLog = os.Args[i]
+		case "--config":
+			if i+1 >= len(os.Args) {
+				fmt.Fprintln(os.Stderr, "missing value for --config")
+				return 2
+			}
+			i++
+			configPath = os.Args[i]
+		case "--session-ttl", "--session-idle", "--max-sessions", "--auth-fail-window", "--auth-fail-limit":
+			if i+1 >= len(os.Args) {
+				fmt.Fprintf(os.Stderr, "missing value for %s\n", os.Args[i])
+				return 2
+			}
+			key := strings.TrimPrefix(os.Args[i], "--")
+			i++
+			limitFlags[key] = os.Args[i]
 		case "--zero-bin":
 			if i+1 >= len(os.Args) {
 				fmt.Fprintln(os.Stderr, "missing value for --zero-bin")
@@ -109,27 +151,57 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
 		return 2
 	}
+	var fileLimits map[string]string
+	if configPath != "" {
+		fileLimits, err = server.LoadLimitFile(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
+			return 2
+		}
+	}
+	limits, err := server.ResolveLimits(limitFlags, limitEnv(), fileLimits)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
+		return 2
+	}
 	resolved, err := server.ResolveListen(listen)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
 		return 2
 	}
 	logger := log.New(os.Stderr, "", log.LstdFlags)
+	auditSink := auth.Sink(auth.NewLogSink(logger))
+	if auditLog != "" {
+		fileSink, err := auth.OpenFileSink(auditLog)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
+			return 2
+		}
+		auditSink = auth.NewMulti(auditSink, fileSink)
+	}
 	srv, err := server.New(server.Config{
 		Listen:            resolved,
 		ZeroBin:           zeroBin,
 		Workspace:         workspace,
 		PermissionTimeout: permTimeout,
 		Logger:            logger,
+		Audit:             auditSink,
 		Token:             token,
+		TokenFile:         tokenFile,
 		AllowedHosts:      allowedHosts,
 		PublicOrigins:     publicOrigins,
 		TrustProxy:        trustProxy,
+		SessionTTL:        limits.SessionTTL,
+		SessionIdle:       limits.SessionIdle,
+		MaxSessions:       limits.MaxSessions,
+		AuthFailWindow:    limits.AuthFailWindow,
+		AuthFailLimit:     limits.AuthFailLimit,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
 		return 2
 	}
+	srv.ArmReload()
 	if err := srv.PrepareWorkspace(); err != nil {
 		fmt.Fprintf(os.Stderr, "zero-bridge: workspace: %v\n", err)
 		return 2

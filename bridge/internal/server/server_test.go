@@ -9,10 +9,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1194,6 +1196,9 @@ func TestV1RoutesRequireCredential(t *testing.T) {
 		{http.MethodPost, "/v1/sessions/s1/load"},
 		{http.MethodPost, "/v1/sessions/s1/resume"},
 		{http.MethodPost, "/v1/logout"},
+		{http.MethodPost, "/v1/logout-all"},
+		{http.MethodGet, "/v1/auth/sessions"},
+		{http.MethodDelete, "/v1/auth/sessions/missing"},
 	}
 	call := func(method, path, bearer string, cookie *http.Cookie) int {
 		t.Helper()
@@ -1243,12 +1248,92 @@ func TestV1RoutesRequireCredential(t *testing.T) {
 		t.Fatal("login cookie missing")
 	}
 	for _, rt := range routes {
-		if rt.method != http.MethodPost {
+		if rt.method != http.MethodPost && rt.method != http.MethodDelete {
 			continue
 		}
 		if got := call(rt.method, rt.path, "", session); got != http.StatusForbidden {
 			t.Fatalf("%s %s cookie without Origin: %d", rt.method, rt.path, got)
 		}
+	}
+	for i, rt := range routes {
+		got := call(rt.method, rt.path, "wrong-bearer-token", nil)
+		want := http.StatusUnauthorized
+		if i >= 5 {
+			want = http.StatusTooManyRequests
+		}
+		if got != want {
+			t.Fatalf("%s %s wrong bearer %d: %d", rt.method, rt.path, i, got)
+		}
+	}
+	if got := call(http.MethodGet, "/v1/info", bearerToken, nil); got != http.StatusTooManyRequests {
+		t.Fatalf("correct bearer while limited: %d", got)
+	}
+	if got := call(http.MethodGet, "/v1/info", "", nil); got != http.StatusUnauthorized {
+		t.Fatalf("missing credential while limited: %d", got)
+	}
+}
+
+func TestBearerRateLimitConcurrentWrongToken(t *testing.T) {
+	var logs bytes.Buffer
+	_, base, cleanup := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+		Logger:            log.New(&logs, "", 0),
+	})
+	defer cleanup()
+	var unauthorized atomic.Int32
+	var limited atomic.Int32
+	var other atomic.Int32
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+			if err != nil {
+				other.Add(1)
+				return
+			}
+			req.Header.Set("Authorization", "Bearer wrong-bearer-token")
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				other.Add(1)
+				return
+			}
+			res.Body.Close()
+			switch res.StatusCode {
+			case http.StatusUnauthorized:
+				unauthorized.Add(1)
+			case http.StatusTooManyRequests:
+				limited.Add(1)
+			default:
+				other.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if other.Load() != 0 || unauthorized.Load() > 5 || unauthorized.Load()+limited.Load() != 50 {
+		t.Fatalf("401=%d 429=%d other=%d", unauthorized.Load(), limited.Load(), other.Load())
+	}
+	okReq, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okReq.Header.Set("Authorization", "Bearer "+bearerToken)
+	okRes, err := http.DefaultClient.Do(okReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okRes.Body.Close()
+	if okRes.StatusCode != http.StatusTooManyRequests || okRes.Header.Get("Retry-After") == "" {
+		t.Fatalf("correct bearer while limited: %d retry %q", okRes.StatusCode, okRes.Header.Get("Retry-After"))
+	}
+	text := logs.String()
+	if !strings.Contains(text, `"kind":"bearer_failure"`) || !strings.Contains(text, `"kind":"rate_limited"`) {
+		t.Fatalf("audit: %s", text)
+	}
+	if strings.Contains(text, bearerToken) || strings.Contains(text, "wrong-bearer-token") {
+		t.Fatal("secret in audit log")
 	}
 }
 
@@ -1551,4 +1636,548 @@ func TestBearerAuth(t *testing.T) {
 	if strings.Contains(logs.String(), bearerToken) {
 		t.Fatal("token appeared in the log")
 	}
+}
+
+func TestLoginAuditOmitsSecret(t *testing.T) {
+	var logs bytes.Buffer
+	_, base, cleanup := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+		Logger:            log.New(&logs, "", 0),
+	})
+	defer cleanup()
+	body := `{"token":"` + bearerToken + `"}`
+	bad, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"wrong-token-value"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad.Header.Set("Content-Type", "application/json")
+	badRes, err := http.DefaultClient.Do(bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badRes.Body.Close()
+	if badRes.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d", badRes.StatusCode)
+	}
+	ok, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok.Header.Set("Content-Type", "application/json")
+	okRes, err := http.DefaultClient.Do(ok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okRes.Body.Close()
+	if okRes.StatusCode != http.StatusOK {
+		t.Fatalf("login %d", okRes.StatusCode)
+	}
+	text := logs.String()
+	if !strings.Contains(text, `"kind":"login_failure"`) || !strings.Contains(text, `"kind":"login_success"`) {
+		t.Fatalf("audit lines: %s", text)
+	}
+	if strings.Contains(text, bearerToken) || strings.Contains(text, "wrong-token-value") {
+		t.Fatal("secret in audit log")
+	}
+	out, err := http.NewRequest(http.MethodPost, base+"/v1/logout", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range okRes.Cookies() {
+		out.AddCookie(c)
+	}
+	out.Header.Set("Origin", base)
+	outRes, err := http.DefaultClient.Do(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outRes.Body.Close()
+	if !strings.Contains(logs.String(), `"kind":"logout"`) {
+		t.Fatalf("logout audit: %s", logs.String())
+	}
+}
+
+func TestSessionLifetimeAndEviction(t *testing.T) {
+	loginCookie := func(t *testing.T, base string) *http.Cookie {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"`+bearerToken+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("login %d", res.StatusCode)
+		}
+		for _, c := range res.Cookies() {
+			if c.Name == sessionCookie {
+				return c
+			}
+		}
+		t.Fatal("cookie missing")
+		return nil
+	}
+	status := func(t *testing.T, base string, c *http.Cookie) int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.AddCookie(c)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+
+	t.Run("evict oldest", func(t *testing.T) {
+		now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+		var logs bytes.Buffer
+		_, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Now:               func() time.Time { return now },
+			SessionTTL:        2 * time.Hour,
+			SessionIdle:       time.Hour,
+			MaxSessions:       2,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		first := loginCookie(t, base)
+		now = now.Add(time.Second)
+		second := loginCookie(t, base)
+		now = now.Add(time.Second)
+		third := loginCookie(t, base)
+		if status(t, base, first) != http.StatusUnauthorized {
+			t.Fatal("oldest session still accepted")
+		}
+		if status(t, base, second) != http.StatusOK || status(t, base, third) != http.StatusOK {
+			t.Fatal("newer session rejected")
+		}
+		text := logs.String()
+		if !strings.Contains(text, `"kind":"session_evicted"`) || !strings.Contains(text, `"reason":"oldest"`) {
+			t.Fatalf("evict audit: %s", text)
+		}
+		for _, c := range []*http.Cookie{first, second, third} {
+			if strings.Contains(text, c.Value) {
+				t.Fatal("session id in audit log")
+			}
+		}
+	})
+
+	t.Run("idle and ttl boundaries", func(t *testing.T) {
+		now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+		var logs bytes.Buffer
+		_, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Now:               func() time.Time { return now },
+			SessionTTL:        time.Hour,
+			SessionIdle:       30 * time.Minute,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		idleCookie := loginCookie(t, base)
+		now = now.Add(30*time.Minute - time.Nanosecond)
+		if status(t, base, idleCookie) != http.StatusOK {
+			t.Fatal("inside idle window rejected")
+		}
+		fresh := loginCookie(t, base)
+		now = now.Add(30 * time.Minute)
+		if status(t, base, fresh) != http.StatusUnauthorized {
+			t.Fatal("exact idle boundary accepted")
+		}
+		if !strings.Contains(logs.String(), `"reason":"idle"`) {
+			t.Fatalf("idle audit: %s", logs.String())
+		}
+		logs.Reset()
+		ttlCookie := loginCookie(t, base)
+		created := now
+		now = created.Add(time.Hour)
+		if status(t, base, ttlCookie) != http.StatusUnauthorized {
+			t.Fatal("exact ttl boundary accepted")
+		}
+		text := logs.String()
+		if !strings.Contains(text, `"reason":"ttl"`) || strings.Contains(text, ttlCookie.Value) {
+			t.Fatalf("ttl audit: %s", text)
+		}
+	})
+
+	t.Run("sliding idle", func(t *testing.T) {
+		start := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+		now := start
+		var logs bytes.Buffer
+		_, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Now:               func() time.Time { return now },
+			SessionTTL:        time.Hour,
+			SessionIdle:       10 * time.Minute,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		cookie := loginCookie(t, base)
+		for _, minute := range []int{8, 16, 24} {
+			now = start.Add(time.Duration(minute) * time.Minute)
+			if status(t, base, cookie) != http.StatusOK {
+				t.Fatalf("use at %dm rejected", minute)
+			}
+		}
+		logs.Reset()
+		now = start.Add(24*time.Minute + 10*time.Minute + time.Nanosecond)
+		if status(t, base, cookie) != http.StatusUnauthorized {
+			t.Fatal("silence past idle still accepted")
+		}
+		text := logs.String()
+		if !strings.Contains(text, `"reason":"idle"`) || strings.Contains(text, cookie.Value) {
+			t.Fatalf("idle audit: %s", text)
+		}
+	})
+
+	// Activity stays inside the idle window on purpose. Removing the TTL
+	// check must fail here; the older boundary reached idle at the same instant.
+	t.Run("absolute ttl", func(t *testing.T) {
+		start := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+		now := start
+		var logs bytes.Buffer
+		_, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Now:               func() time.Time { return now },
+			SessionTTL:        time.Hour,
+			SessionIdle:       10 * time.Minute,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		cookie := loginCookie(t, base)
+		for _, minute := range []int{8, 16, 24, 32, 40, 48, 56} {
+			now = start.Add(time.Duration(minute) * time.Minute)
+			if status(t, base, cookie) != http.StatusOK {
+				t.Fatalf("use at %dm rejected", minute)
+			}
+		}
+		logs.Reset()
+		now = start.Add(time.Hour)
+		if status(t, base, cookie) != http.StatusUnauthorized {
+			t.Fatal("absolute ttl with a fresh idle still accepted")
+		}
+		text := logs.String()
+		if !strings.Contains(text, `"reason":"ttl"`) || strings.Contains(text, `"reason":"idle"`) || strings.Contains(text, cookie.Value) {
+			t.Fatalf("ttl audit: %s", text)
+		}
+	})
+}
+
+const bearerTokenNext = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+
+func TestLogoutAllListRevokeAndReload(t *testing.T) {
+	loginCookie := func(t *testing.T, base string) *http.Cookie {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"`+bearerToken+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("login %d", res.StatusCode)
+		}
+		for _, c := range res.Cookies() {
+			if c.Name == sessionCookie {
+				return c
+			}
+		}
+		t.Fatal("cookie missing")
+		return nil
+	}
+	infoStatus := func(t *testing.T, base string, c *http.Cookie, bearer string) int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c != nil {
+			req.AddCookie(c)
+		}
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	writeToken := func(t *testing.T, path, token string, mode os.FileMode) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(token+"\n"), mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("list and revoke", func(t *testing.T) {
+		now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+		var logs bytes.Buffer
+		_, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Now:               func() time.Time { return now },
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		first := loginCookie(t, base)
+		now = now.Add(time.Second)
+		second := loginCookie(t, base)
+		req, err := http.NewRequest(http.MethodGet, base+"/v1/auth/sessions", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.AddCookie(first)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("list %d %s", res.StatusCode, body)
+		}
+		var listed struct {
+			Sessions []authSessionView `json:"sessions"`
+		}
+		if err := json.Unmarshal(body, &listed); err != nil {
+			t.Fatal(err)
+		}
+		if len(listed.Sessions) != 2 {
+			t.Fatalf("sessions %d", len(listed.Sessions))
+		}
+		text := string(body)
+		for _, c := range []*http.Cookie{first, second} {
+			if strings.Contains(text, c.Value) {
+				t.Fatal("cookie value in session list")
+			}
+		}
+		for _, view := range listed.Sessions {
+			if strings.HasPrefix(first.Value, view.Handle) || strings.HasPrefix(second.Value, view.Handle) || !strings.HasPrefix(view.Handle, "s.") {
+				t.Fatalf("handle %q derived from cookie", view.Handle)
+			}
+		}
+		drop := listed.Sessions[1].Handle
+		deny, err := http.NewRequest(http.MethodDelete, base+"/v1/auth/sessions/"+drop, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deny.AddCookie(first)
+		denyRes, err := http.DefaultClient.Do(deny)
+		if err != nil {
+			t.Fatal(err)
+		}
+		denyRes.Body.Close()
+		if denyRes.StatusCode != http.StatusForbidden {
+			t.Fatalf("delete without origin %d", denyRes.StatusCode)
+		}
+		ok, err := http.NewRequest(http.MethodDelete, base+"/v1/auth/sessions/"+drop, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ok.AddCookie(first)
+		ok.Header.Set("Origin", base)
+		okRes, err := http.DefaultClient.Do(ok)
+		if err != nil {
+			t.Fatal(err)
+		}
+		okRes.Body.Close()
+		if okRes.StatusCode != http.StatusOK {
+			t.Fatalf("delete %d", okRes.StatusCode)
+		}
+		if infoStatus(t, base, second, "") != http.StatusUnauthorized {
+			t.Fatal("revoked session still accepted")
+		}
+		if infoStatus(t, base, first, "") != http.StatusOK {
+			t.Fatal("other session rejected")
+		}
+		audit := logs.String()
+		if !strings.Contains(audit, `"reason":"revoked"`) || strings.Contains(audit, first.Value) || strings.Contains(audit, second.Value) {
+			t.Fatalf("revoke audit: %s", audit)
+		}
+	})
+
+	t.Run("logout all keeps bearer", func(t *testing.T) {
+		var logs bytes.Buffer
+		_, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		first := loginCookie(t, base)
+		second := loginCookie(t, base)
+		deny, err := http.NewRequest(http.MethodPost, base+"/v1/logout-all", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deny.AddCookie(first)
+		denyRes, err := http.DefaultClient.Do(deny)
+		if err != nil {
+			t.Fatal(err)
+		}
+		denyRes.Body.Close()
+		if denyRes.StatusCode != http.StatusForbidden {
+			t.Fatalf("logout-all without origin %d", denyRes.StatusCode)
+		}
+		if infoStatus(t, base, first, "") != http.StatusOK || infoStatus(t, base, second, "") != http.StatusOK {
+			t.Fatal("csrf logout-all dropped a session")
+		}
+		all, err := http.NewRequest(http.MethodPost, base+"/v1/logout-all", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		all.Header.Set("Authorization", "Bearer "+bearerToken)
+		allRes, err := http.DefaultClient.Do(all)
+		if err != nil {
+			t.Fatal(err)
+		}
+		allRes.Body.Close()
+		if allRes.StatusCode != http.StatusOK {
+			t.Fatalf("logout-all %d", allRes.StatusCode)
+		}
+		if infoStatus(t, base, first, "") != http.StatusUnauthorized || infoStatus(t, base, second, "") != http.StatusUnauthorized {
+			t.Fatal("session survived logout-all")
+		}
+		if infoStatus(t, base, nil, bearerToken) != http.StatusOK {
+			t.Fatal("bearer rejected after logout-all")
+		}
+		audit := logs.String()
+		if !strings.Contains(audit, `"kind":"logout_all"`) || strings.Contains(audit, first.Value) || strings.Contains(audit, bearerToken) {
+			t.Fatalf("logout-all audit: %s", audit)
+		}
+	})
+
+	t.Run("sighup rotates file token", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "token")
+		writeToken(t, path, bearerToken, 0o600)
+		var logs bytes.Buffer
+		srv, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			TokenFile:         path,
+			LoginFailureDelay: -1,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		cookie := loginCookie(t, base)
+		ch := make(chan os.Signal, 1)
+		srv.startReload(ch, nil)
+		writeToken(t, path, bearerTokenNext, 0o600)
+		ch <- syscall.SIGHUP
+		waitUntil(t, 2*time.Second, func() bool { return srv.currentToken() == bearerTokenNext })
+		if infoStatus(t, base, nil, bearerToken) != http.StatusUnauthorized {
+			t.Fatal("old token still accepted")
+		}
+		if infoStatus(t, base, cookie, "") != http.StatusUnauthorized {
+			t.Fatal("session survived rotation")
+		}
+		if infoStatus(t, base, nil, bearerTokenNext) != http.StatusOK {
+			t.Fatal("new token rejected")
+		}
+		audit := logs.String()
+		if !strings.Contains(audit, `"kind":"token_reloaded"`) || strings.Contains(audit, bearerToken) || strings.Contains(audit, bearerTokenNext) || strings.Contains(audit, cookie.Value) {
+			t.Fatalf("reload audit: %s", audit)
+		}
+	})
+
+	t.Run("failed reload keeps token and sessions", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "token")
+		writeToken(t, path, bearerToken, 0o600)
+		var logs bytes.Buffer
+		srv, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			TokenFile:         path,
+			LoginFailureDelay: -1,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		cookie := loginCookie(t, base)
+		if err := os.Chmod(path, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		srv.reloadTokenFile()
+		if srv.currentToken() != bearerToken {
+			t.Fatal("token changed after a mode failure")
+		}
+		if infoStatus(t, base, cookie, "") != http.StatusOK || infoStatus(t, base, nil, bearerToken) != http.StatusOK {
+			t.Fatal("credential rejected after a failed reload")
+		}
+		if !strings.Contains(logs.String(), `"reason":"mode"`) || strings.Contains(logs.String(), path) || strings.Contains(logs.String(), bearerToken) {
+			t.Fatalf("mode reload: %s", logs.String())
+		}
+		logs.Reset()
+		writeToken(t, path, "short", 0o600)
+		srv.reloadTokenFile()
+		if !strings.Contains(logs.String(), `"reason":"entropy"`) || srv.currentToken() != bearerToken {
+			t.Fatalf("entropy reload: token changed or audit %s", logs.String())
+		}
+		logs.Reset()
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		srv.reloadTokenFile()
+		if !strings.Contains(logs.String(), `"reason":"missing"`) || strings.Contains(logs.String(), path) {
+			t.Fatalf("missing reload: %s", logs.String())
+		}
+		if infoStatus(t, base, cookie, "") != http.StatusOK {
+			t.Fatal("session dropped after failed reloads")
+		}
+	})
+
+	t.Run("env token is not rotated", func(t *testing.T) {
+		var logs bytes.Buffer
+		srv, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		cookie := loginCookie(t, base)
+		srv.reloadTokenFile()
+		if srv.currentToken() != bearerToken || infoStatus(t, base, cookie, "") != http.StatusOK {
+			t.Fatal("env token reload changed credentials")
+		}
+		if !strings.Contains(logs.String(), `"kind":"token_reload_failed"`) || !strings.Contains(logs.String(), `"reason":"not a file"`) {
+			t.Fatalf("env reload audit: %s", logs.String())
+		}
+	})
+
+	t.Run("reload loop stops", func(t *testing.T) {
+		srv, err := New(Config{Listen: "127.0.0.1:0", Logger: log.New(io.Discard, "", 0), LoginFailureDelay: -1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		before := runtime.NumGoroutine()
+		ch := make(chan os.Signal, 1)
+		srv.startReload(ch, nil)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if after := runtime.NumGoroutine(); after > before {
+			t.Fatalf("goroutines %d -> %d", before, after)
+		}
+	})
 }
