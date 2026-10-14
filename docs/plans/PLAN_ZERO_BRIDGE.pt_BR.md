@@ -219,12 +219,15 @@ Referência de UX: [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NOTES.pt_B
 - Por sessão: no máximo um pedido exposto e uma fila FIFO de **8**. Estouro é deny imediato. Ids na fila ficam ocultos (`GET` só mostra `queued`; `POST` de um id ainda enfileirado é **404**).
 - Os últimos **256** reqIds resolvidos por sessão ficam na memória (`allow`, `deny`, `expired`, `aborted`). Os mais antigos viram **404**.
 - HTTP `allow` só seleciona option de kind `allow_once` com `optionId` exatamente `allow`. `allow_always`, `allow_for_session`, prefixo e strict viram deny. HTTP `deny` seleciona kind `reject_once`; se essa option não existir, o desfecho é `cancelled`.
+- O prazo começa quando o pedido fica exposto. Item na fila não tem timer, então `expiresAt` é o deadline real.
+- HTTP `allow` que não seleciona `allow_once` / `optionId` `allow` fica registrado como `deny` no evento e no histórico. O corpo HTTP passa a `{"ok":true,"effective":"deny"}`.
+- A redação do tool call percorre strings do JSON e reencoda. Se um evento não serializa, o log registra o erro sem o payload e o cliente recebe `{"type":"error","message":"event dropped"}`.
 - Timeout padrão **60s** (`--permission-timeout`). Ao expirar, a ponte nega ao agente e emite `permission_resolved` com decision `expired`. POST tardio é HTTP **409** `{"ok":false,"reason":"expired"}` (não 408).
 - Fim do turno, filho morto, Shutdown ou erro de conexão abortam todo pedido aberto como deny. Não há allow por padrão.
 
 **Aceite**
 
-- Transcrição ao vivo: [evidence/S4-permissions-transcript.txt](evidence/S4-permissions-transcript.txt) (HEAD `25f4818`, agente falso em `127.0.0.1:8767`, `--permission-timeout 5s`).
+- Transcrição ao vivo: [evidence/S4-permissions-transcript.txt](evidence/S4-permissions-transcript.txt) (HEAD `770d8bf`, agente falso em `127.0.0.1:8767`, `--permission-timeout 5s`).
 - `GET /v1/sessions/{id}/permissions/pending` → `{"pending":{reqId,toolCall,decisions:["allow","deny"],expiresAt}|null,"queued":N}`.
 - `POST .../permissions/{reqId}` com `{"decision":"allow"|"deny"}` (`Content-Type: application/json`, campos desconhecidos rejeitados, corpo até 4 KiB): **200** `{"ok":true}`; repetição **409** `{"ok":false,"reason":"already resolved"}`; desconhecido, outra sessão ou ainda na fila **404**; decisão inválida **400**; content-type ruim **415**.
 - Mesmos Host, Origin e cabeçalhos de segurança da S3. `rawInput` de tool só chega ao SSE, depois de `Redact`, e nunca ao log.

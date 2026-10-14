@@ -234,12 +234,15 @@ Approval UX reference: [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI_NOTES.md) (`
 - Per session: at most one exposed request plus a FIFO queue of **8**. Overflow is an immediate deny. Queued ids stay hidden (`GET` reports only `queued`; `POST` of a still-queued id is **404**).
 - The last **256** resolved reqIds per session are remembered (`allow`, `deny`, `expired`, `aborted`). Older ids become **404**.
 - HTTP `allow` selects an option only when its kind is `allow_once` and its `optionId` is exactly `allow`. `allow_always`, `allow_for_session`, prefix, and strict are treated as deny. HTTP `deny` selects kind `reject_once`; if that option is missing, the outcome is `cancelled`.
+- The deadline starts when the request becomes the exposed one. A queued request has no timer, so `expiresAt` matches the real deadline.
+- HTTP `allow` that cannot select `allow_once` / `optionId` `allow` is recorded as `deny` in the event and the history. The HTTP body is then `{"ok":true,"effective":"deny"}`.
+- Tool-call redaction walks JSON string values and re-encodes. If an event cannot be marshaled, the log records the error without the payload and the client receives `{"type":"error","message":"event dropped"}`.
 - Default timeout is **60s** (`--permission-timeout`). Expiry denies the agent and emits `permission_resolved` with decision `expired`. A late POST is HTTP **409** `{"ok":false,"reason":"expired"}` (not 408).
 - Turn end, a dead child, Shutdown, or a connection error aborts every open request as deny. There is no default allow.
 
 **Acceptance**
 
-- Live transcript: [evidence/S4-permissions-transcript.txt](evidence/S4-permissions-transcript.txt) (HEAD `25f4818`, fake agent on `127.0.0.1:8767`, `--permission-timeout 5s`).
+- Live transcript: [evidence/S4-permissions-transcript.txt](evidence/S4-permissions-transcript.txt) (HEAD `770d8bf`, fake agent on `127.0.0.1:8767`, `--permission-timeout 5s`).
 - `GET /v1/sessions/{id}/permissions/pending` → `{"pending":{reqId,toolCall,decisions:["allow","deny"],expiresAt}|null,"queued":N}`.
 - `POST .../permissions/{reqId}` body `{"decision":"allow"|"deny"}` (`Content-Type: application/json`, unknown fields rejected, body at most 4 KiB): **200** `{"ok":true}`; repeat **409** `{"ok":false,"reason":"already resolved"}`; unknown, other session, or still queued **404**; bad decision **400**; bad content-type **415**.
 - Same Host, Origin, and security headers as S3. Tool `rawInput` reaches SSE only, after `Redact`, and never the log.

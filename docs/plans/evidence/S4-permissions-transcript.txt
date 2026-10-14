@@ -1,7 +1,8 @@
-S4 live curl transcript — 2026-10-13 22:14:27 -03
+S4 live curl transcript — 2026-10-13 22:54:13 -03
 
 Bridge commit (HEAD at run):
-  25f4818 feat(bridge): permission routes and events (S4)
+  770d8bf test(bridge): wait for stop instead of fixed SSE window
+  includes 772ea03 fix(bridge): permission deadline, effective decision and JSON-safe redaction
 
 Commands (fake agent, shown before the run):
   cd /home/leitao/Projects/dev/zero-bridge/bridge
@@ -26,22 +27,22 @@ HTTP (session sess-acptest-1):
   GET /health → 200 (ready)
   POST /v1/sessions → 200 {"sessionId":"sess-acptest-1"}
   POST .../prompt "go" → 202 {"ok":true}
-  GET .../permissions/pending → pending reqId 1d89ec66f895bfada04dd7bac9e40144 queued 0
+  GET .../permissions/pending → pending reqId 14593b749df78bb4a1dd4e86d917ebab queued 0
   POST allow → 200 {"ok":true}
   POST allow again → 409 {"ok":false,"reason":"already resolved"}
   POST unknown reqId deadbeefdeadbeefdeadbeefdeadbeef → 404 {"error":"not found"}
   POST .../prompt "go2" → 202 {"ok":true}
-  GET pending → reqId 3667ce56b5bcf152c204670c6855439e
+  GET pending → reqId cf9b073f41be1cd5a0bb705c550f1615
   POST deny → 200 {"ok":true}
   POST .../prompt "go3" → 202 {"ok":true}
-  GET pending → reqId bf3e51c20f7ca3ddef54ba09ac911385
+  GET pending → reqId 10f50d1d07abb9a2e96c1745c24b3ad1
   sleep 6s, late POST allow → 409 {"ok":false,"reason":"expired"}
 
 Real zero (one zero-cost prompt, then the server was stopped):
   tmux new-session -d -s zbridge-s4-real \
     "cd bridge && go run ./cmd/zero-bridge --listen 127.0.0.1:8768 --permission-timeout 20s"
   POST /v1/sessions workspace /tmp/zbridge-s4-real
-    → sessionId zero_20261014011506_1791940506187153768_1
+    → sessionId zero_20261014015434_1791942874672090302_1
   POST prompt: "Create a file named hello.txt in this workspace containing the single word hi. Use a tool; do not just describe it."
     → 202 {"ok":true}
   GET .../permissions/pending polled for 20s → no pending request
@@ -51,4 +52,3 @@ Real zero (one zero-cost prompt, then the server was stopped):
 After both kill-session:
   TCP 8767 and 8768 closed.
   Remaining listeners 127.0.0.1:8765 and 127.0.0.1:8766 belong to tmux zbridge-s5a-real and zbridge-s5a-fake (left running).
-  Their children (`zero acp` and `/tmp/acpfake acp`) are parented by those bridges, not orphans of this run.
