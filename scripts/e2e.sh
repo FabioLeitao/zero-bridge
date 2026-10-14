@@ -111,4 +111,139 @@ run_one() {
 
 run_one open
 run_one token
+
+refuse_ttl() {
+	local value=$1 rc=0
+	set +e
+	"$tmp/zero-bridge" --listen 127.0.0.1:0 --zero-bin "$tmp/acpfake" --session-ttl "$value" >"$tmp/refuse.out" 2>&1
+	rc=$?
+	set -e
+	if [[ "$rc" -ne 2 ]]; then
+		echo "e2e: --session-ttl ${value} exited ${rc}" >&2
+		exit 1
+	fi
+}
+
+status_of() {
+	curl -s -o /dev/null -w '%{http_code}' "$@"
+}
+
+run_auth() {
+	local port base code n401=0 n429=0 i next
+	port=$(pick_port)
+	if [[ "$port" == 8765 || "$port" == 8766 ]]; then
+		echo "e2e: refusing operator port $port" >&2
+		exit 1
+	fi
+	umask 077
+	openssl rand -hex 32 >"$tmp/token"
+	chmod 600 "$tmp/token"
+	local token
+	token=$(cat "$tmp/token")
+	ZB_FAKE_SCENARIO=rich \
+		"$tmp/zero-bridge" --listen "127.0.0.1:${port}" --zero-bin "$tmp/acpfake" --token-file "$tmp/token" --permission-timeout 3s \
+		>"$tmp/server.log" 2>&1 &
+	pid=$!
+	printf '%s\n' "$pid" >"$tmp/pid"
+	wait_health "$port"
+	base="http://127.0.0.1:${port}"
+	for i in 1 2 3 4 5 6 7; do
+		code=$(status_of -H 'Authorization: Bearer wrong-bearer-token-value' "$base/v1/info")
+		case "$code" in
+		401) n401=$((n401 + 1)) ;;
+		429) n429=$((n429 + 1)) ;;
+		*)
+			echo "e2e: bearer attempt ${i} status ${code}" >&2
+			exit 1
+			;;
+		esac
+	done
+	if [[ "$n401" -ne 5 || "$n429" -ne 2 ]]; then
+		echo "e2e: bearer counts 401=${n401} 429=${n429}" >&2
+		exit 1
+	fi
+	stop_bridge
+
+	port=$(pick_port)
+	if [[ "$port" == 8765 || "$port" == 8766 ]]; then
+		echo "e2e: refusing operator port $port" >&2
+		exit 1
+	fi
+	openssl rand -hex 32 >"$tmp/token"
+	chmod 600 "$tmp/token"
+	token=$(cat "$tmp/token")
+	ZB_FAKE_SCENARIO=rich \
+		"$tmp/zero-bridge" --listen "127.0.0.1:${port}" --zero-bin "$tmp/acpfake" --token-file "$tmp/token" --permission-timeout 3s \
+		>"$tmp/server.log" 2>&1 &
+	pid=$!
+	printf '%s\n' "$pid" >"$tmp/pid"
+	wait_health "$port"
+	base="http://127.0.0.1:${port}"
+	printf '{"token":"%s"}\n' "$token" >"$tmp/login.json"
+	code=$(status_of -c "$tmp/cj" -H 'Content-Type: application/json' --data-binary @"$tmp/login.json" "$base/v1/login")
+	if [[ "$code" != 200 ]]; then
+		echo "e2e: login status ${code}" >&2
+		exit 1
+	fi
+	code=$(status_of -b "$tmp/cj" "$base/v1/info")
+	if [[ "$code" != 200 ]]; then
+		echo "e2e: cookie before logout-all status ${code}" >&2
+		exit 1
+	fi
+	code=$(status_of -b "$tmp/cj" -H "Origin: ${base}" -X POST "$base/v1/logout-all")
+	if [[ "$code" != 200 ]]; then
+		echo "e2e: logout-all status ${code}" >&2
+		exit 1
+	fi
+	code=$(status_of -b "$tmp/cj" "$base/v1/info")
+	if [[ "$code" != 401 ]]; then
+		echo "e2e: cookie after logout-all status ${code}" >&2
+		exit 1
+	fi
+	code=$(status_of -H "Authorization: Bearer ${token}" "$base/v1/info")
+	if [[ "$code" != 200 ]]; then
+		echo "e2e: bearer after logout-all status ${code}" >&2
+		exit 1
+	fi
+	code=$(status_of -c "$tmp/cj" -H 'Content-Type: application/json' --data-binary @"$tmp/login.json" "$base/v1/login")
+	if [[ "$code" != 200 ]]; then
+		echo "e2e: login after logout-all status ${code}" >&2
+		exit 1
+	fi
+	openssl rand -hex 32 >"$tmp/token"
+	chmod 600 "$tmp/token"
+	next=$(cat "$tmp/token")
+	kill -HUP "$pid"
+	local rotated=0
+	for i in $(seq 1 25); do
+		code=$(status_of -H "Authorization: Bearer ${token}" "$base/v1/info")
+		if [[ "$code" == 401 ]]; then
+			rotated=1
+			break
+		fi
+		sleep 0.2
+	done
+	if [[ "$rotated" -ne 1 ]]; then
+		echo "e2e: old token still accepted after SIGHUP" >&2
+		exit 1
+	fi
+	code=$(status_of -H "Authorization: Bearer ${next}" "$base/v1/info")
+	if [[ "$code" != 200 ]]; then
+		echo "e2e: new token status ${code}" >&2
+		exit 1
+	fi
+	code=$(status_of -b "$tmp/cj" "$base/v1/info")
+	if [[ "$code" != 401 ]]; then
+		echo "e2e: cookie after SIGHUP status ${code}" >&2
+		exit 1
+	fi
+	stop_bridge
+	echo "e2e: ok (auth, bearer 5x401+2x429, logout-all, SIGHUP)"
+}
+
+run_auth
+refuse_ttl 0
+refuse_ttl -1
+refuse_ttl 720h1m
+echo "e2e: ok (startup refuses session-ttl 0, -1, 720h1m)"
 echo "e2e: ok"

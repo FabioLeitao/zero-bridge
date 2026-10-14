@@ -63,6 +63,42 @@ mutants = [
         "TestLoadFile",
         [("internal/auth/token.go", "if st.Mode().Perm()&0o077 != 0 {", "if false && st.Mode().Perm()&0o077 != 0 {")],
     ),
+    (
+        "bearer-limit-removed",
+        "internal/server",
+        "TestBearerRateLimitConcurrentWrongToken",
+        [("internal/server/login.go", "return true, retry", "return false, 0")],
+    ),
+    (
+        "idle-ignored",
+        "internal/server",
+        "TestSessionLifetimeAndEviction",
+        [("internal/server/login.go", "if !now.Before(sess.last.Add(s.cfg.SessionIdle)) {", "if false && !now.Before(sess.last.Add(s.cfg.SessionIdle)) {")],
+    ),
+    (
+        "ttl-ignored",
+        "internal/server",
+        "TestSessionLifetimeAndEviction",
+        [("internal/server/login.go", "if !now.Before(sess.expires) {", "if false && !now.Before(sess.expires) {")],
+    ),
+    (
+        "logout-all-keeps-sessions",
+        "internal/server",
+        "TestLogoutAllListRevokeAndReload",
+        [("internal/server/login.go", "func (s *Server) handleLogoutAll(w http.ResponseWriter, r *http.Request) {\n\ts.dropAllSessions()\n", "func (s *Server) handleLogoutAll(w http.ResponseWriter, r *http.Request) {\n")],
+    ),
+    (
+        "sighup-keeps-token",
+        "internal/server",
+        "TestLogoutAllListRevokeAndReload",
+        [("internal/server/reload.go", "\ts.tokenMu.Lock()\n\ts.prevToken = s.token\n\ts.token = next\n\ts.tokenMu.Unlock()\n\ts.dropAllSessions()\n", "")],
+    ),
+    (
+        "audit-leaks-token",
+        "internal/auth",
+        "TestRecordScrubsOutput",
+        [("internal/auth/audit.go", "\ts = hexRun.ReplaceAllString(s, \"[redacted]\")\n\ts = skRun.ReplaceAllString(s, \"[redacted]\")\n", "")],
+    ),
 ]
 
 for name, pkg, run, edits in mutants:
