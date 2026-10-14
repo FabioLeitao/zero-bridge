@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,8 +18,10 @@ import (
 const sessionCookie = "zb_session"
 
 // bridgeSession is the cookie record. The map key is the cookie value and
-// never goes into an audit line.
+// never goes into an audit line or a JSON body. handle is a separate public
+// id, not derived from the cookie.
 type bridgeSession struct {
+	handle  string
 	created time.Time
 	last    time.Time
 	expires time.Time
@@ -27,14 +30,27 @@ type bridgeSession struct {
 type loginState struct {
 	mu       sync.Mutex
 	sessions map[string]*bridgeSession
+	byHandle map[string]string
 	fails    map[string][]time.Time
 }
 
 func newLoginState() *loginState {
 	return &loginState{
 		sessions: map[string]*bridgeSession{},
+		byHandle: map[string]string{},
 		fails:    map[string][]time.Time{},
 	}
+}
+
+func (st *loginState) forgetLocked(id string) {
+	sess, ok := st.sessions[id]
+	if !ok {
+		return
+	}
+	if sess.handle != "" {
+		delete(st.byHandle, sess.handle)
+	}
+	delete(st.sessions, id)
 }
 
 func (s *Server) now() time.Time {
@@ -85,11 +101,11 @@ func (s *Server) touchSession(id string) (bool, string) {
 	}
 	now := s.now()
 	if !now.Before(sess.expires) {
-		delete(s.login.sessions, id)
+		s.login.forgetLocked(id)
 		return false, "ttl"
 	}
 	if !now.Before(sess.last.Add(s.cfg.SessionIdle)) {
-		delete(s.login.sessions, id)
+		s.login.forgetLocked(id)
 		return false, "idle"
 	}
 	sess.last = now
@@ -98,13 +114,30 @@ func (s *Server) touchSession(id string) (bool, string) {
 
 func (s *Server) dropSession(id string) {
 	s.login.mu.Lock()
-	delete(s.login.sessions, id)
+	s.login.forgetLocked(id)
 	s.login.mu.Unlock()
 }
 
-func (s *Server) putSession(id string, now time.Time) bool {
+func (s *Server) dropAllSessions() {
+	s.login.mu.Lock()
+	s.login.sessions = map[string]*bridgeSession{}
+	s.login.byHandle = map[string]string{}
+	s.login.mu.Unlock()
+}
+
+func (s *Server) putSession(id string, now time.Time) (bool, error) {
 	s.login.mu.Lock()
 	defer s.login.mu.Unlock()
+	handle, err := newPublicHandle()
+	if err != nil {
+		return false, err
+	}
+	for s.login.byHandle[handle] != "" {
+		handle, err = newPublicHandle()
+		if err != nil {
+			return false, err
+		}
+	}
 	evicted := false
 	if len(s.login.sessions) >= s.cfg.MaxSessions {
 		var oldestID string
@@ -115,15 +148,17 @@ func (s *Server) putSession(id string, now time.Time) bool {
 				oldest = sess.created
 			}
 		}
-		delete(s.login.sessions, oldestID)
+		s.login.forgetLocked(oldestID)
 		evicted = true
 	}
 	s.login.sessions[id] = &bridgeSession{
+		handle:  handle,
 		created: now,
 		last:    now,
 		expires: now.Add(s.cfg.SessionTTL),
 	}
-	return evicted
+	s.login.byHandle[handle] = id
+	return evicted, nil
 }
 
 func (s *Server) reserveLogin(key string) (at time.Time, limited bool, retryAfter int) {
@@ -168,13 +203,13 @@ func recentFailures(prev []time.Time, now time.Time, window time.Duration) []tim
 }
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
-	authOn := s.cfg.Token != ""
+	authOn := s.currentToken() != ""
 	ok := !authOn || s.hasBearer(r) || s.sessionOK(r)
 	s.writeJSON(w, http.StatusOK, map[string]any{"auth": authOn, "authenticated": ok})
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Token == "" {
+	if s.currentToken() == "" {
 		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}
@@ -201,7 +236,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many requests"})
 		return
 	}
-	if !auth.Equal(s.cfg.Token, body.Token) {
+	if !auth.Equal(s.currentToken(), body.Token) {
 		s.recordAudit(auth.KindLoginFailure, r, "mismatch")
 		s.sleepLoginFailure()
 		s.writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
@@ -215,7 +250,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.now()
-	if s.putSession(id, now) {
+	evicted, err := s.putSession(id, now)
+	if err != nil {
+		s.writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "unavailable"})
+		return
+	}
+	if evicted {
 		s.recordAudit(auth.KindSessionEvicted, r, "oldest")
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -241,20 +281,15 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		s.dropSession(c.Value)
 	}
 	s.recordAudit(auth.KindLogout, r, "ok")
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   -1,
-		Secure:   s.cookieSecure(r),
-	})
+	s.clearSessionCookie(w, r)
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) cookieCSRF(r *http.Request) bool {
-	if s.cfg.Token == "" || !s.sessionOK(r) || s.hasBearer(r) || r.Method != http.MethodPost {
+	if s.currentToken() == "" || !s.sessionOK(r) || s.hasBearer(r) {
+		return true
+	}
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		return true
 	}
 	origin := r.Header.Get("Origin")
@@ -270,7 +305,7 @@ func (s *Server) cookieCSRF(r *http.Request) bool {
 // Authorization header stays a plain 401 so an empty probe is not a Bearer
 // failure.
 func (s *Server) bearerGate(r *http.Request) (bool, int) {
-	if s.cfg.Token == "" || isPublic(r) {
+	if s.currentToken() == "" || isPublic(r) {
 		return false, 0
 	}
 	if r.URL.Path == "/v1/auth/status" && r.Method == http.MethodGet {
@@ -293,7 +328,7 @@ func (s *Server) bearerGate(r *http.Request) (bool, int) {
 		s.sleepLoginFailure()
 		return true, retry
 	}
-	if !auth.Equal(s.cfg.Token, tok) {
+	if !auth.Equal(s.currentToken(), tok) {
 		s.recordAudit(auth.KindBearerFailure, r, "mismatch")
 		s.sleepLoginFailure()
 		return false, 0
@@ -303,17 +338,16 @@ func (s *Server) bearerGate(r *http.Request) (bool, int) {
 }
 
 func (s *Server) recordAudit(kind auth.Kind, r *http.Request, reason string) {
-	if s.audit == nil || r == nil {
+	if s.audit == nil {
 		return
 	}
-	_ = s.audit.Record(auth.Event{
-		Time:   s.now(),
-		Kind:   kind,
-		Source: s.clientKey(r),
-		Method: r.Method,
-		Path:   r.URL.Path,
-		Reason: reason,
-	})
+	ev := auth.Event{Time: s.now(), Kind: kind, Reason: reason}
+	if r != nil {
+		ev.Source = s.clientKey(r)
+		ev.Method = r.Method
+		ev.Path = r.URL.Path
+	}
+	_ = s.audit.Record(ev)
 }
 
 func newSessionID() (string, error) {
@@ -322,4 +356,85 @@ func newSessionID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b[:]), nil
+}
+
+// newPublicHandle returns an id that is not a prefix of the cookie. The
+// leading "s." is outside the hex alphabet of the cookie value.
+func newPublicHandle() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return "s." + hex.EncodeToString(b[:]), nil
+}
+
+type authSessionView struct {
+	Handle  string    `json:"handle"`
+	Created time.Time `json:"created"`
+	Last    time.Time `json:"last"`
+	Expires time.Time `json:"expires"`
+}
+
+func (s *Server) authSessionViews() []authSessionView {
+	s.login.mu.Lock()
+	defer s.login.mu.Unlock()
+	out := make([]authSessionView, 0, len(s.login.sessions))
+	for _, sess := range s.login.sessions {
+		out = append(out, authSessionView{
+			Handle:  sess.handle,
+			Created: sess.created,
+			Last:    sess.last,
+			Expires: sess.expires,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Created.Equal(out[j].Created) {
+			return out[i].Handle < out[j].Handle
+		}
+		return out[i].Created.Before(out[j].Created)
+	})
+	return out
+}
+
+func (s *Server) revokeSession(handle string) bool {
+	s.login.mu.Lock()
+	defer s.login.mu.Unlock()
+	id, ok := s.login.byHandle[handle]
+	if !ok {
+		return false
+	}
+	s.login.forgetLocked(id)
+	return true
+}
+
+func (s *Server) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+		Secure:   s.cookieSecure(r),
+	})
+}
+
+func (s *Server) handleLogoutAll(w http.ResponseWriter, r *http.Request) {
+	s.dropAllSessions()
+	s.recordAudit(auth.KindLogoutAll, r, "ok")
+	s.clearSessionCookie(w, r)
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleListAuthSessions(w http.ResponseWriter, _ *http.Request) {
+	s.writeJSON(w, http.StatusOK, map[string]any{"sessions": s.authSessionViews()})
+}
+
+func (s *Server) handleRevokeAuthSession(w http.ResponseWriter, r *http.Request) {
+	if !s.revokeSession(r.PathValue("handle")) {
+		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	s.recordAudit(auth.KindLogout, r, "revoked")
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

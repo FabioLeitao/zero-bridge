@@ -187,6 +187,7 @@ func run() int {
 		Logger:            logger,
 		Audit:             auditSink,
 		Token:             token,
+		TokenFile:         tokenFile,
 		AllowedHosts:      allowedHosts,
 		PublicOrigins:     publicOrigins,
 		TrustProxy:        trustProxy,
@@ -200,6 +201,7 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
 		return 2
 	}
+	srv.ArmReload()
 	if err := srv.PrepareWorkspace(); err != nil {
 		fmt.Fprintf(os.Stderr, "zero-bridge: workspace: %v\n", err)
 		return 2

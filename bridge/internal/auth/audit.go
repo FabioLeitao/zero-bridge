@@ -16,14 +16,16 @@ import (
 type Kind string
 
 const (
-	KindLoginSuccess   Kind = "login_success"
-	KindLoginFailure   Kind = "login_failure"
-	KindRateLimited    Kind = "rate_limited"
-	KindBearerFailure  Kind = "bearer_failure"
-	KindLogout         Kind = "logout"
-	KindLogoutAll      Kind = "logout_all"
-	KindSessionExpired Kind = "session_expired"
-	KindSessionEvicted Kind = "session_evicted"
+	KindLoginSuccess      Kind = "login_success"
+	KindLoginFailure      Kind = "login_failure"
+	KindRateLimited       Kind = "rate_limited"
+	KindBearerFailure     Kind = "bearer_failure"
+	KindLogout            Kind = "logout"
+	KindLogoutAll         Kind = "logout_all"
+	KindSessionExpired    Kind = "session_expired"
+	KindSessionEvicted    Kind = "session_evicted"
+	KindTokenReloaded     Kind = "token_reloaded"
+	KindTokenReloadFailed Kind = "token_reload_failed"
 )
 
 // Event is one audit record. It has no token, no token prefix, and no session

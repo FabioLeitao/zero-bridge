@@ -36,6 +36,7 @@ type Config struct {
 	Logger            *log.Logger
 	Audit             auth.Sink
 	Token             string
+	TokenFile         string // set only for --token-file; empty when the token came from the environment
 	AllowedHosts      []string
 	PublicOrigins     []string
 	TrustProxy        bool
@@ -68,6 +69,10 @@ type Server struct {
 	login          *loginState
 	loginDelay     time.Duration
 	audit          auth.Sink
+	tokenMu        sync.RWMutex
+	token          string
+	prevToken      string
+	reloadDone     chan struct{}
 }
 
 // New builds a Server; call Boot before serving.
@@ -122,6 +127,7 @@ func New(cfg Config) (*Server, error) {
 		login:       newLoginState(),
 		loginDelay:  delay,
 		audit:       cfg.Audit,
+		token:       cfg.Token,
 	}
 	s.perms.OnEvent = s.onPermission
 	return s, nil
@@ -241,6 +247,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("POST /v1/login", s.handleLogin)
 	mux.HandleFunc("POST /v1/logout", s.handleLogout)
+	mux.HandleFunc("POST /v1/logout-all", s.handleLogoutAll)
+	mux.HandleFunc("GET /v1/auth/sessions", s.handleListAuthSessions)
+	mux.HandleFunc("DELETE /v1/auth/sessions/{handle}", s.handleRevokeAuthSession)
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
@@ -290,6 +299,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s.serveCancel != nil {
 		s.serveCancel()
 	}
+	s.waitReload(ctx)
 	var err error
 	if s.httpSrv != nil {
 		err = s.httpSrv.Shutdown(ctx)
@@ -426,11 +436,14 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) redact(msg string) string {
-	return RedactSecrets(msg, s.cfg.Token)
+	s.tokenMu.RLock()
+	cur, prev := s.token, s.prevToken
+	s.tokenMu.RUnlock()
+	return RedactSecrets(msg, cur, prev)
 }
 
 func (s *Server) authorized(r *http.Request) bool {
-	if s.cfg.Token == "" || isPublic(r) {
+	if s.currentToken() == "" || isPublic(r) {
 		return true
 	}
 	if r.URL.Path == "/v1/auth/status" && r.Method == http.MethodGet {
@@ -468,11 +481,11 @@ func (s *Server) hasBearer(r *http.Request) bool {
 	if !ok {
 		return false
 	}
-	return auth.Equal(s.cfg.Token, tok)
+	return auth.Equal(s.currentToken(), tok)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Token != "" && !s.hasBearer(r) && !s.sessionOK(r) {
+	if s.currentToken() != "" && !s.hasBearer(r) && !s.sessionOK(r) {
 		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
