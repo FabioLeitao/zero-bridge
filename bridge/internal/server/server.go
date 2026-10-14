@@ -34,6 +34,8 @@ type Config struct {
 	PermissionTimeout time.Duration
 	Logger            *log.Logger
 	Token             string
+	AllowedHosts      []string
+	PublicOrigins     []string
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -70,6 +72,9 @@ func New(cfg Config) (*Server, error) {
 		if err := auth.Validate(cfg.Token); err != nil {
 			return nil, err
 		}
+	}
+	if err := validateExposure(cfg); err != nil {
+		return nil, err
 	}
 	listen, err := ResolveListen(cfg.Listen)
 	if err != nil {
@@ -302,7 +307,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		writeSecurityHeaders(rec)
-		if !checkHostOrigin(r, s.allowed) {
+		if !checkHostOrigin(r, s.allowed, s.cfg.AllowedHosts, s.cfg.PublicOrigins) {
 			s.writeJSON(rec, http.StatusForbidden, map[string]any{"error": "forbidden"})
 			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusForbidden, time.Since(start))
 			return
@@ -814,6 +819,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("X-Accel-Buffering", "no")
 	writeSecurityHeaders(w)
 	rc := http.NewResponseController(w)
 	subID, ch, replay := hub.subscribe()

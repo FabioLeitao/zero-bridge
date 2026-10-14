@@ -1080,6 +1080,58 @@ func sseContainsType(lines []string, typ string) bool {
 
 const bearerToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
+func TestProxyHostRules(t *testing.T) {
+	if _, err := New(Config{Listen: "127.0.0.1:9", AllowedHosts: []string{"bridge.test"}}); err == nil || !strings.Contains(err.Error(), "token required when exposed via proxy") {
+		t.Fatalf("missing token: %v", err)
+	}
+	_, base, cleanup := startConfigured(t, Config{
+		Token:         bearerToken,
+		AllowedHosts:  []string{"bridge.test"},
+		PublicOrigins: []string{"http://bridge.test:8780"},
+	})
+	defer cleanup()
+	get := func(host, origin string) int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, base+"/health", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if host != "" {
+			req.Host = host
+		}
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if get("bridge.test", "") != http.StatusOK {
+		t.Fatal("listed host")
+	}
+	if get("", "") != http.StatusOK {
+		t.Fatal("loopback host")
+	}
+	if get("evil.example", "") != http.StatusForbidden {
+		t.Fatal("rebinding host")
+	}
+	if get("bridge.test", "http://bridge.test:8780") != http.StatusOK {
+		t.Fatal("listed origin")
+	}
+	if get("bridge.test", "http://bridge.test:9") != http.StatusForbidden {
+		t.Fatal("origin port")
+	}
+	if get("bridge.test", "https://bridge.test:8780") != http.StatusForbidden {
+		t.Fatal("origin scheme")
+	}
+	if get("bridge.test", "http://evil.test:8780") != http.StatusForbidden {
+		t.Fatal("origin host")
+	}
+}
+
 func TestBearerAuth(t *testing.T) {
 	if _, err := New(Config{Listen: "127.0.0.1:9", Token: "short"}); err == nil {
 		t.Fatal("short token accepted")

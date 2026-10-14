@@ -41,6 +41,8 @@ func run() int {
 	workspace := ""
 	permTimeout := 60 * time.Second
 	tokenFile := ""
+	var allowedHosts []string
+	var publicOrigins []string
 	for i := 1; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "--listen":
@@ -69,6 +71,20 @@ func run() int {
 				return 2
 			}
 			permTimeout = d
+		case "--allowed-host":
+			if i+1 >= len(os.Args) {
+				fmt.Fprintln(os.Stderr, "missing value for --allowed-host")
+				return 2
+			}
+			i++
+			allowedHosts = append(allowedHosts, os.Args[i])
+		case "--public-origin":
+			if i+1 >= len(os.Args) {
+				fmt.Fprintln(os.Stderr, "missing value for --public-origin")
+				return 2
+			}
+			i++
+			publicOrigins = append(publicOrigins, os.Args[i])
 		case "--token-file":
 			if i+1 >= len(os.Args) {
 				fmt.Fprintln(os.Stderr, "missing value for --token-file")
@@ -103,6 +119,8 @@ func run() int {
 		PermissionTimeout: permTimeout,
 		Logger:            logger,
 		Token:             token,
+		AllowedHosts:      allowedHosts,
+		PublicOrigins:     publicOrigins,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "zero-bridge: %v\n", err)
