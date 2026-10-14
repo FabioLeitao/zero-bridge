@@ -67,3 +67,5 @@ Results:
 After the run the recorded pid was gone and the temporary directory was removed. No process from this run remained.
 
 Not covered here: a real TLS handshake, a hostile X-Forwarded-For client, and more than one bridge process.
+
+The absolute TTL check is pinned while idle stays fresh (a request every 8 minutes, death at the TTL with reason ttl). Removing that check dies on that case. An earlier note that the TTL mutant died only because idle had also elapsed described the old boundary test, not this one.

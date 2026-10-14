@@ -1809,6 +1809,70 @@ func TestSessionLifetimeAndEviction(t *testing.T) {
 			t.Fatalf("ttl audit: %s", text)
 		}
 	})
+
+	t.Run("sliding idle", func(t *testing.T) {
+		start := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+		now := start
+		var logs bytes.Buffer
+		_, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Now:               func() time.Time { return now },
+			SessionTTL:        time.Hour,
+			SessionIdle:       10 * time.Minute,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		cookie := loginCookie(t, base)
+		for _, minute := range []int{8, 16, 24} {
+			now = start.Add(time.Duration(minute) * time.Minute)
+			if status(t, base, cookie) != http.StatusOK {
+				t.Fatalf("use at %dm rejected", minute)
+			}
+		}
+		logs.Reset()
+		now = start.Add(24*time.Minute + 10*time.Minute + time.Nanosecond)
+		if status(t, base, cookie) != http.StatusUnauthorized {
+			t.Fatal("silence past idle still accepted")
+		}
+		text := logs.String()
+		if !strings.Contains(text, `"reason":"idle"`) || strings.Contains(text, cookie.Value) {
+			t.Fatalf("idle audit: %s", text)
+		}
+	})
+
+	// Activity stays inside the idle window on purpose. Removing the TTL
+	// check must fail here; the older boundary reached idle at the same instant.
+	t.Run("absolute ttl", func(t *testing.T) {
+		start := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+		now := start
+		var logs bytes.Buffer
+		_, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Now:               func() time.Time { return now },
+			SessionTTL:        time.Hour,
+			SessionIdle:       10 * time.Minute,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		cookie := loginCookie(t, base)
+		for _, minute := range []int{8, 16, 24, 32, 40, 48, 56} {
+			now = start.Add(time.Duration(minute) * time.Minute)
+			if status(t, base, cookie) != http.StatusOK {
+				t.Fatalf("use at %dm rejected", minute)
+			}
+		}
+		logs.Reset()
+		now = start.Add(time.Hour)
+		if status(t, base, cookie) != http.StatusUnauthorized {
+			t.Fatal("absolute ttl with a fresh idle still accepted")
+		}
+		text := logs.String()
+		if !strings.Contains(text, `"reason":"ttl"`) || strings.Contains(text, `"reason":"idle"`) || strings.Contains(text, cookie.Value) {
+			t.Fatalf("ttl audit: %s", text)
+		}
+	})
 }
 
 const bearerTokenNext = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"

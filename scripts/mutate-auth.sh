@@ -70,15 +70,21 @@ mutants = [
         [("internal/server/login.go", "return true, retry", "return false, 0")],
     ),
     (
-        "idle-ignored",
+        "idle-not-sliding",
         "internal/server",
-        "TestSessionLifetimeAndEviction",
+        "TestSessionLifetimeAndEviction/sliding_idle",
+        [("internal/server/login.go", "\tsess.last = now\n", "")],
+    ),
+    (
+        "idle-check-removed",
+        "internal/server",
+        "TestSessionLifetimeAndEviction/sliding_idle",
         [("internal/server/login.go", "if !now.Before(sess.last.Add(s.cfg.SessionIdle)) {", "if false && !now.Before(sess.last.Add(s.cfg.SessionIdle)) {")],
     ),
     (
-        "ttl-ignored",
+        "ttl-check-removed",
         "internal/server",
-        "TestSessionLifetimeAndEviction",
+        "TestSessionLifetimeAndEviction/absolute_ttl",
         [("internal/server/login.go", "if !now.Before(sess.expires) {", "if false && !now.Before(sess.expires) {")],
     ),
     (
