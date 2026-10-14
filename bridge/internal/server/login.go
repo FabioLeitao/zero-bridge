@@ -14,22 +14,25 @@ import (
 	"zero-bridge/bridge/internal/auth"
 )
 
-const (
-	sessionCookie   = "zb_session"
-	sessionTTL      = 12 * time.Hour
-	loginFailWindow = time.Minute
-	loginFailMax    = 5
-)
+const sessionCookie = "zb_session"
+
+// bridgeSession is the cookie record. The map key is the cookie value and
+// never goes into an audit line.
+type bridgeSession struct {
+	created time.Time
+	last    time.Time
+	expires time.Time
+}
 
 type loginState struct {
 	mu       sync.Mutex
-	sessions map[string]time.Time
+	sessions map[string]*bridgeSession
 	fails    map[string][]time.Time
 }
 
 func newLoginState() *loginState {
 	return &loginState{
-		sessions: map[string]time.Time{},
+		sessions: map[string]*bridgeSession{},
 		fails:    map[string][]time.Time{},
 	}
 }
@@ -66,14 +69,31 @@ func (s *Server) sessionOK(r *http.Request) bool {
 	if err != nil || c.Value == "" {
 		return false
 	}
+	alive, reason := s.touchSession(c.Value)
+	if reason != "" {
+		s.recordAudit(auth.KindSessionExpired, r, reason)
+	}
+	return alive
+}
+
+func (s *Server) touchSession(id string) (bool, string) {
 	s.login.mu.Lock()
 	defer s.login.mu.Unlock()
-	exp, ok := s.login.sessions[c.Value]
-	if !ok || !s.now().Before(exp) {
-		delete(s.login.sessions, c.Value)
-		return false
+	sess, ok := s.login.sessions[id]
+	if !ok {
+		return false, ""
 	}
-	return true
+	now := s.now()
+	if !now.Before(sess.expires) {
+		delete(s.login.sessions, id)
+		return false, "ttl"
+	}
+	if !now.Before(sess.last.Add(s.cfg.SessionIdle)) {
+		delete(s.login.sessions, id)
+		return false, "idle"
+	}
+	sess.last = now
+	return true, ""
 }
 
 func (s *Server) dropSession(id string) {
@@ -82,14 +102,39 @@ func (s *Server) dropSession(id string) {
 	s.login.mu.Unlock()
 }
 
+func (s *Server) putSession(id string, now time.Time) bool {
+	s.login.mu.Lock()
+	defer s.login.mu.Unlock()
+	evicted := false
+	if len(s.login.sessions) >= s.cfg.MaxSessions {
+		var oldestID string
+		var oldest time.Time
+		for sid, sess := range s.login.sessions {
+			if oldestID == "" || sess.created.Before(oldest) {
+				oldestID = sid
+				oldest = sess.created
+			}
+		}
+		delete(s.login.sessions, oldestID)
+		evicted = true
+	}
+	s.login.sessions[id] = &bridgeSession{
+		created: now,
+		last:    now,
+		expires: now.Add(s.cfg.SessionTTL),
+	}
+	return evicted
+}
+
 func (s *Server) reserveLogin(key string) (at time.Time, limited bool, retryAfter int) {
 	now := s.now()
 	s.login.mu.Lock()
 	defer s.login.mu.Unlock()
-	kept := recentFailures(s.login.fails[key], now)
+	kept := recentFailures(s.login.fails[key], now, s.cfg.AuthFailWindow)
+	loginFailMax := s.cfg.AuthFailLimit
 	if len(kept) >= loginFailMax {
 		s.login.fails[key] = kept
-		retry := int(kept[0].Add(loginFailWindow).Sub(now).Seconds())
+		retry := int(kept[0].Add(s.cfg.AuthFailWindow).Sub(now).Seconds())
 		if retry < 1 {
 			retry = 1
 		}
@@ -111,8 +156,8 @@ func (s *Server) releaseLogin(key string, at time.Time) {
 	}
 }
 
-func recentFailures(prev []time.Time, now time.Time) []time.Time {
-	cutoff := now.Add(-loginFailWindow)
+func recentFailures(prev []time.Time, now time.Time, window time.Duration) []time.Time {
+	cutoff := now.Add(-window)
 	kept := make([]time.Time, 0, len(prev))
 	for _, ts := range prev {
 		if ts.After(cutoff) {
@@ -169,17 +214,17 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "unavailable"})
 		return
 	}
-	exp := s.now().Add(sessionTTL)
-	s.login.mu.Lock()
-	s.login.sessions[id] = exp
-	s.login.mu.Unlock()
+	now := s.now()
+	if s.putSession(id, now) {
+		s.recordAudit(auth.KindSessionEvicted, r, "oldest")
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    id,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		MaxAge:   int(sessionTTL.Seconds()),
+		MaxAge:   int(s.cfg.SessionTTL.Seconds()),
 		Secure:   s.cookieSecure(r),
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})

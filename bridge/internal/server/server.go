@@ -41,6 +41,11 @@ type Config struct {
 	TrustProxy        bool
 	Now               func() time.Time
 	LoginFailureDelay time.Duration
+	SessionTTL        time.Duration
+	SessionIdle       time.Duration
+	MaxSessions       int
+	AuthFailWindow    time.Duration
+	AuthFailLimit     int
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -78,6 +83,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Audit == nil {
 		cfg.Audit = auth.NewLogSink(cfg.Logger)
+	}
+	if err := applyLimitDefaults(&cfg); err != nil {
+		return nil, err
 	}
 	if cfg.Token != "" {
 		if err := auth.Validate(cfg.Token); err != nil {

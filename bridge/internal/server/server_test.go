@@ -1692,3 +1692,116 @@ func TestLoginAuditOmitsSecret(t *testing.T) {
 		t.Fatalf("logout audit: %s", logs.String())
 	}
 }
+
+func TestSessionLifetimeAndEviction(t *testing.T) {
+	loginCookie := func(t *testing.T, base string) *http.Cookie {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, base+"/v1/login", strings.NewReader(`{"token":"`+bearerToken+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("login %d", res.StatusCode)
+		}
+		for _, c := range res.Cookies() {
+			if c.Name == sessionCookie {
+				return c
+			}
+		}
+		t.Fatal("cookie missing")
+		return nil
+	}
+	status := func(t *testing.T, base string, c *http.Cookie) int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, base+"/v1/info", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.AddCookie(c)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+
+	t.Run("evict oldest", func(t *testing.T) {
+		now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+		var logs bytes.Buffer
+		_, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Now:               func() time.Time { return now },
+			SessionTTL:        2 * time.Hour,
+			SessionIdle:       time.Hour,
+			MaxSessions:       2,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		first := loginCookie(t, base)
+		now = now.Add(time.Second)
+		second := loginCookie(t, base)
+		now = now.Add(time.Second)
+		third := loginCookie(t, base)
+		if status(t, base, first) != http.StatusUnauthorized {
+			t.Fatal("oldest session still accepted")
+		}
+		if status(t, base, second) != http.StatusOK || status(t, base, third) != http.StatusOK {
+			t.Fatal("newer session rejected")
+		}
+		text := logs.String()
+		if !strings.Contains(text, `"kind":"session_evicted"`) || !strings.Contains(text, `"reason":"oldest"`) {
+			t.Fatalf("evict audit: %s", text)
+		}
+		for _, c := range []*http.Cookie{first, second, third} {
+			if strings.Contains(text, c.Value) {
+				t.Fatal("session id in audit log")
+			}
+		}
+	})
+
+	t.Run("idle and ttl boundaries", func(t *testing.T) {
+		now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+		var logs bytes.Buffer
+		_, base, cleanup := startConfigured(t, Config{
+			Token:             bearerToken,
+			LoginFailureDelay: -1,
+			Now:               func() time.Time { return now },
+			SessionTTL:        time.Hour,
+			SessionIdle:       30 * time.Minute,
+			Logger:            log.New(&logs, "", 0),
+		})
+		defer cleanup()
+		idleCookie := loginCookie(t, base)
+		now = now.Add(30*time.Minute - time.Nanosecond)
+		if status(t, base, idleCookie) != http.StatusOK {
+			t.Fatal("inside idle window rejected")
+		}
+		fresh := loginCookie(t, base)
+		now = now.Add(30 * time.Minute)
+		if status(t, base, fresh) != http.StatusUnauthorized {
+			t.Fatal("exact idle boundary accepted")
+		}
+		if !strings.Contains(logs.String(), `"reason":"idle"`) {
+			t.Fatalf("idle audit: %s", logs.String())
+		}
+		logs.Reset()
+		ttlCookie := loginCookie(t, base)
+		created := now
+		now = created.Add(time.Hour)
+		if status(t, base, ttlCookie) != http.StatusUnauthorized {
+			t.Fatal("exact ttl boundary accepted")
+		}
+		text := logs.String()
+		if !strings.Contains(text, `"reason":"ttl"`) || strings.Contains(text, ttlCookie.Value) {
+			t.Fatalf("ttl audit: %s", text)
+		}
+	})
+}
