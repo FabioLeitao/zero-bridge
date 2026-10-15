@@ -57,12 +57,22 @@ func startConfigured(t *testing.T, cfg Config) (*Server, string, func()) {
 	}
 	httpSrv := srv.newHTTPServer()
 	go httpSrv.Serve(ln)
-	return srv, "http://" + addr, func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = httpSrv.Shutdown(ctx)
-		_ = srv.Shutdown(ctx)
+	return srv, "http://" + addr, func() { stopTestHTTP(httpSrv, srv) }
+}
+
+// stopTestHTTP asks the listener to drain, then closes it. Shutdown with a
+// long context waits out SSE and keep-alive connections. A short context
+// plus Close drops those connections. The agent still stops through Server.Shutdown.
+func stopTestHTTP(httpSrv *http.Server, srv *Server) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	err := httpSrv.Shutdown(ctx)
+	cancel()
+	if err != nil {
+		_ = httpSrv.Close()
 	}
+	ctx, cancel = context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_ = srv.Shutdown(ctx)
 }
 
 func TestInfoAndWorkspace(t *testing.T) {

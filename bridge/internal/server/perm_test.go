@@ -169,10 +169,5 @@ func startTestServerTimeout(t *testing.T, extraEnv []string, timeout time.Durati
 	}
 	httpSrv := srv.newHTTPServer()
 	go httpSrv.Serve(ln)
-	return srv, "http://" + addr, func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = httpSrv.Shutdown(ctx)
-		_ = srv.Shutdown(ctx)
-	}
+	return srv, "http://" + addr, func() { stopTestHTTP(httpSrv, srv) }
 }
