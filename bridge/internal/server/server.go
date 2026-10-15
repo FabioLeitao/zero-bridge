@@ -19,6 +19,7 @@ import (
 	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/permissions"
 	"zero-bridge/bridge/internal/sessionmeta"
+	"zero-bridge/bridge/internal/sessionstate"
 	"zero-bridge/bridge/internal/workroot"
 	"zero-bridge/bridge/internal/zeroenv"
 	"zero-bridge/bridge/web"
@@ -58,14 +59,17 @@ type Config struct {
 
 // Server bridges HTTP to a single long-lived zero acp child.
 type Server struct {
-	cfg      Config
-	listen   string
-	allowed  []string
-	acp      *acpclient.Client
-	acpMu    sync.RWMutex
-	sessions map[string]*sessionHub
-	mu       sync.RWMutex
-	httpSrv  *http.Server
+	cfg       Config
+	listen    string
+	allowed   []string
+	acp       *acpclient.Client
+	acpMu     sync.RWMutex
+	sessions  map[string]*sessionHub
+	mu        sync.RWMutex
+	states    map[string]sessionstate.Machine
+	stateMu   sync.Mutex
+	agentDown bool
+	httpSrv   *http.Server
 
 	serveCtx    context.Context
 	serveCancel context.CancelFunc
@@ -201,6 +205,7 @@ func (s *Server) Boot(ctx context.Context) error {
 	go func() {
 		<-client.Done()
 		s.perms.Stop()
+		s.markAgentDown()
 	}()
 	return nil
 }
@@ -575,6 +580,7 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 		"sessionResume": snap.Capabilities.Resume(),
 		"prompt":        snap.Capabilities.PromptCapabilities,
 		"modes":         modes,
+		"sessionStatus": s.stateLevel(),
 	})
 }
 
@@ -1041,6 +1047,7 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
+	s.applyState(id, sessionstate.Event{Kind: sessionstate.KindPrompt})
 	go s.runPrompt(id, hub, body.Text)
 }
 
@@ -1063,9 +1070,11 @@ func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string) {
 		},
 	}, &res)
 	if err != nil {
+		s.applyState(sessionID, sessionstate.Event{Kind: sessionstate.KindFail})
 		hub.emit(map[string]any{"type": "error", "message": s.redact(err.Error())})
 		return
 	}
+	s.applyState(sessionID, sessionstate.Event{Kind: sessionstate.KindStop, Stop: res.StopReason})
 	hub.emit(map[string]any{"type": "stop", "stopReason": res.StopReason})
 }
 

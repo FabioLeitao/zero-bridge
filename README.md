@@ -39,6 +39,8 @@ Use a local model or a `:free` variant. Profile `zero` sets `ZERO_PROVIDER=grani
 
 The bridge advertises client `fs` and `terminal` as off. An agent that requires either one is unsupported. `GET /v1/capabilities` reports the profile and the capabilities the agent declared. List, load, resume, and `session/set_mode` return **501** `not supported by agent` before any ACP call when the agent did not declare them. When a session announced `availableModes`, the mode id has to be one of those ids. Profile `zero` falls back to `auto`, `ask`, and `plan` only when the agent announced no modes. Profile `generic` returns **501** in that case.
 
+`GET /v1/capabilities` also reports `sessionStatus`. Profile `zero` is `full`: each session is `working`, `blocked`, `done`, `error`, or `idle`, and a pending permission is `blocked` even while a prompt is in flight. Profile `generic` is `basic` and reports only `working` or `idle`. The list field and the `session_state` event carry that label and nothing else. The sidebar shows a text badge, and the tab title is `(N) precisa de voce` while any session is blocked.
+
 The agent name, version, and mode names and descriptions come from the agent. The page inserts them with `textContent` and `createTextNode` only, including the ARIA label and description. The session list, load, resume, and the mode selector stay hidden unless `/v1/capabilities` says the agent supports them.
 
 ## Security
@@ -54,7 +56,7 @@ The agent name, version, and mode names and descriptions come from the agent. Th
 
 ## Status
 
-S2–S6, S14, S14b, and S17 are on main. S14 and S17 landed in [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). S14b landed in [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18) and [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) is closed. S19 is implemented on `epic/s19-harness-agnostic` and is not merged. The remaining order is S16, S18, S6b, S7. S11 is done upstream in [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). S13 follows [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detail: [docs/plans/PLAN_ZERO_BRIDGE.md](docs/plans/PLAN_ZERO_BRIDGE.md).
+S2–S6, S14, S14b, and S17 are on main. S14 and S17 landed in [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). S14b landed in [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18) and [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) is closed. S19 is implemented on `epic/s19-harness-agnostic` and is not merged. S6b is on main ([PR #35](https://github.com/FabioLeitao/zero-bridge/pull/35)). S28 is built on `epic/s28-session-status` and is not merged. The remaining order is S16, S18, S7. S11 is done upstream in [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). S13 follows [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detail: [docs/plans/PLAN_ZERO_BRIDGE.md](docs/plans/PLAN_ZERO_BRIDGE.md).
 
 | Slice | State |
 | --- | --- |
@@ -64,7 +66,8 @@ S2–S6, S14, S14b, and S17 are on main. S14 and S17 landed in [PR #16](https://
 | S17 local gate | on main ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13), [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16)) |
 | S14b auth hardening II | on main ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11) closed, [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18)) |
 | S19 harness-agnostic bridge | implemented on `epic/s19-harness-agnostic`; not merged ([#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [spike](docs/plans/evidence/S19-spike-transcript.txt)) |
-| S16, S18, S6b, S7 | designed, in that order ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S16, S18, S7 | designed, in that order ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S28 session status | done on `epic/s28-session-status`; not merged ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) |
 | S8–S10, S12, S15 | designed ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
 | S11 mode restore | done upstream ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134)) |
 | S13 frame limits | following ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), open [PR #944](https://github.com/Twigpine/zero/pull/944)) |

@@ -164,6 +164,30 @@ mutants = [
         "TestSessionMetaPaddedBody",
         [("internal/server/meta.go", "r.Body = http.MaxBytesReader(w, r.Body, 4<<10)", "r.Body = http.MaxBytesReader(w, r.Body, 4<<30)")],
     ),
+    (
+        "status-never-blocked",
+        "internal/sessionstate",
+        "TestTransitionTable/permission_during_prompt",
+        [("internal/sessionstate/state.go", "\tif m.pending > 0 {\n\t\treturn Blocked\n\t}", "\tif m.pending > 0 {\n\t\treturn Working\n\t}")],
+    ),
+    (
+        "status-priority-inverted",
+        "internal/sessionstate",
+        "TestTransitionTable/permission_during_prompt",
+        [("internal/sessionstate/state.go", "\tif m.pending > 0 {\n\t\treturn Blocked\n\t}\n\tif m.down || m.rest == Error {\n\t\treturn Error\n\t}\n\tif m.prompt {\n\t\treturn Working\n\t}", "\tif m.prompt {\n\t\treturn Working\n\t}\n\tif m.pending > 0 {\n\t\treturn Blocked\n\t}\n\tif m.down || m.rest == Error {\n\t\treturn Error\n\t}")],
+    ),
+    (
+        "status-generic-blocked",
+        "internal/server",
+        "TestSessionStatusByProfile/generic_never_blocked",
+        [("internal/server/session_state.go", "\tif s.cfg.Profile == \"generic\" {\n\t\treturn sessionstate.LevelBasic\n\t}", "\tif s.cfg.Profile == \"generic\" {\n\t\treturn sessionstate.LevelFull\n\t}")],
+    ),
+    (
+        "status-leaks-title",
+        "internal/server",
+        "TestSessionStateFromTraffic/pending_permission_stays_blocked",
+        [("internal/server/list.go", "obj[\"state\"] = s.stateOf(view.ID)", "obj[\"state\"] = view.Title")],
+    ),
 ]
 
 for name, pkg, run, edits in mutants:

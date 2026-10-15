@@ -14,6 +14,7 @@ The agent edits the tree. The auditor reviews the commit. The operator decides s
 - The web UI inserts text with `textContent` and `createTextNode` only.
 - The process binds loopback. It does not terminate TLS.
 - Logs, telemetry, the URL, the query string, and server-sent events do not carry a secret, a prompt, `rawInput`, a session id, or a home-directory path.
+- A session label is `working`, `blocked`, `done`, `error`, or `idle`, derived from ACP traffic the bridge already sees. The label does not carry a prompt, a tool argument, or a title. Profile `generic` reports only `working` and `idle`.
 - Do not kill processes by pattern. Stop a process you started by its recorded pid, after reading its command line.
 - Do not skip a git hook. Tests that create files run with umask `022`.
 - External tools run as pinned `go run pkg@version`. Nothing is installed globally for the gate.

@@ -151,6 +151,9 @@ func runAgent(r io.Reader, w io.Writer) {
 			writeResp(w, env.ID, modeResult("auto"))
 		case "session/prompt":
 			sid := "sess-acptest-1"
+			if os.Getenv("ZB_FAKE_PROMPT_EXIT") == "1" {
+				os.Exit(1)
+			}
 			var req struct {
 				Params struct {
 					SessionID string `json:"sessionId"`
@@ -169,6 +172,14 @@ func runAgent(r io.Reader, w io.Writer) {
 			}
 			if ms := slowMillis(); ms > 0 && !sleepUnlessClosed(src, ms) {
 				return
+			}
+			if os.Getenv("ZB_FAKE_TURN_ERROR") == "1" {
+				writeErr(w, env.ID, -32603, "turn failed")
+				continue
+			}
+			if os.Getenv("ZB_FAKE_HOLD_PERMISSION") == "1" {
+				holdPermission(w, sid)
+				continue
 			}
 			if os.Getenv("ZB_FAKE_NO_PERMISSION") == "1" {
 				notify(w, "session/update", map[string]any{
@@ -479,6 +490,31 @@ func richPrompt(r nlReader, w io.Writer, sid string, id json.RawMessage) {
 		},
 	})
 	writeResp(w, id, map[string]any{"stopReason": "end_turn"})
+}
+
+func holdPermission(w io.Writer, sessionID string) {
+	id := nextPermID.Add(1)
+	req := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"method":  "session/request_permission",
+		"params": map[string]any{
+			"sessionId": sessionID,
+			"toolCall": map[string]any{
+				"toolCallId": "tc-perm",
+				"title":      "write",
+				"kind":       "edit",
+				"status":     "pending",
+				"rawInput":   map[string]string{"path": "secret-arg"},
+			},
+			"options": []map[string]string{
+				{"optionId": "allow", "name": "Allow", "kind": "allow_once"},
+				{"optionId": "deny", "name": "Deny", "kind": "reject_once"},
+			},
+		},
+	}
+	b, _ := json.Marshal(req)
+	_, _ = w.Write(append(b, '\n'))
 }
 
 func permissionRound(r nlReader, w io.Writer, sessionID string, onlyAlways bool) string {

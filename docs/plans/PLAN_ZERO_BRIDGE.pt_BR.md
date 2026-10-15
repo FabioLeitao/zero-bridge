@@ -13,7 +13,7 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S5a | feita | `6930fa4` |
 | S5b | feita | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
 | S6 | feita | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
-| S6b | feita | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Construída em `epic/s6b-session-management`. Sem merge. |
+| S6b | feita | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Mergeada na [PR #35](https://github.com/FabioLeitao/zero-bridge/pull/35). |
 | S7 | desenhada | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3). Decisão de proxy abaixo. Não construída. |
 | S8 | desenhada | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Não construída. |
 | S9 | desenhada | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Não construída. |
@@ -38,7 +38,7 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S25 | desenhada | [#28](https://github.com/FabioLeitao/zero-bridge/issues/28). Não construída. Anexo de imagem. |
 | S26 | desenhada | [#29](https://github.com/FabioLeitao/zero-bridge/issues/29). Não construída. Cartões de sugestão e chip de modo. |
 | S27 | desenhada | [#31](https://github.com/FabioLeitao/zero-bridge/issues/31). Não construída. Roteamento de modo só para baixo. |
-| S28 | desenhada | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32). Não construída. Estado da sessão. |
+| S28 | feita | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32). Construída em `epic/s28-session-status`. Não mergeada. Estado da sessão a partir do tráfego ACP. |
 
 **Nome.** O repositório continua `zero-bridge`. A expansão pode mudar neste doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Outras leituras: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. O Zero do Gitlawb é o harness recomendado e de referência, não uma dependência do desenho. Este projeto não é afiliado nem endossado por Gitlawb ou Twigpine.
 
@@ -676,7 +676,18 @@ A ordem do operador (2026-10-14) é a sequência das regras globais: S20, mergea
 
 ### S28 — estado da sessão
 
-**Caminho:** lista de sessões e SSE em `bridge/`. Só desenhada. Não construída. [#32](https://github.com/FabioLeitao/zero-bridge/issues/32).
+**Caminho:** `bridge/internal/sessionstate`, a lista de sessões, o SSE e a barra lateral. Construída em `epic/s28-session-status`. Não mergeada. [#32](https://github.com/FabioLeitao/zero-bridge/issues/32).
+
+O rótulo sai só do tráfego ACP que a ponte já vê. A prioridade completa é blocked, depois error, depois working, depois done, depois idle. Uma permissão pendente continua blocked com um prompt em voo. O perfil `generic` informa `sessionStatus: basic` e só `working` ou `idle`.
+
+| Evento | Rótulo |
+| --- | --- |
+| permissão pendente | blocked, na frente de qualquer outro rótulo |
+| a chamada do prompt falhou, ou o processo do agente saiu | error |
+| prompt em voo, nada pendente | working |
+| stop reason `end_turn`, `max_tokens`, `max_turn_requests`, `refusal`, ou qualquer outro motivo não vazio | done |
+| stop reason `cancelled`, ou um motivo vazio | idle |
+| sem turno e sem permissão pendente | idle |
 
 **Aceite**
 

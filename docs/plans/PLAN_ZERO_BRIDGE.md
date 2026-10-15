@@ -13,7 +13,7 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S5a | done | `6930fa4` |
 | S5b | done | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
 | S6 | done | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
-| S6b | built | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Built on `epic/s6b-session-management`. Not merged. |
+| S6b | done | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Merged in [PR #35](https://github.com/FabioLeitao/zero-bridge/pull/35). |
 | S7 | designed | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3). Proxy decision below. Not built. |
 | S8 | designed | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Not built. |
 | S9 | designed | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Not built. |
@@ -38,7 +38,7 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S25 | designed | [#28](https://github.com/FabioLeitao/zero-bridge/issues/28). Not built. Image attachment. |
 | S26 | designed | [#29](https://github.com/FabioLeitao/zero-bridge/issues/29). Not built. Suggestion cards and mode chip. |
 | S27 | designed | [#31](https://github.com/FabioLeitao/zero-bridge/issues/31). Not built. Reduce-only mode routing. |
-| S28 | designed | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32). Not built. Session status model. |
+| S28 | done | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32). Built on `epic/s28-session-status`. Not merged. Session status from ACP traffic. |
 
 **Name.** The repository stays `zero-bridge`. The expansion may change in this doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Other readings: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. Gitlawb's Zero is the recommended reference harness, not a dependency of the design. This project is not affiliated with or endorsed by Gitlawb or Twigpine.
 
@@ -691,7 +691,18 @@ The operator order (2026-10-14) is the sequence in the global rules: S20, merged
 
 ### S28 — session status
 
-**Path:** `bridge/` session list and SSE. Designed only. Not built. [#32](https://github.com/FabioLeitao/zero-bridge/issues/32).
+**Path:** `bridge/internal/sessionstate`, the session list, SSE, and the web sidebar. Built on `epic/s28-session-status`. Not merged. [#32](https://github.com/FabioLeitao/zero-bridge/issues/32).
+
+The label is derived only from ACP traffic the bridge already sees. Full priority is blocked, then error, then working, then done, then idle. A pending permission stays blocked while a prompt is in flight. Profile `generic` reports `sessionStatus: basic` and only `working` or `idle`.
+
+| Event | Label |
+| --- | --- |
+| permission pending | blocked, ahead of every other label |
+| prompt call failed, or the agent process exited | error |
+| prompt in flight, nothing pending | working |
+| stop reason `end_turn`, `max_tokens`, `max_turn_requests`, `refusal`, or any other non-empty reason | done |
+| stop reason `cancelled`, or an empty stop reason | idle |
+| no turn and no pending permission | idle |
 
 **Acceptance**
 
