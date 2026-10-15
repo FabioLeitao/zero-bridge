@@ -132,7 +132,8 @@ button:disabled, select:disabled { opacity: 0.5; cursor: default; }
 #auth-session-list li { padding: 0.4rem 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 #auth-session-list p { margin: 0.2rem 0; color: var(--muted); font-size: 0.8rem; }
 #auth-sessions-status { color: var(--muted); min-height: 1.2rem; margin: 0; }
-#login { display: flex; flex-direction: column; gap: 0.35rem; }
+#new-session-panel[hidden] { display: none; }
+#new-session-error { color: var(--warn); min-height: 1.2rem; }
 #login[hidden] { display: none; }
 #login-error { color: var(--warn); min-height: 1.2rem; }
 

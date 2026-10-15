@@ -82,7 +82,11 @@ const ui = {
   unarchive: "Desarquivar",
   pin: "Fixar",
   unpin: "Desafixar",
-  metaFailed: "não foi possível guardar"
+  metaFailed: "não foi possível guardar",
+  sessionOptions: "Opções",
+  newWorkspace: "Diretório da nova sessão",
+  addDirs: "Diretórios adicionais",
+  createHere: "Criar neste diretório"
 };
 
 const loginEl = document.getElementById("login");
@@ -101,6 +105,12 @@ const workspaceEl = document.getElementById("workspace");
 const sendBtn = document.getElementById("send");
 const modeEl = document.getElementById("mode");
 const newSessionBtn = document.getElementById("new-session");
+const newSessionOptionsBtn = document.getElementById("new-session-options");
+const newSessionPanel = document.getElementById("new-session-panel");
+const newWorkspaceEl = document.getElementById("new-workspace");
+const workspaceRootsEl = document.getElementById("workspace-roots");
+const addDirsEl = document.getElementById("add-dirs");
+const newSessionErrorEl = document.getElementById("new-session-error");
 const agentInfoEl = document.getElementById("agent-info");
 const modeLabelEl = document.getElementById("mode-label");
 const sessionBrowserEl = document.getElementById("session-browser");
@@ -132,6 +142,10 @@ function applyChrome() {
   loginBtn.textContent = ui.enter;
   document.querySelector("label[for=workspace]").textContent = ui.workspace;
   newSessionBtn.textContent = ui.newSession;
+  newSessionOptionsBtn.textContent = ui.sessionOptions;
+  document.querySelector("label[for=new-workspace]").textContent = ui.newWorkspace;
+  document.querySelector("label[for=add-dirs]").textContent = ui.addDirs;
+  document.getElementById("new-session-custom").textContent = ui.createHere;
   logoutBtn.textContent = ui.logout;
   document.getElementById("auth-sessions-title").textContent = ui.authSessionsTitle;
   authSessionListEl.setAttribute("aria-label", ui.authSessionsLabel);
@@ -470,6 +484,8 @@ async function startWorkspace() {
   }
   const info = await infoRes.json();
   workspaceEl.value = info.defaultWorkspace || "";
+  newWorkspaceEl.value = info.defaultWorkspace || "";
+  fillWorkspaceRoots(info.workspaceRoots || []);
   await loadCapabilities();
   await refreshSessions();
   const body = JSON.stringify({ workspace: workspaceEl.value });
@@ -487,9 +503,8 @@ async function startWorkspace() {
   await loadCapabilities();
   applyMode(data);
   connect(0);
-  refreshSessions().catch(function (err) {
-    note(String(err && err.message ? err.message : err));
-  });
+  await refreshSessions();
+  showActiveCwd(sessionId);
 }
 
 function clearView() {
@@ -524,18 +539,39 @@ function abortStream() {
   }
 }
 
-async function openSession() {
+async function openSession(opts) {
   abortStream();
   clearView();
-  const body = JSON.stringify({ workspace: workspaceEl.value });
+  const choice = opts || {};
+  const workspace = choice.workspace || workspaceEl.value;
+  const payload = { workspace: workspace };
+  if (choice.additionalDirectories && choice.additionalDirectories.length) {
+    payload.additionalDirectories = choice.additionalDirectories;
+  }
   const ses = await api("/v1/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: body
+    body: JSON.stringify(payload)
   });
   if (!ses.ok) {
-    note(ui.sessionFailed);
+    let message = ui.sessionFailed;
+    try {
+      const problem = await ses.json();
+      if (problem && problem.error) {
+        message = String(problem.error);
+      }
+    } catch (err) {
+      message = ui.sessionFailed;
+    }
+    if (choice.errorEl) {
+      choice.errorEl.textContent = ui.errorPrefix + message;
+    } else {
+      note(message);
+    }
     return;
+  }
+  if (choice.errorEl) {
+    choice.errorEl.textContent = "";
   }
   const data = await ses.json();
   sessionId = data.sessionId || "";
@@ -543,8 +579,38 @@ async function openSession() {
   applyMode(data);
   backoff = 500;
   connect(0);
-  refreshSessions().catch(function (err) {
-    note(String(err && err.message ? err.message : err));
+  await refreshSessions();
+  showActiveCwd(sessionId);
+}
+
+function fillWorkspaceRoots(roots) {
+  while (workspaceRootsEl.firstChild) {
+    workspaceRootsEl.removeChild(workspaceRootsEl.firstChild);
+  }
+  roots.forEach(function (root) {
+    const opt = document.createElement("option");
+    opt.value = String(root);
+    workspaceRootsEl.appendChild(opt);
+  });
+}
+
+function showActiveCwd(id) {
+  let cwd = "";
+  loadedSessions.forEach(function (sess) {
+    if (String(sess.sessionId) === id && sess.cwd) {
+      cwd = String(sess.cwd);
+    }
+  });
+  if (cwd) {
+    workspaceEl.value = cwd;
+  }
+}
+
+function additionalDirectories() {
+  return addDirsEl.value.split("\n").map(function (line) {
+    return line.trim();
+  }).filter(function (line) {
+    return line.length > 0;
   });
 }
 
@@ -936,6 +1002,7 @@ async function loadSession(id) {
   const data = await res.json();
   sessionId = data.sessionId || id;
   applyMode(data);
+  showActiveCwd(sessionId);
   backoff = 500;
   connect(0);
 }
@@ -964,6 +1031,7 @@ async function resumeSession(id) {
   clearView();
   sessionId = data.sessionId || id;
   applyMode(data);
+  showActiveCwd(sessionId);
   backoff = 500;
   connect(0);
 }
@@ -1597,8 +1665,25 @@ logoutAllBtn.addEventListener("click", function () {
 });
 
 newSessionBtn.addEventListener("click", function () {
+  newSessionErrorEl.textContent = "";
   openSession().catch(function (err) {
     note(String(err && err.message ? err.message : err));
+  });
+});
+
+newSessionOptionsBtn.addEventListener("click", function () {
+  const open = newSessionPanel.hidden;
+  newSessionPanel.hidden = !open;
+  newSessionOptionsBtn.setAttribute("aria-expanded", open ? "true" : "false");
+});
+
+document.getElementById("new-session-custom").addEventListener("click", function () {
+  openSession({
+    workspace: newWorkspaceEl.value,
+    additionalDirectories: additionalDirectories(),
+    errorEl: newSessionErrorEl
+  }).catch(function (err) {
+    newSessionErrorEl.textContent = ui.errorPrefix + String(err && err.message ? err.message : err);
   });
 });
 

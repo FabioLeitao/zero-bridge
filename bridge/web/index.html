@@ -41,6 +41,16 @@
       <label for="workspace">Diretório</label>
       <input id="workspace" name="workspace" type="text" autocomplete="off" readonly>
       <button id="new-session" type="button">Nova sessão</button>
+      <button id="new-session-options" type="button" aria-expanded="false" aria-controls="new-session-panel">Opções</button>
+      <div id="new-session-panel" hidden>
+        <label for="new-workspace">Diretório da nova sessão</label>
+        <input id="new-workspace" name="new-workspace" type="text" autocomplete="off" list="workspace-roots">
+        <datalist id="workspace-roots"></datalist>
+        <label for="add-dirs">Diretórios adicionais</label>
+        <textarea id="add-dirs" name="add-dirs" rows="3"></textarea>
+        <p id="new-session-error" role="alert"></p>
+        <button id="new-session-custom" type="button">Criar neste diretório</button>
+      </div>
       <button id="logout" type="button" hidden>Sair</button>
       <section id="auth-sessions" hidden aria-labelledby="auth-sessions-title">
         <h2 id="auth-sessions-title">Sessões deste acesso</h2>
