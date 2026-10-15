@@ -768,34 +768,32 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		s.notSupported(w)
 		return
 	}
-	cwd := r.URL.Query().Get("cwd")
+	q := r.URL.Query()
+	cwd := q.Get("cwd")
 	if cwd != "" && !filepath.IsAbs(cwd) {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "cwd must be an absolute path"})
 		return
 	}
-	params := map[string]any{}
-	if cwd != "" {
-		params["cwd"] = cwd
+	filter, err := parseListFilter(q.Get("q"), q.Get("archived"), q.Get("limit"))
+	if err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
 	}
-	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
-		params["cursor"] = cursor
+	cur, err := decodeListCursor(q.Get("cursor"))
+	if err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid cursor"})
+		return
 	}
-	var res struct {
-		Sessions   []json.RawMessage `json:"sessions"`
-		NextCursor string            `json:"nextCursor"`
-	}
-	if err := s.acpCall(r.Context(), "session/list", params, &res); err != nil {
+	page, err := s.collectSessions(r.Context(), cwd, cur, filter)
+	if err != nil {
 		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
 		return
 	}
-	if res.Sessions == nil {
-		res.Sessions = []json.RawMessage{}
-	}
-	sessions := res.Sessions
-	if s.cfg.Profile != "zero" {
-		sessions = stripZeroMeta(sessions)
-	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions, "nextCursor": res.NextCursor})
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"sessions":   page.sessions,
+		"nextCursor": page.next,
+		"truncated":  page.truncated,
+	})
 }
 
 // stripZeroMeta drops the Zero vendor object. Other profiles do not interpret
