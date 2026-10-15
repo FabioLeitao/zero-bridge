@@ -580,6 +580,7 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 		"sessionResume": snap.Capabilities.Resume(),
 		"prompt":        snap.Capabilities.PromptCapabilities,
 		"modes":         modes,
+		"sessionStatus": s.stateLevel(),
 	})
 }
 

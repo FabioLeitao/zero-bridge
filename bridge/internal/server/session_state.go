@@ -2,9 +2,12 @@ package server
 
 import "zero-bridge/bridge/internal/sessionstate"
 
-// stateLevel is full for every profile in this slice of the wiring.
-// The capability gate narrows generic to basic.
+// stateLevel is full for the zero profile. Generic agents do not advertise
+// the signals the richer labels need, so they stay on working and idle.
 func (s *Server) stateLevel() string {
+	if s.cfg.Profile == "generic" {
+		return sessionstate.LevelBasic
+	}
 	return sessionstate.LevelFull
 }
 
