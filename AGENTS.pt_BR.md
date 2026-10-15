@@ -14,6 +14,7 @@ O agente edita a árvore. O auditor revisa o commit. O operador decide escopo, p
 - A UI web insere texto só com `textContent` e `createTextNode`.
 - O processo escuta em loopback. Ele não termina TLS.
 - Log, telemetria, URL, query string e eventos enviados pelo servidor não carregam segredo, prompt, `rawInput`, id de sessão nem caminho de diretório pessoal.
+- O rótulo de uma sessão é `working`, `blocked`, `done`, `error` ou `idle`, derivado do tráfego ACP que a ponte já vê. O rótulo não carrega prompt, argumento de ferramenta nem título. O perfil `generic` informa só `working` e `idle`.
 - Não mate processo por padrão no nome. Encerre um processo que você mesmo subiu pelo pid registrado, depois de ler a linha de comando.
 - Não pule um gancho do git. Testes que criam arquivos rodam com umask `022`.
 - Ferramentas externas rodam como `go run pkg@version` pinado. Nada é instalado globalmente para o gate.
