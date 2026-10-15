@@ -76,7 +76,13 @@ const ui = {
   justNow: "agora",
   minutesAgo: "há {n} min",
   hoursAgo: "há {n} h",
-  daysAgo: "há {n} d"
+  daysAgo: "há {n} d",
+  rename: "Renomear",
+  archive: "Arquivar",
+  unarchive: "Desarquivar",
+  pin: "Fixar",
+  unpin: "Desafixar",
+  metaFailed: "não foi possível guardar"
 };
 
 const loginEl = document.getElementById("login");
@@ -154,6 +160,7 @@ window.matchMedia("(max-width: 40rem)").addEventListener("change", syncSidebar);
 let sessionCursor = "";
 let loadedSessions = [];
 let queryTimer = 0;
+let metaOk = true;
 
 let sessionId = "";
 let authRequired = false;
@@ -789,7 +796,119 @@ function renderSessionItem(sess) {
     });
     li.appendChild(resume);
   }
+  if (metaOk) {
+    li.appendChild(sessionActions(li, sess));
+  }
   sessionListEl.appendChild(li);
+}
+
+function sessionActions(li, sess) {
+  const bar = document.createElement("div");
+  bar.className = "row-actions";
+  const rename = actionButton(ui.rename, function () {
+    startRename(li, sess);
+  });
+  const archive = actionButton(sess.archived === true ? ui.unarchive : ui.archive, function () {
+    saveMeta(sess, { archived: sess.archived !== true }, null);
+  });
+  const pin = actionButton(sess.pinned === true ? ui.unpin : ui.pin, function () {
+    saveMeta(sess, { pinned: sess.pinned !== true }, null);
+  });
+  bar.appendChild(rename);
+  bar.appendChild(archive);
+  bar.appendChild(pin);
+  return bar;
+}
+
+function actionButton(label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.setAttribute("aria-label", label);
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function startRename(li, sess) {
+  const current = li.querySelector(".session-title");
+  if (!current || li.querySelector(".rename-input")) {
+    return;
+  }
+  const input = document.createElement("input");
+  input.className = "rename-input";
+  input.type = "text";
+  input.value = sess.alias ? String(sess.alias) : "";
+  input.setAttribute("aria-label", ui.rename);
+  const err = document.createElement("p");
+  err.className = "row-error";
+  current.replaceWith(input);
+  li.appendChild(err);
+  input.focus();
+  input.addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      saveMeta(sess, { alias: input.value }, err);
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      paintSessions();
+    }
+  });
+}
+
+function saveMeta(sess, body, errEl) {
+  const id = String(sess.sessionId || "");
+  api("/v1/sessions/" + encodeURIComponent(id) + "/meta", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }).then(function (res) {
+    if (res.status === 503 || res.status === 501) {
+      metaOk = false;
+      paintSessions();
+      return res.json().then(function (payload) {
+        sessionStatusEl.textContent = ui.errorPrefix + String(payload && payload.error ? payload.error : ui.metaFailed);
+      });
+    }
+    if (!res.ok) {
+      return res.json().then(function (payload) {
+        if (errEl) {
+          errEl.textContent = ui.errorPrefix + String(payload && payload.error ? payload.error : ui.metaFailed);
+        } else {
+          note(String(payload && payload.error ? payload.error : ui.metaFailed));
+        }
+      }).catch(function () {
+        if (errEl) {
+          errEl.textContent = ui.errorPrefix + ui.metaFailed;
+        }
+      });
+    }
+    return res.json().then(function (entry) {
+      sess.alias = entry.alias || "";
+      sess.archived = entry.archived === true;
+      sess.pinned = entry.pinned === true;
+      if (!sessionArchivedEl.checked && sess.archived) {
+        loadedSessions = loadedSessions.filter(function (item) {
+          return item !== sess;
+        });
+      }
+      if (!loadedSessions.length) {
+        sessionStatusEl.textContent = ui.emptySessions;
+        while (sessionListEl.firstChild) {
+          sessionListEl.removeChild(sessionListEl.firstChild);
+        }
+        return;
+      }
+      sessionStatusEl.textContent = "";
+      paintSessions();
+    });
+  }).catch(function (err) {
+    const message = String(err && err.message ? err.message : err);
+    if (errEl) {
+      errEl.textContent = ui.errorPrefix + message;
+    } else {
+      note(message);
+    }
+  });
 }
 
 async function loadSession(id) {

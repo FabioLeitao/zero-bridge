@@ -85,6 +85,9 @@ body {
 .session-group { margin: 0.6rem 0 0.15rem; font-size: 0.75rem; }
 .check { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.35rem; }
 .check input { width: auto; }
+#session-list .row-actions { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+#session-list .row-actions button { width: auto; flex: 1; min-height: 2.5rem; min-width: 2.5rem; }
+.row-error { color: var(--warn); }
 .history-mark { color: var(--muted); font-size: 0.75rem; margin-right: 0.35rem; }
 
 main {
