@@ -40,6 +40,29 @@ sign() {
 	git -C "$dir" -c user.name="$name" -c user.email="$email" commit -S -q -m "$msg"
 }
 
+# unsig writes a commit with no gpgsig header. commit-tree does not invoke the
+# signer. Use it when the case does not assert a signature.
+unsig() {
+	local dir="$1" msg="$2"
+	local tree parent commit
+	tree=$(git -C "$dir" write-tree)
+	if git -C "$dir" rev-parse --verify --quiet HEAD >/dev/null; then
+		parent=$(git -C "$dir" rev-parse HEAD)
+		commit=$(
+			GIT_AUTHOR_NAME="$name" GIT_AUTHOR_EMAIL="$email" \
+				GIT_COMMITTER_NAME="$name" GIT_COMMITTER_EMAIL="$email" \
+				git -C "$dir" commit-tree "$tree" -p "$parent" -m "$msg"
+		)
+	else
+		commit=$(
+			GIT_AUTHOR_NAME="$name" GIT_AUTHOR_EMAIL="$email" \
+				GIT_COMMITTER_NAME="$name" GIT_COMMITTER_EMAIL="$email" \
+				git -C "$dir" commit-tree "$tree" -m "$msg"
+		)
+	fi
+	git -C "$dir" reset -q --soft "$commit"
+}
+
 seed() {
 	local dir="$1"
 	mkdir -p "$dir"
@@ -47,7 +70,7 @@ seed() {
 	printf '%s\n' '# Note' '' 'See ask-user.' >"$dir/README.md"
 	printf '%s\n' '# Nota' '' 'Veja ask-user.' >"$dir/README.pt_BR.md"
 	git -C "$dir" add README.md README.pt_BR.md
-	sign "$dir" "base"
+	unsig "$dir" "base"
 	git -C "$dir" branch base
 }
 
@@ -70,14 +93,14 @@ home=$(mktemp -d "$work/home.XXXX")
 seed "$home"
 printf '%s/%s\n' '/home' 'someone' >"$home/path.txt"
 git -C "$home" add path.txt
-sign "$home" "path"
+unsig "$home" "path"
 expect_fail "personal path" check "$home" -a
 
 secret=$(mktemp -d "$work/secret.XXXX")
 seed "$secret"
 printf 'sk-%s\n' 'ABCDEFGH12' >"$secret/leak.txt"
 git -C "$secret" add leak.txt
-sign "$secret" "leak"
+unsig "$secret" "leak"
 expect_fail "sk shape" check "$secret" -a
 
 allow=$(mktemp -d "$work/allow.XXXX")
@@ -86,11 +109,11 @@ mkdir -p "$allow/scripts"
 printf '%s\n' 'leak.txt' >"$allow/scripts/hygiene-allow.txt"
 printf 'sk-%s\n' 'ABCDEFGH12' >"$allow/leak.txt"
 git -C "$allow" add scripts/hygiene-allow.txt leak.txt
-sign "$allow" "fixture"
+unsig "$allow" "fixture"
 expect_ok "allowlisted sk shape" check "$allow" -a
 printf 'ghp_%s\n' 'ABCDEFGH12345678' >>"$allow/leak.txt"
 git -C "$allow" add leak.txt
-sign "$allow" "other shape"
+unsig "$allow" "other shape"
 expect_fail "allowlist does not cover ghp" check "$allow" -a
 
 agent=$(mktemp -d "$work/agent.XXXX")
@@ -98,28 +121,28 @@ seed "$agent"
 mkdir -p "$agent/.remember"
 printf '%s\n' 'x' >"$agent/.remember/note"
 git -C "$agent" add .remember/note
-sign "$agent" "artifact"
+unsig "$agent" "artifact"
 expect_fail "agent artifact" check "$agent" -b
 
 pair=$(mktemp -d "$work/pair.XXXX")
 seed "$pair"
 printf '%s\n' '# Solo' >"$pair/solo.md"
 git -C "$pair" add solo.md
-sign "$pair" "solo"
+unsig "$pair" "solo"
 expect_fail "missing pair" check "$pair" -c
 
 heads=$(mktemp -d "$work/heads.XXXX")
 seed "$heads"
 printf '%s\n## %s\n' '# T' 'One' >"$heads/README.md"
 git -C "$heads" add README.md
-sign "$heads" "heading"
+unsig "$heads" "heading"
 expect_fail "heading count" check "$heads" -c
 
 tables=$(mktemp -d "$work/tables.XXXX")
 seed "$tables"
 printf '%s\n' '| a |' '| --- |' '| b |' >"$tables/README.md"
 git -C "$tables" add README.md
-sign "$tables" "table"
+unsig "$tables" "table"
 expect_fail "table rows" check "$tables" -c
 
 link=$(mktemp -d "$work/link.XXXX")
@@ -127,7 +150,7 @@ seed "$link"
 printf '%s\n' '[gone](missing.md)' >>"$link/README.md"
 printf '%s\n' '[ausente](missing.md)' >>"$link/README.pt_BR.md"
 git -C "$link" add README.md README.pt_BR.md
-sign "$link" "link"
+unsig "$link" "link"
 expect_fail "broken link" check "$link" -d
 
 signed=$(mktemp -d "$work/signed.XXXX")
@@ -141,7 +164,7 @@ unsigned=$(mktemp -d "$work/unsigned.XXXX")
 seed "$unsigned"
 printf '%s\n' 'x' >"$unsigned/extra.txt"
 git -C "$unsigned" add extra.txt
-git -C "$unsigned" -c user.name="$name" -c user.email="$email" commit --no-gpg-sign -q -m "unsigned"
+unsig "$unsigned" "unsigned"
 expect_fail "unsigned commit" check "$unsigned" -e
 
 trailer=$(mktemp -d "$work/trailer.XXXX")
@@ -187,14 +210,14 @@ fmt=$(mktemp -d "$work/fmt.XXXX")
 seed "$fmt"
 printf 'package p\nfunc F(){var x int\n_ = x}\n' >"$fmt/bad.go"
 git -C "$fmt" add bad.go
-sign "$fmt" "fmt"
+unsig "$fmt" "fmt"
 expect_fail "gofmt" check "$fmt" -f
 
 todo=$(mktemp -d "$work/todo.XXXX")
 seed "$todo"
 printf 'package p\n\nfunc F() {\n\t// %s\n}\n' 'TODO(operator)' >"$todo/todo.go"
 git -C "$todo" add todo.go
-sign "$todo" "todo"
+unsig "$todo" "todo"
 expect_fail "operator todo" check "$todo" -f
 
 if [[ "$failures" -ne 0 ]]; then
