@@ -221,6 +221,7 @@ func (s *Server) decorateSession(raw json.RawMessage, filter listFilter) (listed
 	obj["alias"] = entry.Alias
 	obj["archived"] = entry.Archived
 	obj["pinned"] = entry.Pinned
+	obj["state"] = s.stateOf(view.ID)
 	b, err := json.Marshal(obj)
 	if err != nil {
 		return listedSession{}, false

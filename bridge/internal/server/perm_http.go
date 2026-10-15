@@ -6,6 +6,7 @@ import (
 
 	"zero-bridge/bridge/internal/acpclient"
 	"zero-bridge/bridge/internal/permissions"
+	"zero-bridge/bridge/internal/sessionstate"
 )
 
 type permInbound struct{ s *Server }
@@ -31,6 +32,7 @@ func (s *Server) onPermission(ev permissions.Event) {
 	tool := RedactJSON(ev.ToolCall)
 	switch ev.Type {
 	case "permission_request":
+		s.applyState(ev.SessionID, sessionstate.Event{Kind: sessionstate.KindPermit})
 		hub.emit(map[string]any{
 			"type":      "permission_request",
 			"reqId":     ev.ReqID,
@@ -39,6 +41,7 @@ func (s *Server) onPermission(ev permissions.Event) {
 			"expiresAt": ev.ExpiresAt,
 		})
 	case "permission_resolved":
+		s.applyState(ev.SessionID, sessionstate.Event{Kind: sessionstate.KindRelease})
 		hub.emit(map[string]any{
 			"type":     "permission_resolved",
 			"reqId":    ev.ReqID,
