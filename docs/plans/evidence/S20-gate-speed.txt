@@ -73,3 +73,40 @@ Fifteen slowest internal/server tests under -race (command 2). The shared cause 
 Also visible without -race (command 1), same Shutdown deadline, not in the race top 15 because the race run got the short poll: TestBearerAuth 5.210s (one default 200ms login-failure sleep plus a 5s Shutdown), TestCapabilitiesEndpoint 5.010s (Shutdown only; LoginFailureDelay is already -1). TestSSEReplayHandler holds the events body open for a 500ms context (0.500s). TestHealthAgentDown sleeps 200ms after closing the agent instead of waiting on Done.
 
 Acceptance targets, not yet met: go test -race ./internal/server under 20s (now 87s), hygiene selftest under 10s (now 1.69s on this host), make check under 60s warm (now 147s). mutate must still kill all 17. Test count must stay at least 112.
+
+After, on the same host, warm cache. Commands are the same shape as the baseline. The audit of 5882843 on a clean export measured internal/server -race at 10.5s, with 112 top-level tests and 55 in internal/server.
+
+9. cd bridge && go test ./internal/server -race -json -count=1 -timeout 200s
+   After the non-race acpfake fixture (5882843). Package elapsed 11.789s. 55 tests, 0 failures.
+   Ten slowest before that fixture, still using the race-instrumented test binary as the agent (package 77.839s): TestLogoutAllListRevokeAndReload 5.380s, TestLoginCookieSession 5.380s, TestCapabilityGate 5.140s, TestSessionLifetimeAndEviction 4.610s, TestModesFollowAgentList 4.110s, TestConcurrentSessionsWhileSlowPrompt 3.920s, TestLoadReplayCapAndShutdown 3.700s, TestLoadRedactsAndViewOnly 2.130s, TestGenericProfileDropsModelMeta 2.070s, TestSessionMode 2.060s.
+   Ten slowest after the fixture: TestConcurrentSessionsWhileSlowPrompt 2.890s, TestSessionMode 1.020s, TestLoadReplayCapAndShutdown 0.630s, TestPromptEventsAndReplay 0.580s, TestPermissionTimeout 0.530s, TestSSEReplayHandler 0.500s, TestLoadReplayIsLive 0.490s, TestLoadReplayAndResume 0.330s, TestLogoutAllListRevokeAndReload 0.320s, TestSessionLifetimeAndEviction 0.260s.
+
+10. /usr/bin/time -v bash scripts/check-hygiene-selftest.sh
+    After commit-tree fixtures. Wall 2.75s, user 0.59s, sys 1.54s. selftest: ok. 20 cases. A later panel reading of 8m17s was not reproduced.
+
+11. make check
+    Serial gate, after the acpfake fixture: wall 33.0s, internal/server -race 11.429s.
+    One later serial run took 260s because govulncheck stalled; the tests themselves stayed near 11s.
+    Parallel gate (independent targets, fixed log order, diff-check last): wall 25.8s. internal/server -race 15.055s in that run. Lint 0 issues. vulncheck clean. Hygiene ok. The worktree had no extra writes.
+
+12. make mutate
+    Wall 77.6s. The copied tree, which has no .git, passed go test ./... before any edit. Each mutant below died on a "--- FAIL:" line. Build failures are a script error, not a kill.
+    login-limit-removed: TestLoginRateLimitConcurrentWrongToken
+    csrf-missing-origin: TestLoginCookieSession
+    secure-without-trust-proxy: TestLoginCookieSession
+    httponly-off: TestLoginCookieSession
+    post-without-auth: TestV1RoutesRequireCredential
+    short-token-accepted: TestLoadFile
+    token-file-mode-ignored: TestLoadFile
+    bearer-limit-removed: TestBearerRateLimitConcurrentWrongToken
+    idle-not-sliding: TestSessionLifetimeAndEviction
+    idle-check-removed: TestSessionLifetimeAndEviction
+    ttl-check-removed: TestSessionLifetimeAndEviction
+    logout-all-keeps-sessions: TestLogoutAllListRevokeAndReload
+    sighup-keeps-token: TestLogoutAllListRevokeAndReload
+    audit-leaks-token: TestRecordScrubsOutput
+    capability-gate-removed: TestCapabilityGate
+    mode-allowlist-restored: TestModesFollowAgentList
+    capability-list-always-on: TestFakeAgentCapabilities
+
+Acceptance on this host: server -race under 20s (11.8s here, 10.5s on the clean export), hygiene selftest under 10s (2.75s), make check under 60s warm (25.8s parallel, 33.0s serial). mutate killed all 17 by assertion. Test count stayed 112 and 55. Still slower than the floor: TestConcurrentSessionsWhileSlowPrompt waits 2s, and TestSessionMode holds an events body for 1s.
