@@ -282,6 +282,14 @@ try {
   const card = await waitFor("document.querySelectorAll('#permissions button').length >= 2", 8000);
   result.permissionCard = Boolean(card);
   if (!card) fail("permission-card", "Allow/Deny did not appear");
+  const needsYou = await waitFor("document.title === '(1) precisa de voce'", 8000);
+  result.needsYou = Boolean(needsYou);
+  if (!needsYou) fail("needs-you", await evalJs("document.title"));
+  const attention = await evalJs("document.getElementById('attention') ? document.getElementById('attention').textContent : ''");
+  if (attention !== "(1) precisa de voce") fail("attention", attention);
+  if ((await evalJs("document.querySelectorAll('#attention img, #attention script').length")) !== 0) {
+    fail("attention-html", "status region inserted markup");
+  }
 
   result.xss = await evalJs("typeof window.__xss");
   result.imgCount = await evalJs("document.querySelectorAll('#log img, #plan img, #permissions img').length");
@@ -322,6 +330,9 @@ try {
   if (!denyDone) fail("deny-result", "permission deny did not clear the buttons");
   if (!(await waitFor("document.getElementById('send').disabled === false", 8000))) {
     fail("send-ready", "composer stayed disabled after deny");
+  }
+  if (!(await waitFor("document.title === 'zero-bridge'", 8000))) {
+    fail("title-rest", await evalJs("document.title"));
   }
 
   if (!(await sendPrompt("allow-please"))) fail("send-allow", "second prompt failed");

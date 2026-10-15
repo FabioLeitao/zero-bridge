@@ -86,7 +86,12 @@ const ui = {
   sessionOptions: "Opções",
   newWorkspace: "Diretório da nova sessão",
   addDirs: "Diretórios adicionais",
-  createHere: "Criar neste diretório"
+  createHere: "Criar neste diretório",
+  stateWorking: "trabalhando",
+  stateBlocked: "precisa de voce",
+  stateDone: "concluido",
+  stateError: "erro",
+  stateIdle: "ociosa"
 };
 
 const loginEl = document.getElementById("login");
@@ -120,6 +125,7 @@ const sessionQueryEl = document.getElementById("session-query");
 const sessionArchivedEl = document.getElementById("session-archived");
 const moreSessionsBtn = document.getElementById("more-sessions");
 const sessionStatusEl = document.getElementById("session-status");
+const attentionEl = document.getElementById("attention");
 const sessionRetryBtn = document.getElementById("session-retry");
 const refreshSessionsBtn = document.getElementById("refresh-sessions");
 const sidebarEl = document.getElementById("sidebar");
@@ -175,6 +181,8 @@ let sessionCursor = "";
 let loadedSessions = [];
 let queryTimer = 0;
 let metaOk = true;
+let sessionStatusLevel = "basic";
+let sessionStates = {};
 
 let sessionId = "";
 let authRequired = false;
@@ -203,7 +211,13 @@ function applyCapabilities() {
   }
   sessionBrowserEl.hidden = caps.sessionList !== true;
   sidebarEl.hidden = caps.sessionList !== true;
+  sessionStatusLevel = caps.sessionStatus === "full" ? "full" : "basic";
   fillModes(caps.modes || []);
+  if (loadedSessions.length) {
+    paintSessions();
+  } else {
+    syncAttention();
+  }
 }
 
 function fillModes(modes) {
@@ -278,6 +292,8 @@ function clearSessionList() {
 function showLogin(message) {
   abortStream();
   sessionId = "";
+  sessionStates = {};
+  syncAttention();
   clearView();
   clearSessionList();
   workspaceEl.value = "";
@@ -758,6 +774,7 @@ function paintSessions() {
   appendSessionGroup(ui.groupWeek, buckets.week);
   appendSessionGroup(ui.groupOlder, buckets.older);
   markActiveSession();
+  rememberListedStates();
 }
 
 function appendSessionGroup(label, rows) {
@@ -819,6 +836,7 @@ async function pageSessions(more) {
     while (sessionListEl.firstChild) {
       sessionListEl.removeChild(sessionListEl.firstChild);
     }
+    rememberListedStates();
     return;
   }
   sessionStatusEl.textContent = "";
@@ -851,6 +869,10 @@ function renderSessionItem(sess) {
   const when = relativeWhen(sess.updatedAt);
   meta.textContent = baseName(sess.cwd) + (when ? " · " + when : "");
   li.appendChild(meta);
+  const badge = document.createElement("p");
+  badge.className = "session-state";
+  badge.textContent = stateLabel(displayState(sess.state));
+  li.appendChild(badge);
   if (caps.sessionResume === true) {
     const resume = document.createElement("button");
     resume.type = "button";
@@ -1137,7 +1159,89 @@ function clip(value) {
   return text.slice(0, 4000) + "\n… truncated";
 }
 
+function displayState(state) {
+  const value = String(state || "");
+  if (sessionStatusLevel !== "full") {
+    return value === "working" ? "working" : "idle";
+  }
+  if (value === "working" || value === "blocked" || value === "done" || value === "error" || value === "idle") {
+    return value;
+  }
+  return "idle";
+}
+
+function stateLabel(state) {
+  if (state === "working") {
+    return ui.stateWorking;
+  }
+  if (state === "blocked") {
+    return ui.stateBlocked;
+  }
+  if (state === "done") {
+    return ui.stateDone;
+  }
+  if (state === "error") {
+    return ui.stateError;
+  }
+  return ui.stateIdle;
+}
+
+function rememberListedStates() {
+  const live = sessionId ? sessionStates[sessionId] : "";
+  const next = {};
+  loadedSessions.forEach(function (sess) {
+    const id = String(sess.sessionId || "");
+    if (!id) {
+      return;
+    }
+    next[id] = displayState(sess.state);
+  });
+  if (sessionId && !next[sessionId] && live) {
+    next[sessionId] = live;
+  }
+  sessionStates = next;
+  syncAttention();
+}
+
+function syncAttention() {
+  let n = 0;
+  Object.keys(sessionStates).forEach(function (id) {
+    if (sessionStates[id] === "blocked") {
+      n += 1;
+    }
+  });
+  const title = n > 0 ? "(" + String(n) + ") precisa de voce" : "zero-bridge";
+  if (document.title !== title) {
+    document.title = title;
+  }
+  const line = n > 0 ? title : "";
+  if (attentionEl.textContent !== line) {
+    attentionEl.textContent = line;
+  }
+}
+
+function paintLiveState(state) {
+  if (!sessionId) {
+    return;
+  }
+  sessionStates[sessionId] = state;
+  const items = sessionListEl.children;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].dataset && items[i].dataset.id === sessionId) {
+      const badge = items[i].querySelector(".session-state");
+      if (badge) {
+        badge.textContent = stateLabel(state);
+      }
+    }
+  }
+  syncAttention();
+}
+
 function render(msg) {
+  if (msg.type === "session_state") {
+    paintLiveState(displayState(msg.state));
+    return;
+  }
   if (msg.type === "dropped") {
     note("dropped " + String(msg.count || 0));
     return;
