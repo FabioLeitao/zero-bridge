@@ -148,6 +148,10 @@ func TestInfoAndWorkspace(t *testing.T) {
 	if ws == "" || ws != srv.DefaultWorkspace() {
 		t.Fatalf("workspace %q", ws)
 	}
+	roots, _ := body["workspaceRoots"].([]any)
+	if len(roots) != 1 || roots[0] != ws {
+		t.Fatalf("roots %v", body["workspaceRoots"])
+	}
 	st, err := os.Stat(ws)
 	if err != nil || !st.IsDir() {
 		t.Fatal(err)

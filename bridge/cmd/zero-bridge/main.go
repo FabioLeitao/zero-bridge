@@ -61,19 +61,20 @@ func run() int {
 }
 
 type cliConfig struct {
-	listen        string
-	workspace     string
-	permTimeout   time.Duration
-	tokenFile     string
-	auditLog      string
-	configPath    string
-	limitFlags    map[string]string
-	allowedHosts  []string
-	publicOrigins []string
-	trustProxy    bool
-	agent         acpclient.Command
-	profile       string
-	stateDir      string
+	listen         string
+	workspace      string
+	permTimeout    time.Duration
+	tokenFile      string
+	auditLog       string
+	configPath     string
+	limitFlags     map[string]string
+	allowedHosts   []string
+	publicOrigins  []string
+	trustProxy     bool
+	agent          acpclient.Command
+	profile        string
+	stateDir       string
+	workspaceRoots []string
 }
 
 func runArgs(args []string, stderr io.Writer) int {
@@ -150,6 +151,14 @@ func runArgs(args []string, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "zero-bridge: workspace: %v\n", err)
 		return 2
 	}
+	roots := cfg.workspaceRoots
+	if len(roots) == 0 {
+		roots = []string{srv.DefaultWorkspace()}
+	}
+	if err := srv.SetWorkspaceRoots(roots); err != nil {
+		fmt.Fprintf(stderr, "zero-bridge: workspace root: %v\n", err)
+		return 2
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := srv.Boot(ctx); err != nil {
@@ -220,6 +229,12 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 			}
 			i++
 			cfg.listen = args[i]
+		case "--workspace-root":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("missing value for --workspace-root")
+			}
+			i++
+			cfg.workspaceRoots = append(cfg.workspaceRoots, args[i])
 		case "--state-dir":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("missing value for --state-dir")

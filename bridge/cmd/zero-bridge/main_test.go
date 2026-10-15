@@ -69,6 +69,20 @@ func TestEmptyAgentCommandExit2(t *testing.T) {
 	}
 }
 
+func TestWorkspaceRootRepeat(t *testing.T) {
+	cfg, err := parseCLI([]string{
+		"--agent-cmd", "/bin/true",
+		"--workspace-root", "/tmp/one",
+		"--workspace-root", "/tmp/two",
+	}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.workspaceRoots) != 2 || cfg.workspaceRoots[0] != "/tmp/one" || cfg.workspaceRoots[1] != "/tmp/two" {
+		t.Fatalf("roots %#v", cfg.workspaceRoots)
+	}
+}
+
 func TestStateDirFlag(t *testing.T) {
 	cfg, err := parseCLI([]string{"--agent-cmd", "/bin/true", "--state-dir", "/tmp/zb-state"}, &bytes.Buffer{})
 	if err != nil {

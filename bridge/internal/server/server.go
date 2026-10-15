@@ -19,6 +19,7 @@ import (
 	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/permissions"
 	"zero-bridge/bridge/internal/sessionmeta"
+	"zero-bridge/bridge/internal/workroot"
 	"zero-bridge/bridge/internal/zeroenv"
 	"zero-bridge/bridge/web"
 )
@@ -71,6 +72,7 @@ type Server struct {
 
 	workspace      string
 	workspaceOwned bool
+	roots          *workroot.Set
 	perms          *permissions.Broker
 	login          *loginState
 	loginDelay     time.Duration
@@ -461,8 +463,30 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"agent":            agent,
 		"defaultWorkspace": s.workspace,
+		"workspaceRoots":   s.workspaceRoots(),
 		"version":          "0",
 	})
+}
+
+// SetWorkspaceRoots installs the allowlist. An empty list is refused.
+// The session routes do not consult it yet.
+func (s *Server) SetWorkspaceRoots(paths []string) error {
+	set, err := workroot.New(paths)
+	if err != nil {
+		return err
+	}
+	s.roots = set
+	return nil
+}
+
+func (s *Server) workspaceRoots() []string {
+	if s.roots != nil {
+		return s.roots.Paths()
+	}
+	if s.workspace != "" {
+		return []string{s.workspace}
+	}
+	return []string{}
 }
 
 func (s *Server) redact(msg string) string {
