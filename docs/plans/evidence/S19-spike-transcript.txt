@@ -1,0 +1,38 @@
+S19 spike transcript — 2026-10-14
+
+Rules for every candidate: env with only PATH, HOME, XDG_CONFIG_HOME, XDG_CACHE_HOME, XDG_DATA_HOME, XDG_STATE_HOME, and TMPDIR; HOME and the XDG directories in a fresh temp tree; empty workspace; no API key; wall clock under 20s; only initialize and session/new; stop the child by the pid recorded after reading its command line. Client fs and terminal capabilities stay off. No session id, home path, or secret is recorded here.
+
+zero acp — executed
+
+Command line after start: zero acp. The child was stopped by that pid. It exited before the 20s bound. No prompt was sent.
+
+initialize result:
+  protocolVersion 1
+  agentInfo.name zero
+  agentInfo.version 0.9.0+up.30.eebb3846.databoar.9bba95e7.hdrtimeout.scanignore.acpusage.rmodel.sbxcompanion
+  authMethods empty
+  agentCapabilities.loadSession true
+  promptCapabilities image true, audio false, embeddedContext false
+  sessionCapabilities.list present (empty object)
+  sessionCapabilities.resume present (empty object)
+
+session/new result, session id omitted:
+  modes.currentModeId auto
+  availableModes auto, ask, plan
+    auto: Run safe tools automatically; ask before risky ones.
+    ask: Ask before every tool that changes state.
+    plan: Read-only planning; write and shell tools are hidden.
+  configOptions: model (currentValue empty, options null), mode (currentValue auto, options auto ask plan)
+  stderr empty
+
+hermes acp — nao executado
+
+The launcher on PATH is a shell script that execs the binary inside the Hermes checkout. Every launch runs _settle_interrupted_update() before the command. That function can restore an interrupted update by moving files in the checkout (restore_interrupted_pull on the checkout root). An isolated HOME does not cover that tree or the install's Hermes home. The process was not started.
+
+dsh --profile acp — nao executado
+
+dsh --help (Node 24) documents --profile <name> and does not start a session. The shipped ACP profile creates sessions on the deepseek-official route and the deepseek-v4-flash model. initialize calls llm.resolveModelInfo for that route. That lookup is not proven to stay offline and keyless, so the profile was not started.
+
+Claude Code — nao executado
+
+Out of this spike. It spends quota and is only reachable through a third-party adapter.
