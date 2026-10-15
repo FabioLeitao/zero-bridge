@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -156,7 +155,7 @@ func startTestServerTimeout(t *testing.T, extraEnv []string, timeout time.Durati
 	env := append([]string{"ZB_FAKE_AGENT=1"}, extraEnv...)
 	srv, err := New(Config{
 		Listen:            addr,
-		ZeroBin:           os.Args[0],
+		ZeroBin:           testAgentBin,
 		ExtraEnv:          env,
 		PermissionTimeout: timeout,
 		Logger:            log.New(io.Discard, "", 0),

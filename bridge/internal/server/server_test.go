@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -23,9 +25,55 @@ import (
 	"zero-bridge/bridge/internal/acptest"
 )
 
+// testAgentBin is a non-race acpfake built once per package run.
+// Pointing ZeroBin at the race-instrumented test binary costs about a second
+// per server, and that start dominates the slow tests.
+var testAgentBin string
+
 func TestMain(m *testing.M) {
 	acptest.MaybeMain()
-	os.Exit(m.Run())
+	bin, err := buildTestAgent()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "test agent: %v\n", err)
+		os.Exit(1)
+	}
+	testAgentBin = bin
+	code := m.Run()
+	_ = os.RemoveAll(filepath.Dir(bin))
+	os.Exit(code)
+}
+
+func buildTestAgent() (string, error) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", fmt.Errorf("test agent: no source path")
+	}
+	root := filepath.Dir(filepath.Dir(filepath.Dir(file)))
+	dir, err := os.MkdirTemp("", "zbridge-acpfake-")
+	if err != nil {
+		return "", err
+	}
+	bin := filepath.Join(dir, "acpfake")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/acpfake")
+	cmd.Dir = root
+	cmd.Env = withoutGOFLAGS(os.Environ())
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return "", fmt.Errorf("%w: %s", err, out)
+	}
+	return bin, nil
+}
+
+func withoutGOFLAGS(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if strings.HasPrefix(e, "GOFLAGS=") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 func startTestServer(t *testing.T, extraEnv []string) (*Server, string, func()) {
@@ -43,7 +91,7 @@ func startConfigured(t *testing.T, cfg Config) (*Server, string, func()) {
 	env := []string{"ZB_FAKE_AGENT=1"}
 	env = append(env, cfg.ExtraEnv...)
 	cfg.Listen = addr
-	cfg.ZeroBin = os.Args[0]
+	cfg.ZeroBin = testAgentBin
 	cfg.ExtraEnv = env
 	if cfg.Logger == nil {
 		cfg.Logger = log.New(io.Discard, "", 0)
