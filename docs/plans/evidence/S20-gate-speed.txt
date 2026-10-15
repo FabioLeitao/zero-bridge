@@ -72,7 +72,7 @@ Fifteen slowest internal/server tests under -race (command 2). The shared cause 
 
 Also visible without -race (command 1), same Shutdown deadline, not in the race top 15 because the race run got the short poll: TestBearerAuth 5.210s (one default 200ms login-failure sleep plus a 5s Shutdown), TestCapabilitiesEndpoint 5.010s (Shutdown only; LoginFailureDelay is already -1). TestSSEReplayHandler holds the events body open for a 500ms context (0.500s). TestHealthAgentDown sleeps 200ms after closing the agent instead of waiting on Done.
 
-Acceptance targets, not yet met: go test -race ./internal/server under 20s (now 87s), hygiene selftest under 10s (now 1.69s on this host), make check under 60s warm (now 147s). mutate must still kill all 17. Test count must stay at least 112.
+Baseline status before the changes: go test -race ./internal/server under 20s (now 87s), hygiene selftest under 10s (now 1.69s on this host), make check under 60s warm (now 147s). mutate must still kill all 17. Test count must stay at least 112.
 
 After, on the same host, warm cache. Commands are the same shape as the baseline. The audit of 5882843 on a clean export measured internal/server -race at 10.5s, with 112 top-level tests and 55 in internal/server.
 
@@ -110,3 +110,5 @@ After, on the same host, warm cache. Commands are the same shape as the baseline
     capability-list-always-on: TestFakeAgentCapabilities
 
 Acceptance on this host: server -race under 20s (11.8s here, 10.5s on the clean export), hygiene selftest under 10s (2.75s), make check under 60s warm (25.8s parallel, 33.0s serial). mutate killed all 17 by assertion. Test count stayed 112 and 55. Still slower than the floor: TestConcurrentSessionsWhileSlowPrompt waits 2s, and TestSessionMode holds an events body for 1s.
+
+After the changes: server -race 11s, hygiene 2.75s, make check ~21–26s, mutate 17/17 by assertion.
