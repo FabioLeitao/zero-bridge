@@ -18,6 +18,9 @@ const modeEl = document.getElementById("mode");
 const newSessionBtn = document.getElementById("new-session");
 const planEl = document.getElementById("plan");
 const permEl = document.getElementById("permissions");
+const agentInfoEl = document.getElementById("agent-info");
+const modeLabelEl = document.getElementById("mode-label");
+const sessionBrowserEl = document.getElementById("session-browser");
 const sessionListEl = document.getElementById("session-list");
 const sessionFilterEl = document.getElementById("session-filter");
 const moreSessionsBtn = document.getElementById("more-sessions");
@@ -28,6 +31,92 @@ let sessionCursor = "";
 let sessionId = "";
 let authRequired = false;
 let listGen = 0;
+let caps = {
+  profile: "",
+  loadSession: false,
+  sessionList: false,
+  sessionResume: false,
+  modes: [],
+  agent: { name: "", version: "" }
+};
+
+function applyCapabilities() {
+  const agent = caps.agent || {};
+  const text = [agent.name, agent.version].filter(function (part) {
+    return part;
+  }).join(" ");
+  agentInfoEl.textContent = text;
+  if (text) {
+    agentInfoEl.setAttribute("aria-label", text);
+    agentInfoEl.hidden = false;
+  } else {
+    agentInfoEl.removeAttribute("aria-label");
+    agentInfoEl.hidden = true;
+  }
+  sessionBrowserEl.hidden = caps.sessionList !== true;
+  sidebarEl.hidden = caps.sessionList !== true;
+  fillModes(caps.modes || []);
+}
+
+function fillModes(modes) {
+  const selected = modeEl.value;
+  while (modeEl.firstChild) {
+    modeEl.removeChild(modeEl.firstChild);
+  }
+  modes.forEach(function (mode) {
+    const opt = document.createElement("option");
+    opt.value = String(mode.id || "");
+    opt.textContent = mode.name ? String(mode.name) : String(mode.id || "");
+    if (mode.description) {
+      opt.setAttribute("aria-description", String(mode.description));
+    }
+    modeEl.appendChild(opt);
+  });
+  const on = modes.length > 0;
+  modeEl.hidden = !on;
+  modeLabelEl.hidden = !on;
+  if (!on) {
+    modeEl.disabled = true;
+    return;
+  }
+  let keep = false;
+  for (let i = 0; i < modeEl.options.length; i++) {
+    if (modeEl.options[i].value === selected) {
+      keep = true;
+      break;
+    }
+  }
+  if (keep) {
+    modeEl.value = selected;
+  }
+}
+
+function selectMode(id) {
+  if (modeEl.hidden) {
+    return;
+  }
+  const want = String(id || "");
+  for (let i = 0; i < modeEl.options.length; i++) {
+    if (modeEl.options[i].value === want) {
+      modeEl.value = want;
+      return;
+    }
+  }
+}
+
+function setModeEnabled(on) {
+  modeEl.disabled = modeEl.hidden || !on;
+}
+
+async function loadCapabilities() {
+  const res = await api("/v1/capabilities");
+  if (!res.ok) {
+    note("capabilities failed " + res.status);
+    return;
+  }
+  caps = await res.json();
+  applyCapabilities();
+}
 
 function clearSessionList() {
   listGen += 1;
@@ -225,6 +314,7 @@ async function startWorkspace() {
   }
   const info = await infoRes.json();
   workspaceEl.value = info.defaultWorkspace || "";
+  await loadCapabilities();
   await refreshSessions();
   const body = JSON.stringify({ workspace: workspaceEl.value });
   const ses = await api("/v1/sessions", {
@@ -238,6 +328,7 @@ async function startWorkspace() {
   }
   const data = await ses.json();
   sessionId = data.sessionId || "";
+  await loadCapabilities();
   applyMode(data);
   connect(0);
   refreshSessions().catch(function (err) {
@@ -291,6 +382,7 @@ async function openSession() {
   }
   const data = await ses.json();
   sessionId = data.sessionId || "";
+  await loadCapabilities();
   applyMode(data);
   backoff = 500;
   connect(0);
@@ -300,10 +392,10 @@ async function openSession() {
 }
 
 function applyMode(data) {
-  if (data && (data.mode === "auto" || data.mode === "ask" || data.mode === "plan")) {
-    modeEl.value = data.mode;
+  if (data && data.mode) {
+    selectMode(data.mode);
   }
-  modeEl.disabled = false;
+  setModeEnabled(true);
   markActiveSession();
 }
 
@@ -341,6 +433,9 @@ function markActiveSession() {
 }
 
 async function refreshSessions() {
+  if (caps.sessionList !== true) {
+    return;
+  }
   sessionCursor = "";
   while (sessionListEl.firstChild) {
     sessionListEl.removeChild(sessionListEl.firstChild);
@@ -379,27 +474,36 @@ async function pageSessions(more) {
 function renderSessionItem(sess) {
   const li = document.createElement("li");
   li.dataset.id = String(sess.sessionId || "");
-  const open = document.createElement("button");
-  open.type = "button";
-  open.textContent = sess.title ? String(sess.title) : shortId(sess.sessionId);
-  open.addEventListener("click", function () {
-    loadSession(li.dataset.id).catch(function (err) {
-      note(String(err && err.message ? err.message : err));
+  const label = sess.title ? String(sess.title) : shortId(sess.sessionId);
+  if (caps.loadSession === true) {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.textContent = label;
+    open.addEventListener("click", function () {
+      loadSession(li.dataset.id).catch(function (err) {
+        note(String(err && err.message ? err.message : err));
+      });
     });
-  });
+    li.appendChild(open);
+  } else {
+    const title = document.createElement("p");
+    title.textContent = label;
+    li.appendChild(title);
+  }
   const meta = document.createElement("p");
   meta.textContent = baseName(sess.cwd) + " " + String(sess.updatedAt || "");
-  const resume = document.createElement("button");
-  resume.type = "button";
-  resume.textContent = "Retomar";
-  resume.addEventListener("click", function () {
-    resumeSession(li.dataset.id).catch(function (err) {
-      note(String(err && err.message ? err.message : err));
-    });
-  });
-  li.appendChild(open);
   li.appendChild(meta);
-  li.appendChild(resume);
+  if (caps.sessionResume === true) {
+    const resume = document.createElement("button");
+    resume.type = "button";
+    resume.textContent = "Retomar";
+    resume.addEventListener("click", function () {
+      resumeSession(li.dataset.id).catch(function (err) {
+        note(String(err && err.message ? err.message : err));
+      });
+    });
+    li.appendChild(resume);
+  }
   sessionListEl.appendChild(li);
 }
 
@@ -568,9 +672,13 @@ function render(msg) {
   }
   if (msg.type === "error") {
     const message = String(msg.message || "error");
-    note(message.indexOf("view-only") >= 0 ? "sessao somente leitura" : message);
+    if (caps.profile === "zero" && message.indexOf("view-only") >= 0) {
+      note("sessao somente leitura");
+    } else {
+      note(message);
+    }
     sendBtn.disabled = false;
-    modeEl.disabled = false;
+    setModeEnabled(true);
     return;
   }
   if (msg.type === "permission_request") {
@@ -586,7 +694,7 @@ function render(msg) {
     assistant = null;
     thoughtBody = null;
     sendBtn.disabled = false;
-    modeEl.disabled = false;
+    setModeEnabled(true);
     return;
   }
   if (msg.type !== "session/update" || !msg.params || !msg.params.update) {
@@ -632,10 +740,7 @@ function render(msg) {
     return;
   }
   if (kind === "current_mode_update" && modeEl) {
-    const id = String(update.currentModeId || "");
-    if (id === "auto" || id === "ask" || id === "plan") {
-      modeEl.value = id;
-    }
+    selectMode(update.currentModeId);
     return;
   }
   addLine("event", "event: " + kind);
@@ -645,7 +750,7 @@ function appendAssistant(piece, replay) {
   const lines = String(piece).split("\n");
   lines.forEach(function (line, i) {
     const last = i === lines.length - 1;
-    if (line.indexOf("[zero warning]") === 0) {
+    if (caps.profile === "zero" && line.indexOf("[zero warning]") === 0) {
       note(line);
       assistant = null;
       return;
@@ -949,7 +1054,7 @@ modeEl.addEventListener("change", function () {
     return;
   }
   const mode = modeEl.value;
-  modeEl.disabled = true;
+  setModeEnabled(false);
   api("/v1/sessions/" + encodeURIComponent(sessionId) + "/mode", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -958,13 +1063,13 @@ modeEl.addEventListener("change", function () {
     if (sendBtn.disabled) {
       return;
     }
-    modeEl.disabled = false;
+    setModeEnabled(true);
     if (!res.ok) {
       note("mode failed " + res.status);
     }
   }).catch(function (err) {
     if (!sendBtn.disabled) {
-      modeEl.disabled = false;
+      setModeEnabled(true);
     }
     note(String(err && err.message ? err.message : err));
   });
@@ -1066,7 +1171,7 @@ form.addEventListener("submit", function (ev) {
   const text = textEl.value;
   addLine("user", text);
   sendBtn.disabled = true;
-  modeEl.disabled = true;
+  setModeEnabled(false);
   assistant = null;
   thoughtBody = null;
   api("/v1/sessions/" + encodeURIComponent(sessionId) + "/prompt", {
@@ -1081,14 +1186,14 @@ form.addEventListener("submit", function (ev) {
     if (!res.ok) {
       note("prompt failed " + res.status);
       sendBtn.disabled = false;
-      modeEl.disabled = false;
+      setModeEnabled(true);
       return;
     }
     textEl.value = "";
   }).catch(function (err) {
     note(String(err && err.message ? err.message : err));
     sendBtn.disabled = false;
-    modeEl.disabled = false;
+    setModeEnabled(true);
   });
 });
 

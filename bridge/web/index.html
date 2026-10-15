@@ -11,6 +11,7 @@
   <aside id="sidebar">
     <button id="sidebar-toggle" type="button">Sessoes</button>
     <div id="sidebar-body">
+      <div id="session-browser" hidden>
       <label for="session-filter">Filtro</label>
       <select id="session-filter">
         <option value="workspace">workspace atual</option>
@@ -19,10 +20,12 @@
       <button id="refresh-sessions" type="button">Atualizar</button>
       <ul id="session-list"></ul>
       <button id="more-sessions" type="button" hidden>mais</button>
+      </div>
     </div>
   </aside>
   <main>
     <h1>zero-bridge</h1>
+    <p id="agent-info" hidden></p>
     <div id="login" hidden>
       <label for="token">Token</label>
       <input id="token" name="token" type="password" autocomplete="off">
@@ -40,12 +43,8 @@
         <ul id="auth-session-list" aria-label="Sessoes ativas"></ul>
         <button id="logout-all" type="button">Sair de todos os dispositivos</button>
       </section>
-      <label for="mode">Mode</label>
-      <select id="mode" disabled>
-        <option value="auto">auto</option>
-        <option value="ask">ask</option>
-        <option value="plan">plan</option>
-      </select>
+      <label id="mode-label" for="mode" hidden>Mode</label>
+      <select id="mode" hidden disabled></select>
     </form>
     <div id="plan" hidden></div>
     <div id="permissions"></div>

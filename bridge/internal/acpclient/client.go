@@ -26,6 +26,12 @@ type InboundHandler interface {
 
 // Options configures how the ACP child process is started.
 type Options struct {
+	// AgentCmd is the executable. When it is empty, ZeroBin is started with
+	// the single argument acp (the historical launcher).
+	AgentCmd  string
+	AgentArgs []string
+	// ZeroBin is the legacy launcher name. Empty means "zero" when AgentCmd
+	// is also empty.
 	ZeroBin  string
 	ExtraEnv []string
 	Stderr   io.Writer // optional; defaults to limited capture
@@ -36,7 +42,7 @@ type Options struct {
 	Inbound InboundHandler
 }
 
-// Client speaks JSON-RPC 2.0 (newline-delimited) to a `zero acp` child process.
+// Client speaks JSON-RPC 2.0 (newline-delimited) to an ACP child process.
 type Client struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
@@ -62,9 +68,14 @@ type Client struct {
 	inboundWG   sync.WaitGroup
 	inboundCtx  context.Context
 	inboundStop context.CancelFunc
+
+	state agentState
 }
 
-// Start launches `zero acp` and begins reading stdout in the background.
+// Start launches the agent and begins reading stdout in the background.
+// The child inherits the parent environment except ZERO_BRIDGE_TOKEN.
+// ExtraEnv may add agent configuration. Argv is only the resolved path
+// plus AgentArgs, never a shell string and never the bridge token.
 func childEnv(extra []string) []string {
 	env := make([]string, 0, len(os.Environ())+len(extra))
 	keep := func(e string) bool {
@@ -84,8 +95,17 @@ func childEnv(extra []string) []string {
 }
 
 func Start(parent context.Context, opts Options) (*Client, error) {
-	if opts.ZeroBin == "" {
-		opts.ZeroBin = "zero"
+	bin, args := opts.AgentCmd, opts.AgentArgs
+	if bin == "" {
+		bin = opts.ZeroBin
+		if bin == "" {
+			bin = "zero"
+		}
+		args = []string{"acp"}
+	}
+	resolved, err := ResolveCommand(bin, args)
+	if err != nil {
+		return nil, fmt.Errorf("acpclient: %w", err)
 	}
 	var ctx context.Context
 	var cancel context.CancelFunc
@@ -101,7 +121,7 @@ func Start(parent context.Context, opts Options) (*Client, error) {
 		}
 	}()
 
-	cmd := exec.CommandContext(ctx, opts.ZeroBin, "acp")
+	cmd := exec.CommandContext(ctx, resolved.Path, resolved.Args...)
 	cmd.Env = childEnv(opts.ExtraEnv)
 
 	stdin, err := cmd.StdinPipe()
@@ -121,7 +141,7 @@ func Start(parent context.Context, opts Options) (*Client, error) {
 	}
 	if err := cmd.Start(); err != nil {
 		stdin.Close()
-		return nil, fmt.Errorf("acpclient: start zero acp: %w", err)
+		return nil, fmt.Errorf("acpclient: start agent: %w", err)
 	}
 	started = true
 
@@ -191,10 +211,10 @@ func (c *Client) Call(ctx context.Context, method string, params any, result any
 		c.dropPending(id)
 		return err
 	}
-	return c.recvResponse(ctx, ch, id, result)
+	return c.recvResponse(ctx, ch, id, method, params, result)
 }
 
-func (c *Client) recvResponse(ctx context.Context, ch chan rpcMessage, id int64, result any) error {
+func (c *Client) recvResponse(ctx context.Context, ch chan rpcMessage, id int64, method string, params any, result any) error {
 	select {
 	case <-ctx.Done():
 		c.dropPending(id)
@@ -203,14 +223,14 @@ func (c *Client) recvResponse(ctx context.Context, ch chan rpcMessage, id int64,
 		if !ok {
 			return errors.New("acpclient: connection closed")
 		}
-		return c.finishCall(msg, result)
+		return c.finishCall(method, params, msg, result)
 	case <-c.readDone:
 		select {
 		case msg, ok := <-ch:
 			if !ok {
 				return errors.New("acpclient: connection closed")
 			}
-			return c.finishCall(msg, result)
+			return c.finishCall(method, params, msg, result)
 		default:
 			if c.readErr != nil {
 				return c.readErr
@@ -220,7 +240,7 @@ func (c *Client) recvResponse(ctx context.Context, ch chan rpcMessage, id int64,
 	}
 }
 
-func (c *Client) finishCall(msg rpcMessage, result any) error {
+func (c *Client) finishCall(method string, params any, msg rpcMessage, result any) error {
 	if msg.Error != nil {
 		return msg.Error
 	}
@@ -229,6 +249,7 @@ func (c *Client) finishCall(msg rpcMessage, result any) error {
 			return fmt.Errorf("acpclient: decode result: %w", err)
 		}
 	}
+	c.noteResult(method, params, msg.Result)
 	return nil
 }
 
@@ -266,9 +287,9 @@ func (c *Client) Close() error {
 
 	if waitErr != nil && !errors.Is(waitErr, context.Canceled) {
 		if errors.Is(waitErr, context.DeadlineExceeded) {
-			return fmt.Errorf("acpclient: zero acp timed out: %w", waitErr)
+			return fmt.Errorf("acpclient: agent timed out: %w", waitErr)
 		}
-		return fmt.Errorf("acpclient: zero acp exited: %w", waitErr)
+		return fmt.Errorf("acpclient: agent exited: %w", waitErr)
 	}
 	return nil
 }

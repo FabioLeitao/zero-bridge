@@ -16,7 +16,7 @@ chmod 600 "$HOME/.config/zero-bridge/token"
 
 That file is 64 hex characters plus a newline. The bridge trims one trailing newline and requires at least 32 bytes of the remaining string. A shorter token is an error. A mode that lets group or others read the file (`mode & 077 != 0`) is refused; use `0600`.
 
-Start the bridge with `--token-file` **or** the environment variable `ZERO_BRIDGE_TOKEN`. If both are set, the process exits **2** with `set only one of --token-file and ZERO_BRIDGE_TOKEN`. The child `zero acp` does not inherit `ZERO_BRIDGE_TOKEN`.
+Start the bridge with `--token-file` **or** the environment variable `ZERO_BRIDGE_TOKEN`. If both are set, the process exits **2** with `set only one of --token-file and ZERO_BRIDGE_TOKEN`. The agent child does not inherit `ZERO_BRIDGE_TOKEN`. The default child is `zero` with the argument `acp` and profile `zero`. `--agent-cmd` plus repeatable `--agent-arg` replace that argv with no shell. Profile `generic` does not set `ZERO_PROVIDER`. Client `fs` and `terminal` stay off, so an agent that requires them is unsupported.
 
 ## Flags
 

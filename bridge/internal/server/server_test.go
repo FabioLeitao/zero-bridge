@@ -1186,6 +1186,7 @@ func TestV1RoutesRequireCredential(t *testing.T) {
 		path   string
 	}{
 		{http.MethodGet, "/v1/info"},
+		{http.MethodGet, "/v1/capabilities"},
 		{http.MethodGet, "/v1/sessions"},
 		{http.MethodPost, "/v1/sessions"},
 		{http.MethodPost, "/v1/sessions/s1/prompt"},

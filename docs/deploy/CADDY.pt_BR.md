@@ -16,7 +16,7 @@ chmod 600 "$HOME/.config/zero-bridge/token"
 
 O arquivo tem 64 caracteres hex e uma quebra de linha. A ponte remove uma quebra final e exige pelo menos 32 bytes na string que sobra. Token mais curto é erro. Modo que deixa o grupo ou outros lerem (`mode & 077 != 0`) é recusado; use `0600`.
 
-Suba a ponte com `--token-file` **ou** a variável `ZERO_BRIDGE_TOKEN`. Os dois juntos saem **2** com `set only one of --token-file and ZERO_BRIDGE_TOKEN`. O filho `zero acp` não herda `ZERO_BRIDGE_TOKEN`.
+Suba a ponte com `--token-file` **ou** a variável `ZERO_BRIDGE_TOKEN`. Os dois juntos saem **2** com `set only one of --token-file and ZERO_BRIDGE_TOKEN`. O filho agente não herda `ZERO_BRIDGE_TOKEN`. O filho padrão é `zero` com o argumento `acp` e o perfil `zero`. `--agent-cmd` mais `--agent-arg` repetível substituem esse argv sem shell. O perfil `generic` não define `ZERO_PROVIDER`. `fs` e `terminal` do cliente ficam desligados, então um agente que os exija não é suportado.
 
 ## Flags
 

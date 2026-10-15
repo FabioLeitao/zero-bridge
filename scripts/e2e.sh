@@ -241,6 +241,53 @@ run_auth() {
 	echo "e2e: ok (auth, bearer 5x401+2x429, logout-all, SIGHUP)"
 }
 
+run_caps() {
+	local kind=$1 port rc=0
+	port=$(pick_port)
+	if [[ "$port" == 8765 || "$port" == 8766 ]]; then
+		echo "e2e: refusing operator port $port" >&2
+		exit 1
+	fi
+	local -a envargs=()
+	local hostile='<img src=x on'
+	hostile+='error=alert(1)>'
+	local desc='"><img src=x on'
+	desc+='error=alert(1)>'
+	if [[ "$kind" == hostile ]]; then
+		envargs+=(
+			ZB_FAKE_AGENT_NAME="$hostile"
+			ZB_FAKE_AGENT_VERSION='0<img>'
+			ZB_FAKE_MODE_IDS=hostile
+			ZB_FAKE_MODE_NAME='</option><script>alert(1)</script>'
+			ZB_FAKE_MODE_DESC="$desc"
+		)
+	else
+		envargs+=(
+			ZB_FAKE_NO_LIST=1
+			ZB_FAKE_NO_LOAD=1
+			ZB_FAKE_NO_RESUME=1
+			ZB_FAKE_NO_MODES=1
+			ZB_FAKE_AGENT_NAME="$hostile"
+		)
+	fi
+	env "${envargs[@]}" \
+		"$tmp/zero-bridge" --listen "127.0.0.1:${port}" --agent-cmd "$tmp/acpfake" --agent-arg acp --profile generic --permission-timeout 3s \
+		>"$tmp/server.log" 2>&1 &
+	pid=$!
+	printf '%s\n' "$pid" >"$tmp/pid"
+	wait_health "$port"
+	node "$root/bridge/web/e2e/check-caps.mjs" "http://127.0.0.1:${port}/" "$kind" || rc=$?
+	stop_bridge
+	if [[ "$rc" -ne 0 ]]; then
+		echo "e2e: check-caps.mjs failed in mode ${kind}" >&2
+		tail -n 40 "$tmp/server.log" >&2 || true
+		exit "$rc"
+	fi
+	echo "e2e: ok (capabilities ${kind}, 127.0.0.1:${port})"
+}
+
+run_caps hostile
+run_caps hidden
 run_auth
 refuse_ttl 0
 refuse_ttl -1

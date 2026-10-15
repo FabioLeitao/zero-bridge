@@ -26,6 +26,9 @@ import (
 type Config struct {
 	Listen            string
 	ZeroBin           string
+	AgentCmd          string
+	AgentArgs         []string
+	Profile           string
 	Workspace         string
 	ExtraEnv          []string
 	EventLogCap       int
@@ -80,6 +83,13 @@ func New(cfg Config) (*Server, error) {
 	if cfg.ZeroBin == "" {
 		cfg.ZeroBin = "zero"
 	}
+	switch cfg.Profile {
+	case "":
+		cfg.Profile = "zero"
+	case "zero", "generic":
+	default:
+		return nil, fmt.Errorf("unknown profile %q", cfg.Profile)
+	}
 	if cfg.Keepalive <= 0 {
 		cfg.Keepalive = 15 * time.Second
 	}
@@ -133,18 +143,31 @@ func New(cfg Config) (*Server, error) {
 	return s, nil
 }
 
-// Boot starts the zero acp child and performs initialize.
-func (s *Server) Boot(ctx context.Context) error {
-	extra := s.cfg.ExtraEnv
-	if extra == nil {
-		extra = zeroenv.ProviderEnv()
+// childExtra is the environment added for the agent. The zero profile may
+// set ZERO_PROVIDER. The generic profile adds nothing unless the caller
+// passed ExtraEnv. A non-nil ExtraEnv, including an empty slice, is used
+// as given so tests can disable the probe.
+func (s *Server) childExtra() []string {
+	if s.cfg.ExtraEnv != nil {
+		return s.cfg.ExtraEnv
 	}
+	if s.cfg.Profile == "zero" {
+		return zeroenv.ProviderEnv()
+	}
+	return []string{}
+}
+
+// Boot starts the agent child and performs initialize.
+func (s *Server) Boot(ctx context.Context) error {
+	extra := s.childExtra()
 	client, err := acpclient.Start(ctx, acpclient.Options{
-		ZeroBin:  s.cfg.ZeroBin,
-		ExtraEnv: extra,
-		Timeout:  0,
-		Notify:   s.onNotify,
-		Inbound:  permInbound{s},
+		ZeroBin:   s.cfg.ZeroBin,
+		AgentCmd:  s.cfg.AgentCmd,
+		AgentArgs: s.cfg.AgentArgs,
+		ExtraEnv:  extra,
+		Timeout:   0,
+		Notify:    s.onNotify,
+		Inbound:   permInbound{s},
 	})
 	if err != nil {
 		return err
@@ -251,6 +274,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/auth/sessions", s.handleListAuthSessions)
 	mux.HandleFunc("DELETE /v1/auth/sessions/{handle}", s.handleRevokeAuthSession)
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
+	mux.HandleFunc("GET /v1/capabilities", s.handleCapabilities)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
 	mux.HandleFunc("POST /v1/sessions/{id}/load", s.handleLoad)
@@ -498,6 +522,48 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 var errSessionNotInList = errors.New("session not in list")
 
+func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
+	c, err := s.acpClient()
+	if err != nil {
+		s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "agent down"})
+		return
+	}
+	snap, ok := c.InitializeSnapshot()
+	if !ok {
+		s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "agent down"})
+		return
+	}
+	modes := c.DeclaredModes()
+	if modes == nil {
+		modes = []acpclient.Mode{}
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"profile":       s.cfg.Profile,
+		"agent":         map[string]string{"name": snap.AgentInfo.Name, "version": snap.AgentInfo.Version},
+		"loadSession":   snap.Capabilities.LoadSession,
+		"sessionList":   snap.Capabilities.List(),
+		"sessionResume": snap.Capabilities.Resume(),
+		"prompt":        snap.Capabilities.PromptCapabilities,
+		"modes":         modes,
+	})
+}
+
+func (s *Server) agentCaps() (acpclient.AgentCapabilities, bool) {
+	c, err := s.acpClient()
+	if err != nil {
+		return acpclient.AgentCapabilities{}, false
+	}
+	snap, ok := c.InitializeSnapshot()
+	if !ok {
+		return acpclient.AgentCapabilities{}, false
+	}
+	return snap.Capabilities, true
+}
+
+func (s *Server) notSupported(w http.ResponseWriter) {
+	s.writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "not supported by agent"})
+}
+
 func (s *Server) handleLoad(w http.ResponseWriter, r *http.Request) {
 	s.handleAttach(w, r, true)
 }
@@ -507,6 +573,11 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAttach(w http.ResponseWriter, r *http.Request, replay bool) {
+	caps, ok := s.agentCaps()
+	if !ok || (replay && !caps.LoadSession) || (!replay && !caps.Resume()) {
+		s.notSupported(w)
+		return
+	}
 	id := r.PathValue("id")
 	if id == "" {
 		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
@@ -686,6 +757,11 @@ func modeResponse(id string, res modePayload) map[string]any {
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	caps, ok := s.agentCaps()
+	if !ok || !caps.List() {
+		s.notSupported(w)
+		return
+	}
 	cwd := r.URL.Query().Get("cwd")
 	if cwd != "" && !filepath.IsAbs(cwd) {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "cwd must be an absolute path"})
@@ -709,7 +785,32 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	if res.Sessions == nil {
 		res.Sessions = []json.RawMessage{}
 	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"sessions": res.Sessions, "nextCursor": res.NextCursor})
+	sessions := res.Sessions
+	if s.cfg.Profile != "zero" {
+		sessions = stripZeroMeta(sessions)
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions, "nextCursor": res.NextCursor})
+}
+
+// stripZeroMeta drops the Zero vendor object. Other profiles do not interpret
+// _meta.modelId.
+func stripZeroMeta(raw []json.RawMessage) []json.RawMessage {
+	out := make([]json.RawMessage, 0, len(raw))
+	for _, item := range raw {
+		var obj map[string]json.RawMessage
+		if json.Unmarshal(item, &obj) != nil {
+			out = append(out, item)
+			continue
+		}
+		delete(obj, "_meta")
+		b, err := json.Marshal(obj)
+		if err != nil {
+			out = append(out, item)
+			continue
+		}
+		out = append(out, b)
+	}
+	return out
 }
 
 func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
@@ -791,6 +892,12 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
 		return
 	}
+	c, err := s.acpClient()
+	if err != nil {
+		s.notSupported(w)
+		return
+	}
+	offer, _ := c.SessionOffer(id)
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var body struct {
 		Mode string `json:"mode"`
@@ -801,10 +908,29 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
-	switch body.Mode {
-	case "auto", "ask", "plan":
-	default:
-		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "mode must be auto, ask, or plan"})
+	allowed := map[string]bool{}
+	fallback := false
+	if len(offer.Modes) > 0 {
+		for _, m := range offer.Modes {
+			if m.ID != "" {
+				allowed[m.ID] = true
+			}
+		}
+	} else if s.cfg.Profile == "zero" {
+		fallback = true
+		allowed["auto"] = true
+		allowed["ask"] = true
+		allowed["plan"] = true
+	} else {
+		s.notSupported(w)
+		return
+	}
+	if !allowed[body.Mode] {
+		msg := "mode is not offered by the agent"
+		if fallback {
+			msg = "mode must be auto, ask, or plan"
+		}
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": msg})
 		return
 	}
 	var ignored map[string]any
