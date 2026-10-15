@@ -95,6 +95,20 @@ func TestSessionMetaUnavailableAndUnsupported(t *testing.T) {
 	})
 }
 
+func TestSessionMetaPaddedBody(t *testing.T) {
+	st := openMeta(t)
+	_, base, cleanup := startConfigured(t, Config{Meta: st})
+	defer cleanup()
+	body := `{"alias":"x"}` + strings.Repeat(" ", 4096)
+	status, raw := postMetaRaw(t, base, "sess-pad", body)
+	if status != http.StatusBadRequest {
+		t.Fatalf("status %d %s", status, raw)
+	}
+	if got, ok := st.Get("sess-pad"); ok {
+		t.Fatalf("stored %+v", got)
+	}
+}
+
 func TestSessionMetaBodyCap(t *testing.T) {
 	st := openMeta(t)
 	_, base, cleanup := startConfigured(t, Config{Meta: st})

@@ -152,6 +152,18 @@ mutants = [
         "TestFakeAgentCapabilities",
         [("internal/acpclient/capabilities.go", "\treturn c.SessionCapabilities != nil && c.SessionCapabilities.List != nil", "\treturn true")],
     ),
+    (
+        "workroot-sibling-prefix",
+        "internal/workroot",
+        "TestCheckRejectsSiblingPrefix",
+        [("internal/workroot/root.go", "\t\trel, err := filepath.Rel(root, real)\n\t\tif err != nil {\n\t\t\tcontinue\n\t\t}\n\t\tif rel == \".\" || (rel != \"..\" && !strings.HasPrefix(rel, \"..\"+string(os.PathSeparator))) {\n\t\t\treturn true\n\t\t}", "\t\tif strings.HasPrefix(real, root) {\n\t\t\treturn true\n\t\t}")],
+    ),
+    (
+        "meta-body-limit",
+        "internal/server",
+        "TestSessionMetaPaddedBody",
+        [("internal/server/meta.go", "r.Body = http.MaxBytesReader(w, r.Body, 4<<10)", "r.Body = http.MaxBytesReader(w, r.Body, 4<<30)")],
+    ),
 ]
 
 for name, pkg, run, edits in mutants:

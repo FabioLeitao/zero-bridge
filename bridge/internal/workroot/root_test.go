@@ -54,6 +54,32 @@ func TestCheckDir(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsSiblingPrefix(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "a")
+	sibling := filepath.Join(parent, "a-evil")
+	child := filepath.Join(root, "ok")
+	for _, dir := range []string{root, sibling, child} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set, err := New([]string{root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := set.Check(child); err != nil {
+		t.Fatal(err)
+	}
+	_, err = set.Check(sibling)
+	if err == nil || !strings.Contains(err.Error(), "not allowed") {
+		t.Fatalf("sibling %v", err)
+	}
+	if strings.Contains(err.Error(), "a-evil") {
+		t.Fatalf("error leaked the path: %v", err)
+	}
+}
+
 func TestResolveAdditional(t *testing.T) {
 	root := t.TempDir()
 	var extra []string
