@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Applies one auth mutant at a time on a copy of bridge/ and requires the
 # suite to kill it. This is the slow pre-PR layer. It is not pre-commit.
+# The copy has no .git. The baseline must pass before any mutant runs.
+# A mutant is killed only when the test output contains an assertion
+# failure (a "--- FAIL:" line). A build or infra failure stops the script.
 # Git sets GIT_DIR for a hook. Drop it before the copy, so a later git
 # command cannot write into the repository that invoked make.
 set -euo pipefail
@@ -19,6 +22,32 @@ import pathlib, shutil, subprocess, sys
 base = pathlib.Path(sys.argv[1])
 work = pathlib.Path(sys.argv[2])
 survivors = []
+
+def run_tests(cwd, args):
+    result = subprocess.run(
+        ["go", "test", "-count=1", "-timeout", "180s", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, result.stdout + result.stderr
+
+def assertion_names(text):
+    names = []
+    for line in text.splitlines():
+        if not line.startswith("--- FAIL:"):
+            continue
+        rest = line[len("--- FAIL:"):].strip()
+        name = rest.split(" (", 1)[0].strip()
+        if name:
+            names.append(name)
+    return names
+
+print("mutate: baseline", flush=True)
+code, out = run_tests(base, ["./..."])
+if code != 0:
+    sys.stderr.write(out)
+    sys.exit("mutate: baseline failed")
 
 mutants = [
     (
@@ -67,7 +96,7 @@ mutants = [
         "bearer-limit-removed",
         "internal/server",
         "TestBearerRateLimitConcurrentWrongToken",
-        [("internal/server/login.go", "return true, retry", "return false, 0")],
+        [("internal/server/login.go", "return true, retry", "return false, retry")],
     ),
     (
         "idle-not-sliding",
@@ -97,7 +126,7 @@ mutants = [
         "sighup-keeps-token",
         "internal/server",
         "TestLogoutAllListRevokeAndReload",
-        [("internal/server/reload.go", "\ts.tokenMu.Lock()\n\ts.prevToken = s.token\n\ts.token = next\n\ts.tokenMu.Unlock()\n\ts.dropAllSessions()\n", "")],
+        [("internal/server/reload.go", "\ts.tokenMu.Lock()\n\ts.prevToken = s.token\n\ts.token = next\n\ts.tokenMu.Unlock()\n\ts.dropAllSessions()\n", "\t_ = next\n")],
     ),
     (
         "audit-leaks-token",
@@ -138,15 +167,17 @@ for name, pkg, run, edits in mutants:
             sys.exit(f"mutate: anchor missing for {name} in {rel}")
         file.write_text(text.replace(old, new))
     print(f"mutate: {name}", flush=True)
-    result = subprocess.run(
-        ["go", "test", "-count=1", "-timeout", "180s", "./" + pkg, "-run", run],
-        cwd=dest,
-    )
-    if result.returncode == 0:
-        print(f"mutate: SURVIVOR {name}", file=sys.stderr)
-        survivors.append(name)
-    else:
-        print(f"mutate: killed {name}", flush=True)
+    code, out = run_tests(dest, ["./" + pkg, "-run", run])
+    names = assertion_names(out)
+    if code != 0 and names:
+        print(f"mutate: killed {name} by {', '.join(names)}", flush=True)
+        continue
+    if code != 0:
+        diags = [ln for ln in out.splitlines() if ".go:" in ln and not ln.startswith("---")]
+        detail = "; ".join(diags[:4])
+        sys.exit(f"mutate: infra {name}: {detail}" if detail else f"mutate: infra {name}")
+    print(f"mutate: SURVIVOR {name}", file=sys.stderr)
+    survivors.append(name)
 
 if survivors:
     print("mutate: survivors: " + ", ".join(survivors), file=sys.stderr)
