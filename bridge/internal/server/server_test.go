@@ -902,7 +902,7 @@ func TestLoadReplayCapAndShutdown(t *testing.T) {
 
 	before := runtime.NumGoroutine()
 	for i := 0; i < 2; i++ {
-		slow, slowBase, stop := startTestServer(t, []string{"ZB_FAKE_LOAD_SLOW_MS=2000"})
+		slow, slowBase, stop := startTestServer(t, []string{"ZB_FAKE_LOAD_SLOW_MS=200"})
 		finished := make(chan struct{})
 		go func() {
 			defer close(finished)

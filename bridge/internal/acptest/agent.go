@@ -10,7 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
+	"unsafe"
 )
 
 // Main runs the fake agent on stdio. Call from TestMain when invoked as `testbinary acp` with ZB_FAKE_AGENT=1.
@@ -127,8 +129,8 @@ func runAgent(r io.Reader, w io.Writer) {
 				writeErr(w, env.ID, -32602, "unknown session")
 				continue
 			}
-			if ms := envMillis("ZB_FAKE_LOAD_SLOW_MS"); ms > 0 {
-				time.Sleep(time.Duration(ms) * time.Millisecond)
+			if ms := envMillis("ZB_FAKE_LOAD_SLOW_MS"); ms > 0 && !sleepUnlessClosed(r, ms) {
+				return
 			}
 			replaySession(w, sess)
 			writeResp(w, env.ID, modeResult("ask"))
@@ -162,8 +164,8 @@ func runAgent(r io.Reader, w io.Writer) {
 				writeErr(w, env.ID, -32002, msg)
 				continue
 			}
-			if ms := slowMillis(); ms > 0 {
-				time.Sleep(time.Duration(ms) * time.Millisecond)
+			if ms := slowMillis(); ms > 0 && !sleepUnlessClosed(r, ms) {
+				return
 			}
 			if os.Getenv("ZB_FAKE_NO_PERMISSION") == "1" {
 				notify(w, "session/update", map[string]any{
@@ -540,6 +542,74 @@ func permissionRoundTool(r *bufio.Reader, w io.Writer, sessionID string, onlyAlw
 
 func slowMillis() int {
 	return envMillis("ZB_FAKE_AGENT_SLOW_MS")
+}
+
+// sleepUnlessClosed waits ms, or returns false when stdin closes.
+// The parent's Shutdown closes that pipe. select picks the timer or the close.
+// /dev/stdin rejects SetReadDeadline, so a poll watches POLLHUP and does not read.
+func sleepUnlessClosed(r io.Reader, ms int) bool {
+	if ms <= 0 {
+		return true
+	}
+	f, ok := r.(*os.File)
+	if !ok {
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+		return true
+	}
+	closed := make(chan struct{})
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fd := int(f.Fd())
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			revents, err := waitHUP(fd, 20)
+			if err == syscall.EINTR {
+				continue
+			}
+			if revents&hupBit != 0 {
+				close(closed)
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		close(stop)
+		<-done
+		return true
+	case <-closed:
+		close(stop)
+		<-done
+		return false
+	}
+}
+
+const hupBit int16 = 0x10
+
+type pollfd struct {
+	fd      int32
+	events  int16
+	revents int16
+}
+
+func waitHUP(fd, timeoutMS int) (int16, error) {
+	p := pollfd{fd: int32(fd), events: hupBit}
+	_, _, errno := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(&p)), 1, uintptr(timeoutMS))
+	if errno != 0 {
+		return 0, errno
+	}
+	return p.revents, nil
 }
 
 func envMillis(key string) int {
