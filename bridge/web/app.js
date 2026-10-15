@@ -60,7 +60,12 @@ const ui = {
   planLabel: "Plano",
   permissionsLabel: "Permissões",
   logLabel: "Conversa",
-  turnEnded: "turno encerrado"
+  turnEnded: "turno encerrado",
+  emptySessions: "Nenhuma sessão neste workspace",
+  loadingSessions: "Carregando sessões",
+  retry: "Tentar de novo",
+  emptyLog: "A conversa aparece aqui.",
+  errorPrefix: "Erro: "
 };
 
 const loginEl = document.getElementById("login");
@@ -85,6 +90,8 @@ const sessionBrowserEl = document.getElementById("session-browser");
 const sessionListEl = document.getElementById("session-list");
 const sessionFilterEl = document.getElementById("session-filter");
 const moreSessionsBtn = document.getElementById("more-sessions");
+const sessionStatusEl = document.getElementById("session-status");
+const sessionRetryBtn = document.getElementById("session-retry");
 const refreshSessionsBtn = document.getElementById("refresh-sessions");
 const sidebarEl = document.getElementById("sidebar");
 const sidebarToggleEl = document.getElementById("sidebar-toggle");
@@ -99,6 +106,7 @@ function applyChrome() {
   sessionFilterEl.querySelector("option[value=all]").textContent = ui.filterAll;
   refreshSessionsBtn.textContent = ui.refresh;
   moreSessionsBtn.textContent = ui.more;
+  sessionRetryBtn.textContent = ui.retry;
   document.querySelector("label[for=token]").textContent = ui.token;
   loginBtn.textContent = ui.enter;
   document.querySelector("label[for=workspace]").textContent = ui.workspace;
@@ -124,6 +132,7 @@ function syncSidebar() {
 }
 
 applyChrome();
+showLogHint();
 window.matchMedia("(max-width: 40rem)").addEventListener("change", syncSidebar);
 
 let sessionCursor = "";
@@ -377,14 +386,29 @@ function nearBottom() {
 
 function addLine(className, value) {
   const follow = nearBottom();
+  const hint = logEl.querySelector(".log-hint");
+  if (hint) {
+    logEl.removeChild(hint);
+  }
   const p = document.createElement("p");
   p.className = "line " + className;
-  p.appendChild(document.createTextNode(value));
+  const text = className.indexOf("warn") >= 0 ? ui.errorPrefix + value : value;
+  p.appendChild(document.createTextNode(text));
   logEl.appendChild(p);
   if (follow) {
     logEl.scrollTop = logEl.scrollHeight;
   }
   return p;
+}
+
+function showLogHint() {
+  if (logEl.querySelector(".log-hint")) {
+    return;
+  }
+  const p = document.createElement("p");
+  p.className = "log-hint";
+  p.textContent = ui.emptyLog;
+  logEl.appendChild(p);
 }
 
 function note(value) {
@@ -464,6 +488,7 @@ function clearView() {
   seen = new Set();
   assistant = null;
   thoughtBody = null;
+  showLogHint();
 }
 
 function abortStream() {
@@ -561,11 +586,17 @@ async function pageSessions(more) {
   if (more && sessionCursor) {
     params.set("cursor", sessionCursor);
   }
+  sessionRetryBtn.hidden = true;
+  if (!more) {
+    sessionStatusEl.textContent = ui.loadingSessions;
+  }
   const res = await api("/v1/sessions?" + params.toString());
   if (gen !== listGen) {
     return;
   }
   if (!res.ok) {
+    sessionStatusEl.textContent = ui.errorPrefix + ui.listFailed;
+    sessionRetryBtn.hidden = false;
     note(ui.listFailed);
     return;
   }
@@ -577,6 +608,11 @@ async function pageSessions(more) {
   sessions.forEach(renderSessionItem);
   sessionCursor = data.nextCursor || "";
   moreSessionsBtn.hidden = !sessionCursor;
+  if (!more && sessions.length === 0) {
+    sessionStatusEl.textContent = ui.emptySessions;
+  } else {
+    sessionStatusEl.textContent = "";
+  }
   markActiveSession();
 }
 
@@ -1201,6 +1237,12 @@ document.getElementById("sidebar-toggle").addEventListener("click", function () 
 });
 
 refreshSessionsBtn.addEventListener("click", function () {
+  refreshSessions().catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+});
+
+sessionRetryBtn.addEventListener("click", function () {
   refreshSessions().catch(function (err) {
     note(String(err && err.message ? err.message : err));
   });

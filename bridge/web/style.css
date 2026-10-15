@@ -15,7 +15,7 @@
     --fg: #f3efe6;
     --muted: #b7b0a4;
     --line: #3a342c;
-    --accent: #8fceB0;
+    --accent: #8fceb0;
     --warn: #f0a06a;
     --focus: #c8f5df;
   }
@@ -29,16 +29,40 @@ body {
   color: var(--fg);
   font: 16px/1.45 system-ui, sans-serif;
   overflow-wrap: anywhere;
+  overflow-x: clip;
 }
 
-#shell { display: flex; align-items: stretch; min-height: 100vh; max-width: 100%; }
+#shell { display: flex; align-items: flex-start; min-height: 100dvh; max-width: 100%; }
 
 #sidebar {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
   width: 18rem;
   flex: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-right: 1px solid var(--line);
   padding: 0.75rem;
 }
+
+#sidebar-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#session-browser {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#session-browser[hidden] { display: none; }
 
 #sidebar button, #session-filter {
   width: 100%;
@@ -48,9 +72,10 @@ body {
   border: 1px solid var(--line);
 }
 
-#session-list { list-style: none; margin: 0.5rem 0; padding: 0; }
+#session-list { list-style: none; margin: 0.5rem 0; padding: 0; flex: 1; min-height: 0; overflow: auto; }
 #session-list li { padding: 0.4rem 0; border-bottom: 1px solid var(--line); }
 #session-list li.active { outline: 2px solid var(--focus); }
+#session-list button { min-height: 2.5rem; }
 #session-list p { margin: 0.2rem 0; color: var(--muted); font-size: 0.8rem; }
 .history-mark { color: var(--muted); font-size: 0.75rem; margin-right: 0.35rem; }
 
@@ -61,7 +86,6 @@ main {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  min-height: 100vh;
   flex: 1;
   min-width: 0;
 }
@@ -158,9 +182,15 @@ button:disabled, select:disabled { opacity: 0.5; cursor: default; }
 
 @media (max-width: 40rem) {
   #shell { flex-direction: column; }
-  #sidebar { width: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  #sidebar {
+    position: static;
+    height: auto;
+    width: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
   #sidebar-body { display: none; }
-  #sidebar.open #sidebar-body { display: block; }
+  #sidebar.open #sidebar-body { display: flex; max-height: 16rem; }
   main { padding: 0.75rem; }
   #logout-all, #auth-session-list button { width: 100%; }
 }
