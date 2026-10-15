@@ -1,5 +1,64 @@
 "use strict";
 
+const ui = {
+  history: "histórico",
+  resume: "Retomar",
+  resumed: "retomada",
+  readOnly: "sessão somente leitura",
+  listFailed: "não foi possível listar as sessões",
+  loadFailed: "não foi possível abrir a sessão",
+  resumeFailed: "não foi possível retomar a sessão",
+  sessionFailed: "não foi possível abrir a sessão",
+  alreadyAttached: "sessão já aberta",
+  noSession: "nenhuma sessão",
+  infoFailed: "não foi possível ler o estado",
+  authFailed: "não foi possível saber se há login",
+  capsFailed: "não foi possível ler as capacidades",
+  modeFailed: "não foi possível mudar o modo",
+  promptRunning: "já existe um turno em andamento",
+  promptFailed: "não foi possível enviar",
+  badEvent: "evento ilegível",
+  expiredLogin: "sessão expirada",
+  noAuthSessions: "nenhuma sessão ativa",
+  authListFailed: "não foi possível listar as sessões",
+  revoke: "Revogar",
+  revokeLabel: "Revogar sessão ",
+  created: "criada ",
+  lastUse: " último uso ",
+  expires: " expira ",
+  allow: "Permitir",
+  deny: "Recusar",
+  permission: "permissão",
+  permissionLine: "permissão ",
+  waiting: "aguardando",
+  expired: "expirada",
+  resolved: "já resolvida",
+  notFound: "não encontrada",
+  failed: "falhou ",
+  thought: "raciocínio",
+  command: "comando",
+  output: "saída",
+  manyTries: "muitas tentativas",
+  tokenRejected: "token recusado",
+  sessions: "Sessões",
+  filter: "Filtro",
+  filterHere: "este diretório",
+  filterAll: "todos",
+  refresh: "Atualizar",
+  more: "Mais",
+  token: "Token",
+  enter: "Entrar",
+  workspace: "Diretório",
+  newSession: "Nova sessão",
+  logout: "Sair",
+  authSessionsTitle: "Sessões deste acesso",
+  authSessionsLabel: "Sessões ativas",
+  logoutAll: "Sair de todos os dispositivos",
+  mode: "Modo",
+  message: "Mensagem",
+  send: "Enviar"
+};
+
 const loginEl = document.getElementById("login");
 const tokenEl = document.getElementById("token");
 const loginBtn = document.getElementById("login-button");
@@ -26,6 +85,30 @@ const sessionFilterEl = document.getElementById("session-filter");
 const moreSessionsBtn = document.getElementById("more-sessions");
 const refreshSessionsBtn = document.getElementById("refresh-sessions");
 const sidebarEl = document.getElementById("sidebar");
+const sidebarToggleEl = document.getElementById("sidebar-toggle");
+
+function applyChrome() {
+  sidebarToggleEl.textContent = ui.sessions;
+  document.querySelector("label[for=session-filter]").textContent = ui.filter;
+  sessionFilterEl.querySelector("option[value=workspace]").textContent = ui.filterHere;
+  sessionFilterEl.querySelector("option[value=all]").textContent = ui.filterAll;
+  refreshSessionsBtn.textContent = ui.refresh;
+  moreSessionsBtn.textContent = ui.more;
+  document.querySelector("label[for=token]").textContent = ui.token;
+  loginBtn.textContent = ui.enter;
+  document.querySelector("label[for=workspace]").textContent = ui.workspace;
+  newSessionBtn.textContent = ui.newSession;
+  logoutBtn.textContent = ui.logout;
+  document.getElementById("auth-sessions-title").textContent = ui.authSessionsTitle;
+  authSessionListEl.setAttribute("aria-label", ui.authSessionsLabel);
+  logoutAllBtn.textContent = ui.logoutAll;
+  modeLabelEl.textContent = ui.mode;
+  document.querySelector("label[for=text]").textContent = ui.message;
+  sendBtn.textContent = ui.send;
+}
+
+applyChrome();
+
 let sessionCursor = "";
 
 let sessionId = "";
@@ -111,7 +194,7 @@ function setModeEnabled(on) {
 async function loadCapabilities() {
   const res = await api("/v1/capabilities");
   if (!res.ok) {
-    note("capabilities failed " + res.status);
+    note(ui.capsFailed);
     return;
   }
   caps = await res.json();
@@ -187,7 +270,7 @@ function renderAuthSessions(sessions) {
   clearAuthSessionList();
   const rows = Array.isArray(sessions) ? sessions : [];
   if (rows.length === 0) {
-    authSessionStatusEl.textContent = "nenhuma sessao ativa";
+    authSessionStatusEl.textContent = ui.noAuthSessions;
     return;
   }
   authSessionStatusEl.textContent = "";
@@ -197,11 +280,11 @@ function renderAuthSessions(sessions) {
     const id = document.createElement("p");
     id.textContent = shortHandle(handle);
     const times = document.createElement("p");
-    times.textContent = "criada " + stamp(sess.created) + " ultimo uso " + stamp(sess.last) + " expira " + stamp(sess.expires);
+    times.textContent = ui.created + stamp(sess.created) + ui.lastUse + stamp(sess.last) + ui.expires + stamp(sess.expires);
     const revoke = document.createElement("button");
     revoke.type = "button";
-    revoke.textContent = "Revogar";
-    revoke.setAttribute("aria-label", "Revogar sessao " + shortHandle(handle));
+    revoke.textContent = ui.revoke;
+    revoke.setAttribute("aria-label", ui.revokeLabel + shortHandle(handle));
     revoke.addEventListener("click", function () {
       revokeAuthSession(handle);
     });
@@ -214,7 +297,7 @@ function renderAuthSessions(sessions) {
 
 function showAuthSessionError() {
   clearAuthSessionList();
-  authSessionStatusEl.textContent = "nao foi possivel listar as sessoes";
+  authSessionStatusEl.textContent = ui.authListFailed;
 }
 
 async function refreshAuthSessions() {
@@ -254,7 +337,7 @@ async function api(url, opts) {
   const res = await fetch(url, opts);
   const path = String(url);
   if (res.status === 401 && path.indexOf("/v1/login") < 0 && path.indexOf("/v1/auth/status") < 0) {
-    showLogin("sessao expirada");
+    showLogin(ui.expiredLogin);
   }
   return res;
 }
@@ -293,7 +376,7 @@ function note(value) {
 async function boot() {
   const statusRes = await api("/v1/auth/status");
   if (!statusRes.ok) {
-    note("auth status failed");
+    note(ui.authFailed);
     return;
   }
   const status = await statusRes.json();
@@ -309,7 +392,7 @@ async function boot() {
 async function startWorkspace() {
   const infoRes = await api("/v1/info");
   if (!infoRes.ok) {
-    note("info failed");
+    note(ui.infoFailed);
     return;
   }
   const info = await infoRes.json();
@@ -323,7 +406,7 @@ async function startWorkspace() {
     body: body
   });
   if (!ses.ok) {
-    note("session failed");
+    note(ui.sessionFailed);
     return;
   }
   const data = await ses.json();
@@ -377,7 +460,7 @@ async function openSession() {
     body: body
   });
   if (!ses.ok) {
-    note("session failed");
+    note(ui.sessionFailed);
     return;
   }
   const data = await ses.json();
@@ -417,7 +500,7 @@ function shortId(id) {
 function markHistory(line) {
   const mark = document.createElement("span");
   mark.className = "history-mark";
-  mark.textContent = "historico";
+  mark.textContent = ui.history;
   line.insertBefore(mark, line.firstChild);
 }
 
@@ -457,7 +540,7 @@ async function pageSessions(more) {
     return;
   }
   if (!res.ok) {
-    note("list failed " + res.status);
+    note(ui.listFailed);
     return;
   }
   const data = await res.json();
@@ -496,7 +579,7 @@ function renderSessionItem(sess) {
   if (caps.sessionResume === true) {
     const resume = document.createElement("button");
     resume.type = "button";
-    resume.textContent = "Retomar";
+    resume.textContent = ui.resume;
     resume.addEventListener("click", function () {
       resumeSession(li.dataset.id).catch(function (err) {
         note(String(err && err.message ? err.message : err));
@@ -519,14 +602,14 @@ async function loadSession(id) {
     body: "{}"
   });
   if (res.status === 409) {
-    note("already attached");
+    note(ui.alreadyAttached);
     sessionId = id;
     markActiveSession();
     connect(0);
     return;
   }
   if (!res.ok) {
-    note("load failed " + res.status);
+    note(ui.loadFailed);
     return;
   }
   const data = await res.json();
@@ -546,14 +629,14 @@ async function resumeSession(id) {
     body: "{}"
   });
   if (!res.ok) {
-    note("resume failed " + res.status);
+    note(ui.resumeFailed);
     return;
   }
   const data = await res.json();
   if (data.attached === true) {
     sessionId = id;
     markActiveSession();
-    note("retomada");
+    note(ui.resumed);
     return;
   }
   abortStream();
@@ -644,7 +727,7 @@ function handleBlock(block) {
     try {
       msg = JSON.parse(raw);
     } catch (err) {
-      note("bad event");
+      note(ui.badEvent);
       continue;
     }
     if (typeof msg.seq === "number") {
@@ -673,7 +756,7 @@ function render(msg) {
   if (msg.type === "error") {
     const message = String(msg.message || "error");
     if (caps.profile === "zero" && message.indexOf("view-only") >= 0) {
-      note("sessao somente leitura");
+      note(ui.readOnly);
     } else {
       note(message);
     }
@@ -721,7 +804,7 @@ function render(msg) {
     if (!thoughtBody) {
       const details = document.createElement("details");
       const summary = document.createElement("summary");
-      summary.textContent = "thought";
+      summary.textContent = ui.thought;
       thoughtBody = document.createElement("p");
       thoughtBody.className = "line thought";
       details.appendChild(summary);
@@ -808,13 +891,13 @@ function renderTool(update) {
     const args = document.createElement("details");
     args.className = "tool-args";
     const argsSummary = document.createElement("summary");
-    argsSummary.textContent = "command";
+    argsSummary.textContent = ui.command;
     const argsPre = document.createElement("pre");
     args.appendChild(argsSummary);
     args.appendChild(argsPre);
     const details = document.createElement("details");
     const summary = document.createElement("summary");
-    summary.textContent = "output";
+    summary.textContent = ui.output;
     const body = document.createElement("div");
     details.appendChild(summary);
     details.appendChild(body);
@@ -931,7 +1014,7 @@ function showPermission(msg) {
   card.className = "perm";
   card.tabIndex = 0;
   const title = document.createElement("p");
-  title.textContent = String(tool.title || "permission");
+  title.textContent = String(tool.title || ui.permission);
   const kind = document.createElement("p");
   kind.className = "event";
   kind.textContent = String(tool.kind || "");
@@ -946,10 +1029,10 @@ function showPermission(msg) {
   actions.className = "perm-actions";
   const allowBtn = document.createElement("button");
   allowBtn.type = "button";
-  allowBtn.textContent = "Allow";
+  allowBtn.textContent = ui.allow;
   const denyBtn = document.createElement("button");
   denyBtn.type = "button";
-  denyBtn.textContent = "Deny";
+  denyBtn.textContent = ui.deny;
   actions.appendChild(allowBtn);
   actions.appendChild(denyBtn);
   card.appendChild(title);
@@ -983,21 +1066,21 @@ function showPermission(msg) {
       body: JSON.stringify({ decision: decision })
     }).then(function (res) {
       if (res.status === 200) {
-        status.textContent = "waiting";
+        status.textContent = ui.waiting;
         return;
       }
       if (res.status === 409) {
         return res.json().then(function (body) {
-          status.textContent = body && body.reason === "expired" ? "expired" : "already resolved";
+          status.textContent = body && body.reason === "expired" ? ui.expired : ui.resolved;
           actions.remove();
         });
       }
       if (res.status === 404) {
-        status.textContent = "not found";
+        status.textContent = ui.notFound;
         actions.remove();
         return;
       }
-      status.textContent = "failed " + res.status;
+      status.textContent = ui.failed + res.status;
       allowBtn.disabled = false;
       denyBtn.disabled = false;
     }).catch(function (err) {
@@ -1024,7 +1107,7 @@ function resolvePermission(msg) {
   }
   permState.set(reqId, decision);
   if (!activePerm || activePerm.reqId !== reqId) {
-    addLine("event", "permission " + decision);
+    addLine("event", ui.permissionLine + decision);
     return;
   }
   window.clearInterval(activePerm.timer);
@@ -1032,7 +1115,7 @@ function resolvePermission(msg) {
     activePerm.card.parentNode.removeChild(activePerm.card);
   }
   activePerm = null;
-  addLine("event", "permission " + decision);
+  addLine("event", ui.permissionLine + decision);
   if (permQueue.length) {
     showPermission(permQueue.shift());
   }
@@ -1065,7 +1148,7 @@ modeEl.addEventListener("change", function () {
     }
     setModeEnabled(true);
     if (!res.ok) {
-      note("mode failed " + res.status);
+      note(ui.modeFailed);
     }
   }).catch(function (err) {
     if (!sendBtn.disabled) {
@@ -1110,11 +1193,11 @@ function submitLogin() {
     body: JSON.stringify({ token: token })
   }).then(function (res) {
     if (res.status === 429) {
-      loginError.textContent = "muitas tentativas";
+      loginError.textContent = ui.manyTries;
       return;
     }
     if (!res.ok) {
-      loginError.textContent = "token recusado";
+      loginError.textContent = ui.tokenRejected;
       return;
     }
     tokenEl.value = "";
@@ -1165,7 +1248,7 @@ newSessionBtn.addEventListener("click", function () {
 form.addEventListener("submit", function (ev) {
   ev.preventDefault();
   if (!sessionId) {
-    note("no session");
+    note(ui.noSession);
     return;
   }
   const text = textEl.value;
@@ -1180,11 +1263,11 @@ form.addEventListener("submit", function (ev) {
     body: JSON.stringify({ text: text })
   }).then(function (res) {
     if (res.status === 409) {
-      note("prompt already running");
+      note(ui.promptRunning);
       return;
     }
     if (!res.ok) {
-      note("prompt failed " + res.status);
+      note(ui.promptFailed);
       sendBtn.disabled = false;
       setModeEnabled(true);
       return;

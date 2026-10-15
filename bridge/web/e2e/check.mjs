@@ -163,13 +163,13 @@ try {
 
   const denied = await evalJs(`(function () {
     const buttons = Array.from(document.querySelectorAll('#permissions button'));
-    const deny = buttons.find((b) => b.textContent === 'Deny');
+    const deny = buttons.find((b) => b.textContent === 'Recusar');
     if (!deny) return false;
     deny.click();
     return true;
   })()`);
   if (!denied) fail("deny-click", "Deny button missing");
-  const denyDone = await waitFor("document.body.textContent.indexOf('permission deny') >= 0 && document.querySelectorAll('#permissions button').length === 0", 8000);
+  const denyDone = await waitFor("document.body.textContent.indexOf('permissão deny') >= 0 && document.querySelectorAll('#permissions button').length === 0", 8000);
   result.denied = Boolean(denyDone);
   if (!denyDone) fail("deny-result", "permission deny did not clear the buttons");
   if (!(await waitFor("document.getElementById('send').disabled === false", 8000))) {
@@ -177,10 +177,10 @@ try {
   }
 
   if (!(await sendPrompt("allow-please"))) fail("send-allow", "second prompt failed");
-  const allowCard = await waitFor("Array.from(document.querySelectorAll('#permissions button')).some((b) => b.textContent === 'Allow')", 8000);
+  const allowCard = await waitFor("Array.from(document.querySelectorAll('#permissions button')).some((b) => b.textContent === 'Permitir')", 8000);
   if (!allowCard) fail("allow-card", "second permission card missing");
   await evalJs(`(function () {
-    const allow = Array.from(document.querySelectorAll('#permissions button')).find((b) => b.textContent === 'Allow');
+    const allow = Array.from(document.querySelectorAll('#permissions button')).find((b) => b.textContent === 'Permitir');
     if (allow) allow.click();
   })()`);
   const allowed = await waitFor("document.body.textContent.indexOf('ALLOWED optionId=allow') >= 0", 8000);
@@ -191,7 +191,7 @@ try {
   }
 
   if (!(await sendPrompt("expire-please"))) fail("send-expire", "timeout prompt failed");
-  const expired = await waitFor("document.body.textContent.indexOf('permission expired') >= 0", 20000);
+  const expired = await waitFor("document.body.textContent.indexOf('permissão expired') >= 0", 20000);
   result.expired = Boolean(expired);
   if (!expired) fail("expired", "timeout did not show expired");
 
@@ -211,7 +211,7 @@ try {
     return true;
   })()`);
   if (!loaded) fail("session-load-click", "hostile session button missing");
-  const replay = await waitFor("document.getElementById('log').textContent.indexOf('replay-user') >= 0 && document.getElementById('log').textContent.indexOf('historico') >= 0 && document.querySelectorAll('#log img').length === 0", 8000);
+  const replay = await waitFor("document.getElementById('log').textContent.indexOf('replay-user') >= 0 && document.getElementById('log').textContent.indexOf('histórico') >= 0 && document.querySelectorAll('#log img').length === 0", 8000);
   result.replay = Boolean(replay);
   if (!replay) fail("replay", await evalJs("document.getElementById('log').textContent"));
   if (!(await waitFor("document.getElementById('more-sessions').hidden === false", 3000))) {
@@ -251,7 +251,7 @@ try {
   if (!(await waitFor("sessionId === 'sess-view'", 8000))) fail("view-load", await evalJs("sessionId"));
   if (!(await waitFor("document.getElementById('send').disabled === false", 8000))) fail("view-send", "composer disabled");
   if (!(await sendPrompt("view-only-please"))) fail("view-prompt", "prompt failed");
-  const viewOnly = await waitFor("document.body.textContent.indexOf('sessao somente leitura') >= 0", 8000);
+  const viewOnly = await waitFor("document.body.textContent.indexOf('sessão somente leitura') >= 0", 8000);
   result.viewOnly = Boolean(viewOnly);
   if (!viewOnly) fail("view-only", "read-only notice missing");
 
@@ -272,22 +272,22 @@ try {
     result.authSessionsHidden = hidden === true;
     if (hidden !== true) fail("auth-sessions-hidden", hidden);
   } else {
-    const devices = await waitFor("document.getElementById('auth-sessions').hidden === false && document.querySelectorAll('#auth-session-list li').length >= 1 && document.getElementById('auth-session-list').textContent.indexOf('criada') >= 0 && document.getElementById('auth-session-list').textContent.indexOf('ultimo uso') >= 0 && document.getElementById('auth-session-list').textContent.indexOf('expira') >= 0", 8000);
+    const devices = await waitFor("document.getElementById('auth-sessions').hidden === false && document.querySelectorAll('#auth-session-list li').length >= 1 && document.getElementById('auth-session-list').textContent.indexOf('criada') >= 0 && document.getElementById('auth-session-list').textContent.indexOf('último uso') >= 0 && document.getElementById('auth-session-list').textContent.indexOf('expira') >= 0", 8000);
     result.authSessions = Boolean(devices);
     if (!devices) fail("auth-sessions", await evalJs("document.getElementById('auth-sessions').textContent"));
     const aria = await evalJs(`(function () {
       const button = document.querySelector('#auth-session-list button');
       const id = document.querySelector('#auth-session-list p');
       if (!button || !id) return false;
-      return button.textContent === 'Revogar' && button.getAttribute('aria-label').indexOf('Revogar sessao ') === 0 && id.textContent.length === 8;
+      return button.textContent === 'Revogar' && button.getAttribute('aria-label').indexOf('Revogar sessão ') === 0 && id.textContent.length === 8;
     })()`);
     result.authSessionId = aria === true;
     if (aria !== true) fail("auth-session-id", await evalJs("document.getElementById('auth-session-list').textContent"));
     const states = await evalJs(`(function () {
       renderAuthSessions([]);
-      const empty = document.getElementById('auth-sessions-status').textContent === 'nenhuma sessao ativa' && document.querySelectorAll('#auth-session-list li').length === 0;
+      const empty = document.getElementById('auth-sessions-status').textContent === 'nenhuma sessão ativa' && document.querySelectorAll('#auth-session-list li').length === 0;
       showAuthSessionError();
-      const error = document.getElementById('auth-sessions-status').textContent === 'nao foi possivel listar as sessoes' && document.querySelectorAll('#auth-session-list li').length === 0;
+      const error = document.getElementById('auth-sessions-status').textContent === 'não foi possível listar as sessões' && document.querySelectorAll('#auth-session-list li').length === 0;
       return empty && error;
     })()`);
     result.authSessionStates = states === true;

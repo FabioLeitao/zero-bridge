@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,17 +9,17 @@
 <body>
   <div id="shell">
   <aside id="sidebar">
-    <button id="sidebar-toggle" type="button">Sessoes</button>
+    <button id="sidebar-toggle" type="button">Sessões</button>
     <div id="sidebar-body">
       <div id="session-browser" hidden>
       <label for="session-filter">Filtro</label>
       <select id="session-filter">
-        <option value="workspace">workspace atual</option>
+        <option value="workspace">este diretório</option>
         <option value="all">todos</option>
       </select>
       <button id="refresh-sessions" type="button">Atualizar</button>
       <ul id="session-list"></ul>
-      <button id="more-sessions" type="button" hidden>mais</button>
+      <button id="more-sessions" type="button" hidden>Mais</button>
       </div>
     </div>
   </aside>
@@ -33,26 +33,26 @@
       <p id="login-error"></p>
     </div>
     <form id="session">
-      <label for="workspace">Workspace</label>
+      <label for="workspace">Diretório</label>
       <input id="workspace" name="workspace" type="text" autocomplete="off" readonly>
-      <button id="new-session" type="button">Nova sessao</button>
+      <button id="new-session" type="button">Nova sessão</button>
       <button id="logout" type="button" hidden>Sair</button>
       <section id="auth-sessions" hidden aria-labelledby="auth-sessions-title">
-        <h2 id="auth-sessions-title">Sessoes deste acesso</h2>
+        <h2 id="auth-sessions-title">Sessões deste acesso</h2>
         <p id="auth-sessions-status" role="status" aria-live="polite"></p>
-        <ul id="auth-session-list" aria-label="Sessoes ativas"></ul>
+        <ul id="auth-session-list" aria-label="Sessões ativas"></ul>
         <button id="logout-all" type="button">Sair de todos os dispositivos</button>
       </section>
-      <label id="mode-label" for="mode" hidden>Mode</label>
+      <label id="mode-label" for="mode" hidden>Modo</label>
       <select id="mode" hidden disabled></select>
     </form>
     <div id="plan" hidden></div>
     <div id="permissions"></div>
     <div id="log" aria-live="polite"></div>
     <form id="composer">
-      <label for="text">Message</label>
+      <label for="text">Mensagem</label>
       <textarea id="text" name="text" rows="3" required></textarea>
-      <button id="send" type="submit">Send</button>
+      <button id="send" type="submit">Enviar</button>
     </form>
   </main>
   </div>
