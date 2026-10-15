@@ -85,6 +85,41 @@ hooks:
 	@test "$$(git -C $(ROOT) config --get core.hooksPath)" = ".githooks"
 	bash $(ROOT)/scripts/hooks-selftest.sh
 
-check: fmt-check vet build test lint-static vulncheck tidy-check hygiene diff-check
+# fmt-check, vet, and build stay in front so a compile error does not wait
+# for the race tests. The next five do not share worktree writes: test, lint,
+# and vulncheck use the build cache, tidy-check is go mod tidy -diff, and
+# hygiene uses a temp directory. Logs are printed in this fixed order.
+# stdbuf keeps line buffering, so a tool's stdout and stderr stay in the
+# order the program wrote them when the log is a file.
+# diff-check is last, so a tool that wrote the tree fails the gate.
+check:
+	@$(MAKE) --no-print-directory fmt-check
+	@$(MAKE) --no-print-directory vet
+	@$(MAKE) --no-print-directory build
+	@set -eu; \
+	logs=$$(mktemp -d); \
+	trap 'rm -rf "$$logs"' EXIT; \
+	start() { \
+		name=$$1; shift; \
+		stdbuf -oL -eL "$$@" >"$$logs/$$name.out" 2>&1 & \
+		echo $$! >"$$logs/$$name.pid"; \
+	}; \
+	start test $(MAKE) --no-print-directory test; \
+	start lint $(MAKE) --no-print-directory lint-static; \
+	start vuln $(MAKE) --no-print-directory vulncheck; \
+	start tidy $(MAKE) --no-print-directory tidy-check; \
+	start hygiene $(MAKE) --no-print-directory hygiene; \
+	fail=0; \
+	for name in test lint vuln tidy hygiene; do \
+		if wait "$$(cat "$$logs/$$name.pid")"; then \
+			st=0; \
+		else \
+			st=$$?; \
+		fi; \
+		cat "$$logs/$$name.out"; \
+		if [ "$$st" -ne 0 ]; then fail=$$st; fi; \
+	done; \
+	$(MAKE) --no-print-directory diff-check; \
+	exit "$$fail"
 
 check-advisory: deadcode
