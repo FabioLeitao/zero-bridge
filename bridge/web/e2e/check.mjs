@@ -95,7 +95,7 @@ async function scaleSessions(evalJs, waitFor) {
     await sleep(300);
   }
 
-  const alias = '<img src=x on' + 'error="window.__xss=1">';
+  const alias = 'zb-alias <img src=x on' + 'error="window.__xss=9">';
   const renamed = await evalJs(`(function () {
     const item = Array.from(document.querySelectorAll('#session-list li')).find((li) => li.textContent.indexOf('alpha') >= 0);
     if (!item) return false;
@@ -455,9 +455,35 @@ try {
     if (!cleared) {
       fail("logout-clear", await evalJs("JSON.stringify({login: document.getElementById('login').hidden, list: document.getElementById('session-list').textContent, log: document.getElementById('log').textContent, cwd: document.getElementById('workspace').value})"));
     }
-    const stored = await evalJs(`localStorage.length === 0 && sessionStorage.length === 0 && location.href.indexOf(${JSON.stringify(e2eToken)}) < 0`);
-    result.tokenNotStored = stored === true;
-    if (stored !== true) fail("token-storage", stored);
+    const stored = await evalJs(`(function () {
+      const token = ${JSON.stringify(e2eToken)};
+      const rules = {
+        "zb-session-filter": ["workspace", "all"],
+        "zb-show-archived": ["1", ""]
+      };
+      function rowsOf(store) {
+        const rows = [];
+        for (let i = 0; i < store.length; i++) {
+          const key = store.key(i);
+          rows.push({ key: key, value: store.getItem(key) });
+        }
+        return rows;
+      }
+      const rows = rowsOf(localStorage).concat(rowsOf(sessionStorage));
+      let leak = location.href.indexOf(token) >= 0;
+      let allow = true;
+      rows.forEach(function (row) {
+        const key = String(row.key);
+        const value = String(row.value);
+        if (key.indexOf(token) >= 0 || value.indexOf(token) >= 0) leak = true;
+        const ok = rules[key];
+        if (!ok || ok.indexOf(value) < 0) allow = false;
+      });
+      return { leak: leak, allow: allow, rows: rows.map(function (row) { return row.key + "=" + row.value; }) };
+    })()`);
+    result.tokenNotStored = Boolean(stored && stored.leak === false && stored.allow === true);
+    if (!stored || stored.leak) fail("token-storage", "token found in storage or url");
+    if (!stored || !stored.allow) fail("storage-allowlist", stored && stored.rows);
   }
 
   if (!e2eToken) {
