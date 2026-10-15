@@ -56,7 +56,11 @@ const ui = {
   logoutAll: "Sair de todos os dispositivos",
   mode: "Modo",
   message: "Mensagem",
-  send: "Enviar"
+  send: "Enviar",
+  planLabel: "Plano",
+  permissionsLabel: "Permissões",
+  logLabel: "Conversa",
+  turnEnded: "turno encerrado"
 };
 
 const loginEl = document.getElementById("login");
@@ -75,8 +79,6 @@ const workspaceEl = document.getElementById("workspace");
 const sendBtn = document.getElementById("send");
 const modeEl = document.getElementById("mode");
 const newSessionBtn = document.getElementById("new-session");
-const planEl = document.getElementById("plan");
-const permEl = document.getElementById("permissions");
 const agentInfoEl = document.getElementById("agent-info");
 const modeLabelEl = document.getElementById("mode-label");
 const sessionBrowserEl = document.getElementById("session-browser");
@@ -86,6 +88,9 @@ const moreSessionsBtn = document.getElementById("more-sessions");
 const refreshSessionsBtn = document.getElementById("refresh-sessions");
 const sidebarEl = document.getElementById("sidebar");
 const sidebarToggleEl = document.getElementById("sidebar-toggle");
+const statusEl = document.getElementById("status");
+const planEl = document.getElementById("plan");
+const permEl = document.getElementById("permissions");
 
 function applyChrome() {
   sidebarToggleEl.textContent = ui.sessions;
@@ -105,9 +110,21 @@ function applyChrome() {
   modeLabelEl.textContent = ui.mode;
   document.querySelector("label[for=text]").textContent = ui.message;
   sendBtn.textContent = ui.send;
+  sidebarEl.setAttribute("aria-label", ui.sessions);
+  planEl.setAttribute("aria-label", ui.planLabel);
+  permEl.setAttribute("aria-label", ui.permissionsLabel);
+  logEl.setAttribute("aria-label", ui.logLabel);
+  syncSidebar();
+}
+
+function syncSidebar() {
+  const narrow = window.matchMedia("(max-width: 40rem)").matches;
+  const open = sidebarEl.className.indexOf("open") >= 0;
+  sidebarToggleEl.setAttribute("aria-expanded", (!narrow || open) ? "true" : "false");
 }
 
 applyChrome();
+window.matchMedia("(max-width: 40rem)").addEventListener("change", syncSidebar);
 
 let sessionCursor = "";
 
@@ -350,6 +367,7 @@ const tools = new Map();
 const permState = new Map();
 const permQueue = [];
 let activePerm = null;
+let permTitleSeq = 0;
 let streamGen = 0;
 let reader = null;
 
@@ -371,6 +389,12 @@ function addLine(className, value) {
 
 function note(value) {
   addLine("warn", value);
+  announce(value);
+}
+
+function announce(value) {
+  statusEl.textContent = "";
+  statusEl.textContent = value;
 }
 
 async function boot() {
@@ -509,8 +533,10 @@ function markActiveSession() {
   for (let i = 0; i < items.length; i++) {
     if (items[i].dataset.id === sessionId) {
       items[i].className = "active";
+      items[i].setAttribute("aria-current", "true");
     } else {
       items[i].className = "";
+      items[i].removeAttribute("aria-current");
     }
   }
 }
@@ -774,6 +800,7 @@ function render(msg) {
   }
   if (msg.type === "stop") {
     addLine("event", "stop " + String(msg.stopReason || ""));
+    announce(ui.turnEnded);
     assistant = null;
     thoughtBody = null;
     sendBtn.disabled = false;
@@ -1009,12 +1036,16 @@ function showPermission(msg) {
     return;
   }
   permState.set(reqId, "open");
+  permTitleSeq += 1;
   const tool = msg.toolCall || {};
   const card = document.createElement("section");
   card.className = "perm";
+  card.setAttribute("role", "alertdialog");
   card.tabIndex = 0;
   const title = document.createElement("p");
+  title.id = "perm-title-" + String(permTitleSeq);
   title.textContent = String(tool.title || ui.permission);
+  card.setAttribute("aria-labelledby", title.id);
   const kind = document.createElement("p");
   kind.className = "event";
   kind.textContent = String(tool.kind || "");
@@ -1118,6 +1149,8 @@ function resolvePermission(msg) {
   addLine("event", ui.permissionLine + decision);
   if (permQueue.length) {
     showPermission(permQueue.shift());
+  } else {
+    textEl.focus();
   }
 }
 
@@ -1164,6 +1197,7 @@ document.getElementById("sidebar-toggle").addEventListener("click", function () 
   } else {
     sidebarEl.className = "open";
   }
+  syncSidebar();
 });
 
 refreshSessionsBtn.addEventListener("click", function () {
@@ -1208,11 +1242,14 @@ function submitLogin() {
   });
 }
 
-loginBtn.addEventListener("click", submitLogin);
+loginEl.addEventListener("submit", function (ev) {
+  ev.preventDefault();
+  submitLogin();
+});
 tokenEl.addEventListener("keydown", function (ev) {
   if (ev.key === "Enter") {
     ev.preventDefault();
-    submitLogin();
+    loginEl.requestSubmit();
   }
 });
 

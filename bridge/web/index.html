@@ -8,8 +8,8 @@
 </head>
 <body>
   <div id="shell">
-  <aside id="sidebar">
-    <button id="sidebar-toggle" type="button">Sessões</button>
+  <aside id="sidebar" aria-label="Sessões">
+    <button id="sidebar-toggle" type="button" aria-expanded="false" aria-controls="sidebar-body">Sessões</button>
     <div id="sidebar-body">
       <div id="session-browser" hidden>
       <label for="session-filter">Filtro</label>
@@ -26,12 +26,12 @@
   <main>
     <h1>zero-bridge</h1>
     <p id="agent-info" hidden></p>
-    <div id="login" hidden>
+    <form id="login" hidden>
       <label for="token">Token</label>
       <input id="token" name="token" type="password" autocomplete="off">
-      <button id="login-button" type="button">Entrar</button>
-      <p id="login-error"></p>
-    </div>
+      <button id="login-button" type="submit">Entrar</button>
+      <p id="login-error" role="alert"></p>
+    </form>
     <form id="session">
       <label for="workspace">Diretório</label>
       <input id="workspace" name="workspace" type="text" autocomplete="off" readonly>
@@ -46,9 +46,10 @@
       <label id="mode-label" for="mode" hidden>Modo</label>
       <select id="mode" hidden disabled></select>
     </form>
-    <div id="plan" hidden></div>
-    <div id="permissions"></div>
-    <div id="log" aria-live="polite"></div>
+    <p id="status" class="sr-only" role="status"></p>
+    <div id="plan" hidden aria-label="Plano"></div>
+    <div id="permissions" aria-label="Permissões"></div>
+    <div id="log" role="log" aria-live="off" aria-label="Conversa"></div>
     <form id="composer">
       <label for="text">Mensagem</label>
       <textarea id="text" name="text" rows="3" required></textarea>
