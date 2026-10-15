@@ -77,6 +77,14 @@ body {
 #session-list li.active { outline: 2px solid var(--focus); }
 #session-list button { min-height: 2.5rem; }
 #session-list p { margin: 0.2rem 0; color: var(--muted); font-size: 0.8rem; }
+.session-title, #session-list button.session-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-group { margin: 0.6rem 0 0.15rem; font-size: 0.75rem; }
+.check { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.35rem; }
+.check input { width: auto; }
 .history-mark { color: var(--muted); font-size: 0.75rem; margin-right: 0.35rem; }
 
 main {

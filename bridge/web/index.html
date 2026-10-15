@@ -17,6 +17,9 @@
         <option value="workspace">este diretório</option>
         <option value="all">todos</option>
       </select>
+      <label for="session-query">Busca</label>
+      <input id="session-query" type="search" autocomplete="off">
+      <label class="check" for="session-archived"><input id="session-archived" type="checkbox"><span id="session-archived-label">Mostrar arquivadas</span></label>
       <button id="refresh-sessions" type="button">Atualizar</button>
       <ul id="session-list"></ul>
       <p id="session-status" role="status"></p>

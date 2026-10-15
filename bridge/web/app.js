@@ -65,7 +65,18 @@ const ui = {
   loadingSessions: "Carregando sessões",
   retry: "Tentar de novo",
   emptyLog: "A conversa aparece aqui.",
-  errorPrefix: "Erro: "
+  errorPrefix: "Erro: ",
+  search: "Busca",
+  showArchived: "Mostrar arquivadas",
+  groupPinned: "Fixadas",
+  groupToday: "Hoje",
+  groupYesterday: "Ontem",
+  groupWeek: "Esta semana",
+  groupOlder: "Mais antigas",
+  justNow: "agora",
+  minutesAgo: "há {n} min",
+  hoursAgo: "há {n} h",
+  daysAgo: "há {n} d"
 };
 
 const loginEl = document.getElementById("login");
@@ -89,6 +100,8 @@ const modeLabelEl = document.getElementById("mode-label");
 const sessionBrowserEl = document.getElementById("session-browser");
 const sessionListEl = document.getElementById("session-list");
 const sessionFilterEl = document.getElementById("session-filter");
+const sessionQueryEl = document.getElementById("session-query");
+const sessionArchivedEl = document.getElementById("session-archived");
 const moreSessionsBtn = document.getElementById("more-sessions");
 const sessionStatusEl = document.getElementById("session-status");
 const sessionRetryBtn = document.getElementById("session-retry");
@@ -104,6 +117,8 @@ function applyChrome() {
   document.querySelector("label[for=session-filter]").textContent = ui.filter;
   sessionFilterEl.querySelector("option[value=workspace]").textContent = ui.filterHere;
   sessionFilterEl.querySelector("option[value=all]").textContent = ui.filterAll;
+  document.querySelector("label[for=session-query]").textContent = ui.search;
+  document.getElementById("session-archived-label").textContent = ui.showArchived;
   refreshSessionsBtn.textContent = ui.refresh;
   moreSessionsBtn.textContent = ui.more;
   sessionRetryBtn.textContent = ui.retry;
@@ -132,10 +147,13 @@ function syncSidebar() {
 }
 
 applyChrome();
+restoreListPrefs();
 showLogHint();
 window.matchMedia("(max-width: 40rem)").addEventListener("change", syncSidebar);
 
 let sessionCursor = "";
+let loadedSessions = [];
+let queryTimer = 0;
 
 let sessionId = "";
 let authRequired = false;
@@ -556,6 +574,9 @@ function markHistory(line) {
 function markActiveSession() {
   const items = sessionListEl.children;
   for (let i = 0; i < items.length; i++) {
+    if (!items[i].dataset.id) {
+      continue;
+    }
     if (items[i].dataset.id === sessionId) {
       items[i].className = "active";
       items[i].setAttribute("aria-current", "true");
@@ -571,10 +592,112 @@ async function refreshSessions() {
     return;
   }
   sessionCursor = "";
+  loadedSessions = [];
   while (sessionListEl.firstChild) {
     sessionListEl.removeChild(sessionListEl.firstChild);
   }
   await pageSessions(false);
+}
+
+function readPref(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value == null ? fallback : value;
+  } catch (err) {
+    return fallback;
+  }
+}
+
+function writePref(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err) {
+    /* a private window may refuse storage */
+  }
+}
+
+function restoreListPrefs() {
+  const saved = readPref("zb-session-filter", "workspace");
+  if (saved === "all" || saved === "workspace") {
+    sessionFilterEl.value = saved;
+  }
+  sessionArchivedEl.checked = readPref("zb-show-archived", "") === "1";
+}
+
+function relativeWhen(iso) {
+  const then = Date.parse(iso);
+  if (!then) {
+    return "";
+  }
+  const minutes = Math.round((Date.now() - then) / 60000);
+  if (minutes < 1) {
+    return ui.justNow;
+  }
+  if (minutes < 60) {
+    return ui.minutesAgo.replace("{n}", String(minutes));
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 36) {
+    return ui.hoursAgo.replace("{n}", String(hours));
+  }
+  return ui.daysAgo.replace("{n}", String(Math.round(hours / 24)));
+}
+
+function dayBucket(iso) {
+  const then = new Date(iso);
+  if (isNaN(then.getTime())) {
+    return "older";
+  }
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startThen = new Date(then.getFullYear(), then.getMonth(), then.getDate());
+  const dayDiff = Math.round((startToday.getTime() - startThen.getTime()) / 86400000);
+  if (dayDiff <= 0) {
+    return "today";
+  }
+  if (dayDiff === 1) {
+    return "yesterday";
+  }
+  const monday = new Date(startToday.getTime());
+  monday.setDate(startToday.getDate() - ((startToday.getDay() + 6) % 7));
+  if (startThen >= monday) {
+    return "week";
+  }
+  return "older";
+}
+
+function paintSessions() {
+  while (sessionListEl.firstChild) {
+    sessionListEl.removeChild(sessionListEl.firstChild);
+  }
+  const pinned = [];
+  const buckets = { today: [], yesterday: [], week: [], older: [] };
+  loadedSessions.forEach(function (sess) {
+    if (sess.pinned === true) {
+      pinned.push(sess);
+      return;
+    }
+    buckets[dayBucket(sess.updatedAt)].push(sess);
+  });
+  appendSessionGroup(ui.groupPinned, pinned);
+  appendSessionGroup(ui.groupToday, buckets.today);
+  appendSessionGroup(ui.groupYesterday, buckets.yesterday);
+  appendSessionGroup(ui.groupWeek, buckets.week);
+  appendSessionGroup(ui.groupOlder, buckets.older);
+  markActiveSession();
+}
+
+function appendSessionGroup(label, rows) {
+  if (!rows.length) {
+    return;
+  }
+  const head = document.createElement("li");
+  const name = document.createElement("p");
+  name.className = "session-group";
+  name.textContent = label;
+  head.appendChild(name);
+  sessionListEl.appendChild(head);
+  rows.forEach(renderSessionItem);
 }
 
 async function pageSessions(more) {
@@ -583,6 +706,11 @@ async function pageSessions(more) {
   if (sessionFilterEl.value === "workspace" && workspaceEl.value.charAt(0) === "/") {
     params.set("cwd", workspaceEl.value);
   }
+  const query = sessionQueryEl.value.trim();
+  if (query) {
+    params.set("q", query);
+  }
+  params.set("archived", sessionArchivedEl.checked ? "include" : "exclude");
   if (more && sessionCursor) {
     params.set("cursor", sessionCursor);
   }
@@ -605,24 +733,34 @@ async function pageSessions(more) {
     return;
   }
   const sessions = data.sessions || [];
-  sessions.forEach(renderSessionItem);
+  if (!more) {
+    loadedSessions = [];
+  }
+  sessions.forEach(function (sess) {
+    loadedSessions.push(sess);
+  });
   sessionCursor = data.nextCursor || "";
   moreSessionsBtn.hidden = !sessionCursor;
-  if (!more && sessions.length === 0) {
+  if (loadedSessions.length === 0) {
     sessionStatusEl.textContent = ui.emptySessions;
-  } else {
-    sessionStatusEl.textContent = "";
+    while (sessionListEl.firstChild) {
+      sessionListEl.removeChild(sessionListEl.firstChild);
+    }
+    return;
   }
-  markActiveSession();
+  sessionStatusEl.textContent = "";
+  paintSessions();
 }
 
 function renderSessionItem(sess) {
   const li = document.createElement("li");
   li.dataset.id = String(sess.sessionId || "");
-  const label = sess.title ? String(sess.title) : shortId(sess.sessionId);
+  const alias = sess.alias ? String(sess.alias) : "";
+  const label = alias || (sess.title ? String(sess.title) : shortId(sess.sessionId));
   if (caps.loadSession === true) {
     const open = document.createElement("button");
     open.type = "button";
+    open.className = "session-title";
     open.textContent = label;
     open.addEventListener("click", function () {
       loadSession(li.dataset.id).catch(function (err) {
@@ -632,11 +770,13 @@ function renderSessionItem(sess) {
     li.appendChild(open);
   } else {
     const title = document.createElement("p");
+    title.className = "session-title";
     title.textContent = label;
     li.appendChild(title);
   }
   const meta = document.createElement("p");
-  meta.textContent = baseName(sess.cwd) + " " + String(sess.updatedAt || "");
+  const when = relativeWhen(sess.updatedAt);
+  meta.textContent = baseName(sess.cwd) + (when ? " · " + when : "");
   li.appendChild(meta);
   if (caps.sessionResume === true) {
     const resume = document.createElement("button");
@@ -1255,6 +1395,25 @@ moreSessionsBtn.addEventListener("click", function () {
 });
 
 sessionFilterEl.addEventListener("change", function () {
+  writePref("zb-session-filter", sessionFilterEl.value);
+  refreshSessions().catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+});
+
+function runSessionSearch() {
+  refreshSessions().catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+}
+
+sessionQueryEl.addEventListener("input", function () {
+  window.clearTimeout(queryTimer);
+  queryTimer = window.setTimeout(runSessionSearch, 300);
+});
+
+sessionArchivedEl.addEventListener("change", function () {
+  writePref("zb-show-archived", sessionArchivedEl.checked ? "1" : "");
   refreshSessions().catch(function (err) {
     note(String(err && err.message ? err.message : err));
   });
