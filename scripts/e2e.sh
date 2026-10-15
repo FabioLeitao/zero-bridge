@@ -83,7 +83,7 @@ run_one() {
 		echo "e2e: refusing operator port $port" >&2
 		exit 1
 	fi
-	local -a args=(--listen "127.0.0.1:${port}" --zero-bin "$tmp/acpfake" --permission-timeout 3s)
+	local -a args=(--listen "127.0.0.1:${port}" --zero-bin "$tmp/acpfake" --permission-timeout 3s --state-dir "$tmp/state")
 	if [[ "$mode" == token ]]; then
 		umask 077
 		openssl rand -hex 32 >"$tmp/token"
@@ -111,6 +111,31 @@ run_one() {
 
 run_one open
 run_one token
+
+run_scale() {
+	local port rc=0
+	port=$(pick_port)
+	if [[ "$port" == 8765 || "$port" == 8766 ]]; then
+		echo "e2e: refusing operator port $port" >&2
+		exit 1
+	fi
+	ZB_FAKE_SCENARIO=rich ZB_FAKE_PERMISSION=1 ZB_FAKE_LIST_EXTRA=25 \
+		"$tmp/zero-bridge" --listen "127.0.0.1:${port}" --zero-bin "$tmp/acpfake" --permission-timeout 3s --state-dir "$tmp/state" \
+		>"$tmp/server.log" 2>&1 &
+	pid=$!
+	printf '%s\n' "$pid" >"$tmp/pid"
+	wait_health "$port"
+	env -u ZB_E2E_TOKEN node "$root/bridge/web/e2e/check.mjs" "http://127.0.0.1:${port}/" || rc=$?
+	stop_bridge
+	if [[ "$rc" -ne 0 ]]; then
+		echo "e2e: check.mjs failed in mode scale" >&2
+		tail -n 40 "$tmp/server.log" >&2 || true
+		exit "$rc"
+	fi
+	echo "e2e: ok (scale, 127.0.0.1:${port})"
+}
+
+run_scale
 
 refuse_ttl() {
 	local value=$1 rc=0

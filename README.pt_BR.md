@@ -19,6 +19,8 @@ Abra http://127.0.0.1:8765/. Flags:
 | --- | --- | --- |
 | `--listen` | `127.0.0.1:8765` | Endereço de loopback. Qualquer outro host sai com código **2**. |
 | `--workspace` | um diretório temporário novo | Diretório absoluto da sessão nova quando o cliente não manda um. |
+| `--workspace-root` | o diretório de `--workspace` | Diretório absoluto repetível que o navegador pode escolher numa sessão nova. |
+| `--state-dir` | `$XDG_STATE_HOME/zero-bridge` ou `~/.local/state/zero-bridge` | Diretório de `sessions-meta.json`. Modo `0700`, arquivo `0600`. Se não abrir, o processo sobe e as rotas de meta devolvem 503. |
 | `--agent-cmd` | `zero` | Binário do agente. Um caminho absoluto tem de existir e ser executável. Qualquer outro nome passa por `LookPath`. Comando vazio é recusado. |
 | `--agent-arg` | `acp` no comando padrão | Repetível. Cada valor é um elemento de argv. Não há shell. `--agent-cmd` sozinho não acrescenta `acp`. |
 | `--profile` | `zero` | `zero` ou `generic`. O perfil `zero` pode definir `ZERO_PROVIDER`, manter `_meta` na lista de sessões e traduzir as linhas de aviso do Zero. O perfil `generic` não faz nada disso. |

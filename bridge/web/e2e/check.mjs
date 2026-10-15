@@ -44,6 +44,154 @@ async function getTarget() {
   throw new Error("no chrome target");
 }
 
+async function scaleSessions(evalJs, waitFor) {
+  await evalJs(`(function () {
+    const filter = document.getElementById('session-filter');
+    filter.value = 'all';
+    filter.dispatchEvent(new Event('change'));
+    return true;
+  })()`);
+  for (let i = 0; i < 4; i++) {
+    const hidden = await evalJs("document.getElementById('more-sessions').hidden === true");
+    if (hidden) break;
+    await evalJs("document.getElementById('more-sessions').click()");
+    await sleep(400);
+  }
+  const count = await evalJs("document.querySelectorAll('#session-list [data-id]').length");
+  result.scaleCount = count;
+  if (!(count >= 25)) {
+    result.scale = "skipped";
+    return;
+  }
+  const fit = await evalJs(`(function () {
+    const list = document.getElementById('session-list');
+    const bar = document.getElementById('sidebar');
+    return list.clientHeight < window.innerHeight && bar.getBoundingClientRect().height <= window.innerHeight + 1;
+  })()`);
+  result.scaleFit = fit === true;
+  if (fit !== true) fail("scale-fit", await evalJs("document.getElementById('session-list').clientHeight + '/' + window.innerHeight"));
+
+  await evalJs(`(function () {
+    const q = document.getElementById('session-query');
+    q.value = 'alpha';
+    q.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  const searched = await waitFor("document.getElementById('session-list').textContent.indexOf('alpha') >= 0 && document.getElementById('session-list').textContent.indexOf('beta') < 0", 4000);
+  result.scaleSearch = Boolean(searched);
+  if (!searched) fail("scale-search", await evalJs("document.getElementById('session-list').textContent"));
+
+  await evalJs(`(function () {
+    const q = document.getElementById('session-query');
+    q.value = '';
+    q.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await sleep(500);
+  for (let i = 0; i < 4; i++) {
+    const hidden = await evalJs("document.getElementById('more-sessions').hidden === true");
+    if (hidden) break;
+    await evalJs("document.getElementById('more-sessions').click()");
+    await sleep(300);
+  }
+
+  const alias = '<img src=x on' + 'error="window.__xss=1">';
+  const renamed = await evalJs(`(function () {
+    const item = Array.from(document.querySelectorAll('#session-list li')).find((li) => li.textContent.indexOf('alpha') >= 0);
+    if (!item) return false;
+    const button = Array.from(item.querySelectorAll('button')).find((b) => b.textContent === 'Renomear');
+    if (!button) return false;
+    button.click();
+    const input = item.querySelector('input');
+    if (!input) return false;
+    input.value = ${JSON.stringify(alias)};
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    return true;
+  })()`);
+  if (!renamed) fail("scale-rename", "rename field missing");
+  const aliasShown = await waitFor(`document.getElementById('session-list').textContent.indexOf(${JSON.stringify(alias)}) >= 0 && window.__xss === undefined && document.querySelectorAll('#session-list img').length === 0`, 4000);
+  result.scaleAlias = Boolean(aliasShown);
+  if (!aliasShown) fail("scale-alias", await evalJs("document.getElementById('session-list').textContent"));
+
+  const archived = await evalJs(`(function () {
+    const item = Array.from(document.querySelectorAll('#session-list li')).find((li) => li.textContent.indexOf(${JSON.stringify(alias)}) >= 0);
+    if (!item) return false;
+    const button = Array.from(item.querySelectorAll('button')).find((b) => b.textContent === 'Arquivar');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!archived) fail("scale-archive-click", "archive button missing");
+  const hiddenAlias = await waitFor(`document.getElementById('session-list').textContent.indexOf(${JSON.stringify(alias)}) < 0`, 4000);
+  if (!hiddenAlias) fail("scale-archive", "archived row stayed visible");
+  await evalJs(`(function () {
+    const box = document.getElementById('session-archived');
+    box.checked = true;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  const shownAgain = await waitFor(`document.getElementById('session-list').textContent.indexOf(${JSON.stringify(alias)}) >= 0`, 4000);
+  result.scaleArchive = Boolean(shownAgain);
+  if (!shownAgain) fail("scale-unarchive", "archived row did not return");
+
+  await evalJs(`(function () {
+    const box = document.getElementById('session-archived');
+    box.checked = false;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  const betaBack = await waitFor("document.getElementById('session-list').textContent.indexOf('beta') >= 0", 4000);
+  if (!betaBack) fail("scale-beta", await evalJs("document.getElementById('session-list').textContent"));
+  const pinned = await evalJs(`(function () {
+    const item = Array.from(document.querySelectorAll('#session-list li')).find((li) => li.textContent.indexOf('beta') >= 0);
+    if (!item) return false;
+    const button = Array.from(item.querySelectorAll('button')).find((b) => b.textContent === 'Fixar');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!pinned) fail("scale-pin-click", "pin button missing");
+  const pinTop = await waitFor(`(function () {
+    const text = document.getElementById('session-list').textContent;
+    const pin = text.indexOf('Fixadas');
+    const beta = text.indexOf('beta');
+    return pin >= 0 && beta > pin;
+  })()`, 4000);
+  result.scalePin = Boolean(pinTop);
+  if (!pinTop) fail("scale-pin", await evalJs("document.getElementById('session-list').textContent"));
+
+  await evalJs("location.reload()");
+  await waitFor("typeof sessionId === 'string' && sessionId.length > 0", 8000);
+  await evalJs(`(function () {
+    const filter = document.getElementById('session-filter');
+    filter.value = 'all';
+    filter.dispatchEvent(new Event('change'));
+    return true;
+  })()`);
+  await sleep(400);
+  await evalJs(`(function () {
+    const box = document.getElementById('session-archived');
+    box.checked = true;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  const kept = await waitFor(`document.getElementById('session-list').textContent.indexOf(${JSON.stringify(alias)}) >= 0 && window.__xss === undefined`, 8000);
+  result.scaleReload = Boolean(kept);
+  if (!kept) fail("scale-reload", await evalJs("document.getElementById('session-list').textContent"));
+
+  const bad = await evalJs(`(function () {
+    document.getElementById('new-session-options').click();
+    document.getElementById('new-workspace').value = '/tmp/zero-bridge-missing-s6b';
+    document.getElementById('new-session-custom').click();
+    return true;
+  })()`);
+  if (!bad) fail("scale-workspace-click", "new session panel missing");
+  const err = await waitFor("document.getElementById('new-session-error').textContent.length > 0", 4000);
+  result.scaleWorkspace = Boolean(err);
+  if (!err) fail("scale-workspace", await evalJs("document.getElementById('new-session-error').textContent"));
+  result.scale = "ok";
+}
+
 let result = { url, failures };
 try {
   const wsUrl = await getTarget();
@@ -214,8 +362,11 @@ try {
   const replay = await waitFor("document.getElementById('log').textContent.indexOf('replay-user') >= 0 && document.getElementById('log').textContent.indexOf('histórico') >= 0 && document.querySelectorAll('#log img').length === 0", 8000);
   result.replay = Boolean(replay);
   if (!replay) fail("replay", await evalJs("document.getElementById('log').textContent"));
-  if (!(await waitFor("document.getElementById('more-sessions').hidden === false", 3000))) {
-    fail("more", "pagination control stayed hidden");
+  const catalog = await waitFor("document.getElementById('session-list').textContent.indexOf('beta') >= 0 && document.getElementById('session-list').textContent.indexOf('locked') >= 0", 4000);
+  if (!catalog) {
+    await evalJs("document.getElementById('more-sessions').click()");
+    const after = await waitFor("document.getElementById('session-list').textContent.indexOf('beta') >= 0 && document.getElementById('session-list').textContent.indexOf('locked') >= 0", 4000);
+    if (!after) fail("more-page", await evalJs("document.getElementById('session-list').textContent"));
   }
   const resumed = await evalJs(`(function () {
     const item = Array.from(document.querySelectorAll('#session-list li')).find((li) => li.textContent.indexOf('alpha') >= 0);
@@ -232,17 +383,12 @@ try {
   if (await evalJs("document.getElementById('log').textContent.indexOf('replay-user') >= 0")) {
     fail("resume-replay", "resume showed load history");
   }
-  await evalJs("document.getElementById('more-sessions').click()");
-  if (!(await waitFor("document.getElementById('session-list').textContent.indexOf('beta') >= 0", 4000))) {
-    fail("more-page", await evalJs("document.getElementById('session-list').textContent"));
-  }
-  await evalJs("document.getElementById('more-sessions').click()");
   const viewListed = await waitFor("document.getElementById('session-list').textContent.indexOf('locked') >= 0", 4000);
   if (!viewListed) fail("view-list", "view-only session was not listed");
   const viewClicked = await evalJs(`(function () {
     const item = Array.from(document.querySelectorAll('#session-list li')).find((li) => li.textContent.indexOf('locked') >= 0);
     if (!item) return false;
-    const open = Array.from(item.querySelectorAll('button')).find((b) => b.textContent !== 'Retomar');
+    const open = item.querySelector('button.session-title');
     if (!open) return false;
     open.click();
     return true;
@@ -304,7 +450,7 @@ try {
 
   if (e2eToken) {
     await evalJs("document.getElementById('logout').click()");
-    const cleared = await waitFor("document.getElementById('login').hidden === false && document.getElementById('session-list').children.length === 0 && document.getElementById('log').textContent === '' && document.getElementById('workspace').value === ''", 8000);
+    const cleared = await waitFor("document.getElementById('login').hidden === false && document.getElementById('session-list').children.length === 0 && document.getElementById('log').textContent.indexOf('A conversa aparece aqui.') >= 0 && document.getElementById('workspace').value === ''", 8000);
     result.logoutClears = Boolean(cleared);
     if (!cleared) {
       fail("logout-clear", await evalJs("JSON.stringify({login: document.getElementById('login').hidden, list: document.getElementById('session-list').textContent, log: document.getElementById('log').textContent, cwd: document.getElementById('workspace').value})"));
@@ -312,6 +458,10 @@ try {
     const stored = await evalJs(`localStorage.length === 0 && sessionStorage.length === 0 && location.href.indexOf(${JSON.stringify(e2eToken)}) < 0`);
     result.tokenNotStored = stored === true;
     if (stored !== true) fail("token-storage", stored);
+  }
+
+  if (!e2eToken) {
+    await scaleSessions(evalJs, waitFor);
   }
 
   ws.close();

@@ -13,7 +13,7 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S5a | feita | `6930fa4` |
 | S5b | feita | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
 | S6 | feita | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
-| S6b | desenhada | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Não construída. |
+| S6b | feita | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Construída em `epic/s6b-session-management`. Sem merge. |
 | S7 | desenhada | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3). Decisão de proxy abaixo. Não construída. |
 | S8 | desenhada | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Não construída. |
 | S9 | desenhada | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Não construída. |
@@ -358,9 +358,9 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 ### S6b — lista de sessões em escala
 
-**Caminho:** metadados de sessão, filtros da lista e `bridge/web/`. Só desenhada. Não construída. [#2](https://github.com/FabioLeitao/zero-bridge/issues/2).
+**Caminho:** metadados de sessão, filtros da lista e `bridge/web/`. Construída em `epic/s6b-session-management`. Sem merge. [#2](https://github.com/FabioLeitao/zero-bridge/issues/2).
 
-**Decisão:** apelido, arquivada e fixada são metadados da ponte. O ACP do Zero não tem renomear, arquivar nem apagar. `zero sessions prune` fica fora. O Zero não troca o cwd de uma sessão existente. `session/load` e `session/resume` com outro cwd falham com `session cwd does not match its persisted workspace`. A UI escolhe workspace só na sessão nova e mostra o cwd real da sessão ativa.
+**Decisão:** apelido, arquivada e fixada são metadados da ponte. O ACP do Zero não tem renomear, arquivar nem apagar. `zero sessions prune` fica fora (candidata S6c). O Zero não troca o cwd de uma sessão existente. `session/load` e `session/resume` com outro cwd falham com `session cwd does not match its persisted workspace`. A UI escolhe workspace só na sessão nova e mostra o cwd real da sessão ativa. Neste host, o `zero` aceita `additionalDirectories` em new, load e resume e ignora o campo. A ponte só o encaminha em `session/new`. Load e resume não o recebem.
 
 **Aceite**
 
