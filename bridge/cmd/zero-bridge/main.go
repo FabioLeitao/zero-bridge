@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"zero-bridge/bridge/internal/acpclient"
 	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/server"
+	"zero-bridge/bridge/internal/sessionmeta"
 )
 
 func limitEnv() map[string]string {
@@ -71,6 +73,7 @@ type cliConfig struct {
 	trustProxy    bool
 	agent         acpclient.Command
 	profile       string
+	stateDir      string
 }
 
 func runArgs(args []string, stderr io.Writer) int {
@@ -103,6 +106,11 @@ func runArgs(args []string, stderr io.Writer) int {
 		return 2
 	}
 	logger := log.New(stderr, "", log.LstdFlags)
+	stateDir := cfg.stateDir
+	if stateDir == "" {
+		stateDir = defaultStateDir()
+	}
+	meta := openSessionMeta(stateDir, logger)
 	auditSink := auth.Sink(auth.NewLogSink(logger))
 	if cfg.auditLog != "" {
 		fileSink, err := auth.OpenFileSink(cfg.auditLog)
@@ -131,6 +139,7 @@ func runArgs(args []string, stderr io.Writer) int {
 		MaxSessions:       limits.MaxSessions,
 		AuthFailWindow:    limits.AuthFailWindow,
 		AuthFailLimit:     limits.AuthFailLimit,
+		Meta:              meta,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "zero-bridge: %v\n", err)
@@ -160,6 +169,34 @@ func runArgs(args []string, stderr io.Writer) int {
 	return 0
 }
 
+func defaultStateDir() string {
+	if v := os.Getenv("XDG_STATE_HOME"); v != "" {
+		return filepath.Join(v, "zero-bridge")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".local", "state", "zero-bridge")
+}
+
+// openSessionMeta opens the label store. A failure is logged without the
+// directory path and the bridge still starts. Meta routes then answer 503.
+func openSessionMeta(dir string, logger *log.Logger) *sessionmeta.Store {
+	if dir == "" {
+		logger.Printf("session metadata store is not available")
+		return nil
+	}
+	st, err := sessionmeta.Open(dir, func(msg string) {
+		logger.Printf("%s", msg)
+	})
+	if err != nil {
+		logger.Printf("session metadata store is not available")
+		return nil
+	}
+	return st
+}
+
 func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 	cfg := cliConfig{
 		listen:      "127.0.0.1:8765",
@@ -183,6 +220,12 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 			}
 			i++
 			cfg.listen = args[i]
+		case "--state-dir":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("missing value for --state-dir")
+			}
+			i++
+			cfg.stateDir = args[i]
 		case "--workspace":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("missing value for --workspace")

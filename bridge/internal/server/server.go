@@ -18,6 +18,7 @@ import (
 	"zero-bridge/bridge/internal/acpclient"
 	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/permissions"
+	"zero-bridge/bridge/internal/sessionmeta"
 	"zero-bridge/bridge/internal/zeroenv"
 	"zero-bridge/bridge/web"
 )
@@ -50,6 +51,8 @@ type Config struct {
 	MaxSessions       int
 	AuthFailWindow    time.Duration
 	AuthFailLimit     int
+	// Meta is the local session label store. Nil makes the meta route answer 503.
+	Meta *sessionmeta.Store
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -72,6 +75,7 @@ type Server struct {
 	login          *loginState
 	loginDelay     time.Duration
 	audit          auth.Sink
+	meta           *sessionmeta.Store
 	tokenMu        sync.RWMutex
 	token          string
 	prevToken      string
@@ -137,6 +141,7 @@ func New(cfg Config) (*Server, error) {
 		login:       newLoginState(),
 		loginDelay:  delay,
 		audit:       cfg.Audit,
+		meta:        cfg.Meta,
 		token:       cfg.Token,
 	}
 	s.perms.OnEvent = s.onPermission
@@ -277,6 +282,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/capabilities", s.handleCapabilities)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
+	mux.HandleFunc("POST /v1/sessions/{id}/meta", s.handleSessionMeta)
 	mux.HandleFunc("POST /v1/sessions/{id}/load", s.handleLoad)
 	mux.HandleFunc("POST /v1/sessions/{id}/resume", s.handleResume)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
