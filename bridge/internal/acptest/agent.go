@@ -41,7 +41,10 @@ func runAgent(r io.Reader, w io.Writer) {
 			writeResp(w, env.ID, map[string]any{
 				"protocolVersion":   1,
 				"agentCapabilities": fakeCapabilities(),
-				"agentInfo":         map[string]string{"name": "acptest", "version": "0"},
+				"agentInfo": map[string]string{
+					"name":    fakeAgentName(),
+					"version": fakeAgentVersion(),
+				},
 			})
 			if os.Getenv("ZB_FAKE_AGENT_EXIT") == "1" {
 				os.Exit(0)
@@ -59,6 +62,12 @@ func runAgent(r io.Reader, w io.Writer) {
 					modes = append(modes, map[string]string{"id": id, "name": id})
 				}
 				if len(modes) > 0 {
+					if name := os.Getenv("ZB_FAKE_MODE_NAME"); name != "" {
+						modes[0]["name"] = name
+					}
+					if desc := os.Getenv("ZB_FAKE_MODE_DESC"); desc != "" {
+						modes[0]["description"] = desc
+					}
 					body["modes"] = map[string]any{
 						"currentModeId":  modes[0]["id"],
 						"availableModes": modes,
@@ -155,6 +164,17 @@ func runAgent(r io.Reader, w io.Writer) {
 			}
 			if ms := slowMillis(); ms > 0 {
 				time.Sleep(time.Duration(ms) * time.Millisecond)
+			}
+			if os.Getenv("ZB_FAKE_NO_PERMISSION") == "1" {
+				notify(w, "session/update", map[string]any{
+					"sessionId": sid,
+					"update": map[string]any{
+						"sessionUpdate": "agent_message_chunk",
+						"content":       map[string]string{"type": "text", "text": "OK"},
+					},
+				})
+				writeResp(w, env.ID, map[string]any{"stopReason": "end_turn"})
+				continue
 			}
 			if os.Getenv("ZB_FAKE_SCENARIO") == "rich" {
 				richPrompt(reader, w, sid, env.ID)
@@ -291,6 +311,20 @@ func listPage(cwd, cursor string) ([]map[string]any, string) {
 		next = filtered[end-1].id
 	}
 	return out, next
+}
+
+func fakeAgentName() string {
+	if name := os.Getenv("ZB_FAKE_AGENT_NAME"); name != "" {
+		return name
+	}
+	return "acptest"
+}
+
+func fakeAgentVersion() string {
+	if version := os.Getenv("ZB_FAKE_AGENT_VERSION"); version != "" {
+		return version
+	}
+	return "0"
 }
 
 func fakeCapabilities() map[string]any {

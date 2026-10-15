@@ -143,12 +143,23 @@ func New(cfg Config) (*Server, error) {
 	return s, nil
 }
 
-// Boot starts the zero acp child and performs initialize.
-func (s *Server) Boot(ctx context.Context) error {
-	extra := s.cfg.ExtraEnv
-	if extra == nil {
-		extra = zeroenv.ProviderEnv()
+// childExtra is the environment added for the agent. The zero profile may
+// set ZERO_PROVIDER. The generic profile adds nothing unless the caller
+// passed ExtraEnv. A non-nil ExtraEnv, including an empty slice, is used
+// as given so tests can disable the probe.
+func (s *Server) childExtra() []string {
+	if s.cfg.ExtraEnv != nil {
+		return s.cfg.ExtraEnv
 	}
+	if s.cfg.Profile == "zero" {
+		return zeroenv.ProviderEnv()
+	}
+	return []string{}
+}
+
+// Boot starts the agent child and performs initialize.
+func (s *Server) Boot(ctx context.Context) error {
+	extra := s.childExtra()
 	client, err := acpclient.Start(ctx, acpclient.Options{
 		ZeroBin:   s.cfg.ZeroBin,
 		AgentCmd:  s.cfg.AgentCmd,
@@ -774,7 +785,32 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	if res.Sessions == nil {
 		res.Sessions = []json.RawMessage{}
 	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"sessions": res.Sessions, "nextCursor": res.NextCursor})
+	sessions := res.Sessions
+	if s.cfg.Profile != "zero" {
+		sessions = stripZeroMeta(sessions)
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions, "nextCursor": res.NextCursor})
+}
+
+// stripZeroMeta drops the Zero vendor object. Other profiles do not interpret
+// _meta.modelId.
+func stripZeroMeta(raw []json.RawMessage) []json.RawMessage {
+	out := make([]json.RawMessage, 0, len(raw))
+	for _, item := range raw {
+		var obj map[string]json.RawMessage
+		if json.Unmarshal(item, &obj) != nil {
+			out = append(out, item)
+			continue
+		}
+		delete(obj, "_meta")
+		b, err := json.Marshal(obj)
+		if err != nil {
+			out = append(out, item)
+			continue
+		}
+		out = append(out, b)
+	}
+	return out
 }
 
 func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {

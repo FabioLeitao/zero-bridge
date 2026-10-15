@@ -3,10 +3,59 @@ package server
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
+
+	"zero-bridge/bridge/internal/zeroenv"
 )
+
+func TestProfileChildEnv(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	zeroSrv, err := New(Config{Listen: "127.0.0.1:0", Profile: "zero", Logger: logger})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := zeroenv.ProviderEnv()
+	if !reflect.DeepEqual(zeroSrv.childExtra(), want) {
+		t.Fatalf("zero extra %#v", zeroSrv.childExtra())
+	}
+	generic, err := New(Config{Listen: "127.0.0.1:0", Profile: "generic", Logger: logger})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if extra := generic.childExtra(); len(extra) != 0 {
+		t.Fatalf("generic extra %#v", extra)
+	}
+}
+
+func TestGenericProfileDropsModelMeta(t *testing.T) {
+	_, base, cleanup := startConfigured(t, Config{Profile: "generic"})
+	defer cleanup()
+	res, err := http.Get(base + "/v1/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK || strings.Contains(string(b), "modelId") || strings.Contains(string(b), "_meta") {
+		t.Fatalf("generic list %d %s", res.StatusCode, b)
+	}
+	cleanup()
+	_, base, cleanup = startTestServer(t, nil)
+	defer cleanup()
+	res, err = http.Get(base + "/v1/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ = io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(b), "modelId") {
+		t.Fatalf("zero list %d %s", res.StatusCode, b)
+	}
+}
 
 func TestCapabilityGate(t *testing.T) {
 	cases := []struct {
