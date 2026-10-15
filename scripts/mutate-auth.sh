@@ -105,6 +105,24 @@ mutants = [
         "TestRecordScrubsOutput",
         [("internal/auth/audit.go", "\ts = hexRun.ReplaceAllString(s, \"[redacted]\")\n\ts = skRun.ReplaceAllString(s, \"[redacted]\")\n", "")],
     ),
+    (
+        "capability-gate-removed",
+        "internal/server",
+        "TestCapabilityGate/list_unsupported",
+        [("internal/server/server.go", "\tif !ok || !caps.List() {\n\t\ts.notSupported(w)\n\t\treturn\n\t}", "\tif !ok || !caps.List() {\n\t}")],
+    ),
+    (
+        "mode-allowlist-restored",
+        "internal/server",
+        "TestModesFollowAgentList/announced_id_is_allowed",
+        [("internal/server/server.go", "\tif len(offer.Modes) > 0 {", "\tif false && len(offer.Modes) > 0 {")],
+    ),
+    (
+        "capability-list-always-on",
+        "internal/acpclient",
+        "TestFakeAgentCapabilities",
+        [("internal/acpclient/capabilities.go", "\treturn c.SessionCapabilities != nil && c.SessionCapabilities.List != nil", "\treturn true")],
+    ),
 ]
 
 for name, pkg, run, edits in mutants:
