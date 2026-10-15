@@ -28,6 +28,9 @@ import (
 // testAgentBin is a non-race acpfake built once per package run.
 // Pointing ZeroBin at the race-instrumented test binary costs about a second
 // per server, and that start dominates the slow tests.
+// -buildvcs=false keeps the build working when the module copy has no .git,
+// which is how make mutate runs. GOFLAGS and GIT_* are dropped so the
+// environment cannot turn stamping back on or point git at another tree.
 var testAgentBin string
 
 func TestMain(m *testing.M) {
@@ -54,9 +57,9 @@ func buildTestAgent() (string, error) {
 		return "", err
 	}
 	bin := filepath.Join(dir, "acpfake")
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd/acpfake")
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "./cmd/acpfake")
 	cmd.Dir = root
-	cmd.Env = withoutGOFLAGS(os.Environ())
+	cmd.Env = testAgentEnv(os.Environ())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		_ = os.RemoveAll(dir)
@@ -65,10 +68,10 @@ func buildTestAgent() (string, error) {
 	return bin, nil
 }
 
-func withoutGOFLAGS(env []string) []string {
+func testAgentEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, e := range env {
-		if strings.HasPrefix(e, "GOFLAGS=") {
+		if strings.HasPrefix(e, "GOFLAGS=") || strings.HasPrefix(e, "GIT_") {
 			continue
 		}
 		out = append(out, e)
