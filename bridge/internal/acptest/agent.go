@@ -52,6 +52,9 @@ func runAgent(r io.Reader, w io.Writer) {
 				os.Exit(0)
 			}
 		case "session/new":
+			if path := os.Getenv("ZB_FAKE_CAPTURE"); path != "" {
+				_ = os.WriteFile(path, append(line, '\n'), 0o600)
+			}
 			n := nextSessionID.Add(1)
 			body := map[string]any{"sessionId": fmt.Sprintf("sess-acptest-%d", n)}
 			if ids := os.Getenv("ZB_FAKE_MODE_IDS"); ids != "" {
@@ -257,13 +260,26 @@ type persistedSession struct {
 
 func persistedCatalog() []persistedSession {
 	hostile := hostilePayload()
-	return []persistedSession{
+	rows := []persistedSession{
 		{id: "sess-a1", cwd: "/tmp/zbridge-ws-a", title: hostile, updated: "2026-10-13T00:00:01Z"},
 		{id: "sess-a2", cwd: "/tmp/zbridge-ws-a", title: "alpha", updated: "2026-10-13T00:00:02Z"},
 		{id: "sess-a3", cwd: "/tmp/zbridge-ws-a", title: "beta", updated: "2026-10-13T00:00:03Z"},
 		{id: "sess-b1", cwd: "/tmp/zbridge-ws-b", title: "other", updated: "2026-10-13T00:00:04Z"},
 		{id: "sess-view", cwd: "/tmp/zbridge-ws-a", title: "locked", updated: "2026-10-13T00:00:05Z", viewOnly: true},
 	}
+	extra, _ := strconv.Atoi(os.Getenv("ZB_FAKE_LIST_EXTRA"))
+	if extra > 40 {
+		extra = 40
+	}
+	for i := 1; i <= extra; i++ {
+		rows = append(rows, persistedSession{
+			id:      fmt.Sprintf("sess-extra-%02d", i),
+			cwd:     "/tmp/zbridge-ws-a",
+			title:   hostile,
+			updated: "2026-10-01T00:00:00Z",
+		})
+	}
+	return rows
 }
 
 func findPersisted(id string) (persistedSession, bool) {

@@ -18,6 +18,8 @@ import (
 	"zero-bridge/bridge/internal/acpclient"
 	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/permissions"
+	"zero-bridge/bridge/internal/sessionmeta"
+	"zero-bridge/bridge/internal/workroot"
 	"zero-bridge/bridge/internal/zeroenv"
 	"zero-bridge/bridge/web"
 )
@@ -50,6 +52,8 @@ type Config struct {
 	MaxSessions       int
 	AuthFailWindow    time.Duration
 	AuthFailLimit     int
+	// Meta is the local session label store. Nil makes the meta route answer 503.
+	Meta *sessionmeta.Store
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -68,10 +72,12 @@ type Server struct {
 
 	workspace      string
 	workspaceOwned bool
+	roots          *workroot.Set
 	perms          *permissions.Broker
 	login          *loginState
 	loginDelay     time.Duration
 	audit          auth.Sink
+	meta           *sessionmeta.Store
 	tokenMu        sync.RWMutex
 	token          string
 	prevToken      string
@@ -137,6 +143,7 @@ func New(cfg Config) (*Server, error) {
 		login:       newLoginState(),
 		loginDelay:  delay,
 		audit:       cfg.Audit,
+		meta:        cfg.Meta,
 		token:       cfg.Token,
 	}
 	s.perms.OnEvent = s.onPermission
@@ -277,6 +284,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/capabilities", s.handleCapabilities)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
+	mux.HandleFunc("POST /v1/sessions/{id}/meta", s.handleSessionMeta)
 	mux.HandleFunc("POST /v1/sessions/{id}/load", s.handleLoad)
 	mux.HandleFunc("POST /v1/sessions/{id}/resume", s.handleResume)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
@@ -455,8 +463,30 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"agent":            agent,
 		"defaultWorkspace": s.workspace,
+		"workspaceRoots":   s.workspaceRoots(),
 		"version":          "0",
 	})
+}
+
+// SetWorkspaceRoots installs the allowlist. An empty list is refused.
+// The session routes do not consult it yet.
+func (s *Server) SetWorkspaceRoots(paths []string) error {
+	set, err := workroot.New(paths)
+	if err != nil {
+		return err
+	}
+	s.roots = set
+	return nil
+}
+
+func (s *Server) workspaceRoots() []string {
+	if s.roots != nil {
+		return s.roots.Paths()
+	}
+	if s.workspace != "" {
+		return []string{s.workspace}
+	}
+	return []string{}
 }
 
 func (s *Server) redact(msg string) string {
@@ -762,34 +792,32 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		s.notSupported(w)
 		return
 	}
-	cwd := r.URL.Query().Get("cwd")
+	q := r.URL.Query()
+	cwd := q.Get("cwd")
 	if cwd != "" && !filepath.IsAbs(cwd) {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "cwd must be an absolute path"})
 		return
 	}
-	params := map[string]any{}
-	if cwd != "" {
-		params["cwd"] = cwd
+	filter, err := parseListFilter(q.Get("q"), q.Get("archived"), q.Get("limit"))
+	if err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
 	}
-	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
-		params["cursor"] = cursor
+	cur, err := decodeListCursor(q.Get("cursor"))
+	if err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid cursor"})
+		return
 	}
-	var res struct {
-		Sessions   []json.RawMessage `json:"sessions"`
-		NextCursor string            `json:"nextCursor"`
-	}
-	if err := s.acpCall(r.Context(), "session/list", params, &res); err != nil {
+	page, err := s.collectSessions(r.Context(), cwd, cur, filter)
+	if err != nil {
 		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
 		return
 	}
-	if res.Sessions == nil {
-		res.Sessions = []json.RawMessage{}
-	}
-	sessions := res.Sessions
-	if s.cfg.Profile != "zero" {
-		sessions = stripZeroMeta(sessions)
-	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions, "nextCursor": res.NextCursor})
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"sessions":   page.sessions,
+		"nextCursor": page.next,
+		"truncated":  page.truncated,
+	})
 }
 
 // stripZeroMeta drops the Zero vendor object. Other profiles do not interpret
@@ -818,21 +846,40 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 		return
 	}
-	if !requireJSONContentType(r) {
-		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
-		return
+	workspace := s.workspace
+	var extra []string
+	if r.ContentLength != 0 {
+		if !requireJSONContentType(r) {
+			s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var body struct {
+			Workspace             string   `json:"workspace"`
+			AdditionalDirectories []string `json:"additionalDirectories"`
+		}
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil && err != io.EOF {
+			s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+			return
+		}
+		if body.Workspace != "" {
+			workspace = body.Workspace
+		}
+		extra = body.AdditionalDirectories
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	var body struct {
-		Workspace string `json:"workspace"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
-		return
-	}
-	if err := validateWorkspace(body.Workspace); err != nil {
+	cwd, dirs, err := s.resolveNewSession(workspace, extra)
+	if err != nil {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
+	}
+	params := map[string]any{
+		"cwd":        cwd,
+		"mcpServers": []any{},
+	}
+	if len(dirs) > 0 {
+		params["additionalDirectories"] = dirs
 	}
 	var res struct {
 		SessionID string `json:"sessionId"`
@@ -843,10 +890,7 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 			} `json:"availableModes"`
 		} `json:"modes"`
 	}
-	if err := s.acpCall(r.Context(), "session/new", map[string]any{
-		"cwd":        body.Workspace,
-		"mcpServers": []any{},
-	}, &res); err != nil {
+	if err := s.acpCall(r.Context(), "session/new", params, &res); err != nil {
 		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
 		return
 	}
@@ -942,6 +986,19 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mode": body.Mode})
+}
+
+func (s *Server) resolveNewSession(workspace string, extra []string) (string, []string, error) {
+	if s.roots != nil {
+		return s.roots.Resolve(workspace, extra)
+	}
+	if len(extra) > 0 {
+		return "", nil, fmt.Errorf("directory is not allowed")
+	}
+	if err := validateWorkspace(workspace); err != nil {
+		return "", nil, err
+	}
+	return filepath.Clean(workspace), nil, nil
 }
 
 func validateWorkspace(p string) error {

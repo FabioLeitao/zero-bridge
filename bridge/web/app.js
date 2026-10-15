@@ -1,5 +1,94 @@
 "use strict";
 
+const ui = {
+  history: "histórico",
+  resume: "Retomar",
+  resumed: "retomada",
+  readOnly: "sessão somente leitura",
+  listFailed: "não foi possível listar as sessões",
+  loadFailed: "não foi possível abrir a sessão",
+  resumeFailed: "não foi possível retomar a sessão",
+  sessionFailed: "não foi possível abrir a sessão",
+  alreadyAttached: "sessão já aberta",
+  noSession: "nenhuma sessão",
+  infoFailed: "não foi possível ler o estado",
+  authFailed: "não foi possível saber se há login",
+  capsFailed: "não foi possível ler as capacidades",
+  modeFailed: "não foi possível mudar o modo",
+  promptRunning: "já existe um turno em andamento",
+  promptFailed: "não foi possível enviar",
+  badEvent: "evento ilegível",
+  expiredLogin: "sessão expirada",
+  noAuthSessions: "nenhuma sessão ativa",
+  authListFailed: "não foi possível listar as sessões",
+  revoke: "Revogar",
+  revokeLabel: "Revogar sessão ",
+  created: "criada ",
+  lastUse: " último uso ",
+  expires: " expira ",
+  allow: "Permitir",
+  deny: "Recusar",
+  permission: "permissão",
+  permissionLine: "permissão ",
+  waiting: "aguardando",
+  expired: "expirada",
+  resolved: "já resolvida",
+  notFound: "não encontrada",
+  failed: "falhou ",
+  thought: "raciocínio",
+  command: "comando",
+  output: "saída",
+  manyTries: "muitas tentativas",
+  tokenRejected: "token recusado",
+  sessions: "Sessões",
+  filter: "Filtro",
+  filterHere: "este diretório",
+  filterAll: "todos",
+  refresh: "Atualizar",
+  more: "Mais",
+  token: "Token",
+  enter: "Entrar",
+  workspace: "Diretório",
+  newSession: "Nova sessão",
+  logout: "Sair",
+  authSessionsTitle: "Sessões deste acesso",
+  authSessionsLabel: "Sessões ativas",
+  logoutAll: "Sair de todos os dispositivos",
+  mode: "Modo",
+  message: "Mensagem",
+  send: "Enviar",
+  planLabel: "Plano",
+  permissionsLabel: "Permissões",
+  logLabel: "Conversa",
+  turnEnded: "turno encerrado",
+  emptySessions: "Nenhuma sessão neste workspace",
+  loadingSessions: "Carregando sessões",
+  retry: "Tentar de novo",
+  emptyLog: "A conversa aparece aqui.",
+  errorPrefix: "Erro: ",
+  search: "Busca",
+  showArchived: "Mostrar arquivadas",
+  groupPinned: "Fixadas",
+  groupToday: "Hoje",
+  groupYesterday: "Ontem",
+  groupWeek: "Esta semana",
+  groupOlder: "Mais antigas",
+  justNow: "agora",
+  minutesAgo: "há {n} min",
+  hoursAgo: "há {n} h",
+  daysAgo: "há {n} d",
+  rename: "Renomear",
+  archive: "Arquivar",
+  unarchive: "Desarquivar",
+  pin: "Fixar",
+  unpin: "Desafixar",
+  metaFailed: "não foi possível guardar",
+  sessionOptions: "Opções",
+  newWorkspace: "Diretório da nova sessão",
+  addDirs: "Diretórios adicionais",
+  createHere: "Criar neste diretório"
+};
+
 const loginEl = document.getElementById("login");
 const tokenEl = document.getElementById("token");
 const loginBtn = document.getElementById("login-button");
@@ -16,17 +105,76 @@ const workspaceEl = document.getElementById("workspace");
 const sendBtn = document.getElementById("send");
 const modeEl = document.getElementById("mode");
 const newSessionBtn = document.getElementById("new-session");
-const planEl = document.getElementById("plan");
-const permEl = document.getElementById("permissions");
+const newSessionOptionsBtn = document.getElementById("new-session-options");
+const newSessionPanel = document.getElementById("new-session-panel");
+const newWorkspaceEl = document.getElementById("new-workspace");
+const workspaceRootsEl = document.getElementById("workspace-roots");
+const addDirsEl = document.getElementById("add-dirs");
+const newSessionErrorEl = document.getElementById("new-session-error");
 const agentInfoEl = document.getElementById("agent-info");
 const modeLabelEl = document.getElementById("mode-label");
 const sessionBrowserEl = document.getElementById("session-browser");
 const sessionListEl = document.getElementById("session-list");
 const sessionFilterEl = document.getElementById("session-filter");
+const sessionQueryEl = document.getElementById("session-query");
+const sessionArchivedEl = document.getElementById("session-archived");
 const moreSessionsBtn = document.getElementById("more-sessions");
+const sessionStatusEl = document.getElementById("session-status");
+const sessionRetryBtn = document.getElementById("session-retry");
 const refreshSessionsBtn = document.getElementById("refresh-sessions");
 const sidebarEl = document.getElementById("sidebar");
+const sidebarToggleEl = document.getElementById("sidebar-toggle");
+const statusEl = document.getElementById("status");
+const planEl = document.getElementById("plan");
+const permEl = document.getElementById("permissions");
+
+function applyChrome() {
+  sidebarToggleEl.textContent = ui.sessions;
+  document.querySelector("label[for=session-filter]").textContent = ui.filter;
+  sessionFilterEl.querySelector("option[value=workspace]").textContent = ui.filterHere;
+  sessionFilterEl.querySelector("option[value=all]").textContent = ui.filterAll;
+  document.querySelector("label[for=session-query]").textContent = ui.search;
+  document.getElementById("session-archived-label").textContent = ui.showArchived;
+  refreshSessionsBtn.textContent = ui.refresh;
+  moreSessionsBtn.textContent = ui.more;
+  sessionRetryBtn.textContent = ui.retry;
+  document.querySelector("label[for=token]").textContent = ui.token;
+  loginBtn.textContent = ui.enter;
+  document.querySelector("label[for=workspace]").textContent = ui.workspace;
+  newSessionBtn.textContent = ui.newSession;
+  newSessionOptionsBtn.textContent = ui.sessionOptions;
+  document.querySelector("label[for=new-workspace]").textContent = ui.newWorkspace;
+  document.querySelector("label[for=add-dirs]").textContent = ui.addDirs;
+  document.getElementById("new-session-custom").textContent = ui.createHere;
+  logoutBtn.textContent = ui.logout;
+  document.getElementById("auth-sessions-title").textContent = ui.authSessionsTitle;
+  authSessionListEl.setAttribute("aria-label", ui.authSessionsLabel);
+  logoutAllBtn.textContent = ui.logoutAll;
+  modeLabelEl.textContent = ui.mode;
+  document.querySelector("label[for=text]").textContent = ui.message;
+  sendBtn.textContent = ui.send;
+  sidebarEl.setAttribute("aria-label", ui.sessions);
+  planEl.setAttribute("aria-label", ui.planLabel);
+  permEl.setAttribute("aria-label", ui.permissionsLabel);
+  logEl.setAttribute("aria-label", ui.logLabel);
+  syncSidebar();
+}
+
+function syncSidebar() {
+  const narrow = window.matchMedia("(max-width: 40rem)").matches;
+  const open = sidebarEl.className.indexOf("open") >= 0;
+  sidebarToggleEl.setAttribute("aria-expanded", (!narrow || open) ? "true" : "false");
+}
+
+applyChrome();
+restoreListPrefs();
+showLogHint();
+window.matchMedia("(max-width: 40rem)").addEventListener("change", syncSidebar);
+
 let sessionCursor = "";
+let loadedSessions = [];
+let queryTimer = 0;
+let metaOk = true;
 
 let sessionId = "";
 let authRequired = false;
@@ -111,7 +259,7 @@ function setModeEnabled(on) {
 async function loadCapabilities() {
   const res = await api("/v1/capabilities");
   if (!res.ok) {
-    note("capabilities failed " + res.status);
+    note(ui.capsFailed);
     return;
   }
   caps = await res.json();
@@ -187,7 +335,7 @@ function renderAuthSessions(sessions) {
   clearAuthSessionList();
   const rows = Array.isArray(sessions) ? sessions : [];
   if (rows.length === 0) {
-    authSessionStatusEl.textContent = "nenhuma sessao ativa";
+    authSessionStatusEl.textContent = ui.noAuthSessions;
     return;
   }
   authSessionStatusEl.textContent = "";
@@ -197,11 +345,11 @@ function renderAuthSessions(sessions) {
     const id = document.createElement("p");
     id.textContent = shortHandle(handle);
     const times = document.createElement("p");
-    times.textContent = "criada " + stamp(sess.created) + " ultimo uso " + stamp(sess.last) + " expira " + stamp(sess.expires);
+    times.textContent = ui.created + stamp(sess.created) + ui.lastUse + stamp(sess.last) + ui.expires + stamp(sess.expires);
     const revoke = document.createElement("button");
     revoke.type = "button";
-    revoke.textContent = "Revogar";
-    revoke.setAttribute("aria-label", "Revogar sessao " + shortHandle(handle));
+    revoke.textContent = ui.revoke;
+    revoke.setAttribute("aria-label", ui.revokeLabel + shortHandle(handle));
     revoke.addEventListener("click", function () {
       revokeAuthSession(handle);
     });
@@ -214,7 +362,7 @@ function renderAuthSessions(sessions) {
 
 function showAuthSessionError() {
   clearAuthSessionList();
-  authSessionStatusEl.textContent = "nao foi possivel listar as sessoes";
+  authSessionStatusEl.textContent = ui.authListFailed;
 }
 
 async function refreshAuthSessions() {
@@ -254,7 +402,7 @@ async function api(url, opts) {
   const res = await fetch(url, opts);
   const path = String(url);
   if (res.status === 401 && path.indexOf("/v1/login") < 0 && path.indexOf("/v1/auth/status") < 0) {
-    showLogin("sessao expirada");
+    showLogin(ui.expiredLogin);
   }
   return res;
 }
@@ -267,6 +415,7 @@ const tools = new Map();
 const permState = new Map();
 const permQueue = [];
 let activePerm = null;
+let permTitleSeq = 0;
 let streamGen = 0;
 let reader = null;
 
@@ -276,9 +425,14 @@ function nearBottom() {
 
 function addLine(className, value) {
   const follow = nearBottom();
+  const hint = logEl.querySelector(".log-hint");
+  if (hint) {
+    logEl.removeChild(hint);
+  }
   const p = document.createElement("p");
   p.className = "line " + className;
-  p.appendChild(document.createTextNode(value));
+  const text = className.indexOf("warn") >= 0 ? ui.errorPrefix + value : value;
+  p.appendChild(document.createTextNode(text));
   logEl.appendChild(p);
   if (follow) {
     logEl.scrollTop = logEl.scrollHeight;
@@ -286,14 +440,30 @@ function addLine(className, value) {
   return p;
 }
 
+function showLogHint() {
+  if (logEl.querySelector(".log-hint")) {
+    return;
+  }
+  const p = document.createElement("p");
+  p.className = "log-hint";
+  p.textContent = ui.emptyLog;
+  logEl.appendChild(p);
+}
+
 function note(value) {
   addLine("warn", value);
+  announce(value);
+}
+
+function announce(value) {
+  statusEl.textContent = "";
+  statusEl.textContent = value;
 }
 
 async function boot() {
   const statusRes = await api("/v1/auth/status");
   if (!statusRes.ok) {
-    note("auth status failed");
+    note(ui.authFailed);
     return;
   }
   const status = await statusRes.json();
@@ -309,11 +479,13 @@ async function boot() {
 async function startWorkspace() {
   const infoRes = await api("/v1/info");
   if (!infoRes.ok) {
-    note("info failed");
+    note(ui.infoFailed);
     return;
   }
   const info = await infoRes.json();
   workspaceEl.value = info.defaultWorkspace || "";
+  newWorkspaceEl.value = info.defaultWorkspace || "";
+  fillWorkspaceRoots(info.workspaceRoots || []);
   await loadCapabilities();
   await refreshSessions();
   const body = JSON.stringify({ workspace: workspaceEl.value });
@@ -323,7 +495,7 @@ async function startWorkspace() {
     body: body
   });
   if (!ses.ok) {
-    note("session failed");
+    note(ui.sessionFailed);
     return;
   }
   const data = await ses.json();
@@ -331,9 +503,8 @@ async function startWorkspace() {
   await loadCapabilities();
   applyMode(data);
   connect(0);
-  refreshSessions().catch(function (err) {
-    note(String(err && err.message ? err.message : err));
-  });
+  await refreshSessions();
+  showActiveCwd(sessionId);
 }
 
 function clearView() {
@@ -357,6 +528,7 @@ function clearView() {
   seen = new Set();
   assistant = null;
   thoughtBody = null;
+  showLogHint();
 }
 
 function abortStream() {
@@ -367,18 +539,39 @@ function abortStream() {
   }
 }
 
-async function openSession() {
+async function openSession(opts) {
   abortStream();
   clearView();
-  const body = JSON.stringify({ workspace: workspaceEl.value });
+  const choice = opts || {};
+  const workspace = choice.workspace || workspaceEl.value;
+  const payload = { workspace: workspace };
+  if (choice.additionalDirectories && choice.additionalDirectories.length) {
+    payload.additionalDirectories = choice.additionalDirectories;
+  }
   const ses = await api("/v1/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: body
+    body: JSON.stringify(payload)
   });
   if (!ses.ok) {
-    note("session failed");
+    let message = ui.sessionFailed;
+    try {
+      const problem = await ses.json();
+      if (problem && problem.error) {
+        message = String(problem.error);
+      }
+    } catch (err) {
+      message = ui.sessionFailed;
+    }
+    if (choice.errorEl) {
+      choice.errorEl.textContent = ui.errorPrefix + message;
+    } else {
+      note(message);
+    }
     return;
+  }
+  if (choice.errorEl) {
+    choice.errorEl.textContent = "";
   }
   const data = await ses.json();
   sessionId = data.sessionId || "";
@@ -386,8 +579,38 @@ async function openSession() {
   applyMode(data);
   backoff = 500;
   connect(0);
-  refreshSessions().catch(function (err) {
-    note(String(err && err.message ? err.message : err));
+  await refreshSessions();
+  showActiveCwd(sessionId);
+}
+
+function fillWorkspaceRoots(roots) {
+  while (workspaceRootsEl.firstChild) {
+    workspaceRootsEl.removeChild(workspaceRootsEl.firstChild);
+  }
+  roots.forEach(function (root) {
+    const opt = document.createElement("option");
+    opt.value = String(root);
+    workspaceRootsEl.appendChild(opt);
+  });
+}
+
+function showActiveCwd(id) {
+  let cwd = "";
+  loadedSessions.forEach(function (sess) {
+    if (String(sess.sessionId) === id && sess.cwd) {
+      cwd = String(sess.cwd);
+    }
+  });
+  if (cwd) {
+    workspaceEl.value = cwd;
+  }
+}
+
+function additionalDirectories() {
+  return addDirsEl.value.split("\n").map(function (line) {
+    return line.trim();
+  }).filter(function (line) {
+    return line.length > 0;
   });
 }
 
@@ -417,17 +640,22 @@ function shortId(id) {
 function markHistory(line) {
   const mark = document.createElement("span");
   mark.className = "history-mark";
-  mark.textContent = "historico";
+  mark.textContent = ui.history;
   line.insertBefore(mark, line.firstChild);
 }
 
 function markActiveSession() {
   const items = sessionListEl.children;
   for (let i = 0; i < items.length; i++) {
+    if (!items[i].dataset.id) {
+      continue;
+    }
     if (items[i].dataset.id === sessionId) {
       items[i].className = "active";
+      items[i].setAttribute("aria-current", "true");
     } else {
       items[i].className = "";
+      items[i].removeAttribute("aria-current");
     }
   }
 }
@@ -437,10 +665,112 @@ async function refreshSessions() {
     return;
   }
   sessionCursor = "";
+  loadedSessions = [];
   while (sessionListEl.firstChild) {
     sessionListEl.removeChild(sessionListEl.firstChild);
   }
   await pageSessions(false);
+}
+
+function readPref(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value == null ? fallback : value;
+  } catch (err) {
+    return fallback;
+  }
+}
+
+function writePref(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err) {
+    /* a private window may refuse storage */
+  }
+}
+
+function restoreListPrefs() {
+  const saved = readPref("zb-session-filter", "workspace");
+  if (saved === "all" || saved === "workspace") {
+    sessionFilterEl.value = saved;
+  }
+  sessionArchivedEl.checked = readPref("zb-show-archived", "") === "1";
+}
+
+function relativeWhen(iso) {
+  const then = Date.parse(iso);
+  if (!then) {
+    return "";
+  }
+  const minutes = Math.round((Date.now() - then) / 60000);
+  if (minutes < 1) {
+    return ui.justNow;
+  }
+  if (minutes < 60) {
+    return ui.minutesAgo.replace("{n}", String(minutes));
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 36) {
+    return ui.hoursAgo.replace("{n}", String(hours));
+  }
+  return ui.daysAgo.replace("{n}", String(Math.round(hours / 24)));
+}
+
+function dayBucket(iso) {
+  const then = new Date(iso);
+  if (isNaN(then.getTime())) {
+    return "older";
+  }
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startThen = new Date(then.getFullYear(), then.getMonth(), then.getDate());
+  const dayDiff = Math.round((startToday.getTime() - startThen.getTime()) / 86400000);
+  if (dayDiff <= 0) {
+    return "today";
+  }
+  if (dayDiff === 1) {
+    return "yesterday";
+  }
+  const monday = new Date(startToday.getTime());
+  monday.setDate(startToday.getDate() - ((startToday.getDay() + 6) % 7));
+  if (startThen >= monday) {
+    return "week";
+  }
+  return "older";
+}
+
+function paintSessions() {
+  while (sessionListEl.firstChild) {
+    sessionListEl.removeChild(sessionListEl.firstChild);
+  }
+  const pinned = [];
+  const buckets = { today: [], yesterday: [], week: [], older: [] };
+  loadedSessions.forEach(function (sess) {
+    if (sess.pinned === true) {
+      pinned.push(sess);
+      return;
+    }
+    buckets[dayBucket(sess.updatedAt)].push(sess);
+  });
+  appendSessionGroup(ui.groupPinned, pinned);
+  appendSessionGroup(ui.groupToday, buckets.today);
+  appendSessionGroup(ui.groupYesterday, buckets.yesterday);
+  appendSessionGroup(ui.groupWeek, buckets.week);
+  appendSessionGroup(ui.groupOlder, buckets.older);
+  markActiveSession();
+}
+
+function appendSessionGroup(label, rows) {
+  if (!rows.length) {
+    return;
+  }
+  const head = document.createElement("li");
+  const name = document.createElement("p");
+  name.className = "session-group";
+  name.textContent = label;
+  head.appendChild(name);
+  sessionListEl.appendChild(head);
+  rows.forEach(renderSessionItem);
 }
 
 async function pageSessions(more) {
@@ -449,15 +779,26 @@ async function pageSessions(more) {
   if (sessionFilterEl.value === "workspace" && workspaceEl.value.charAt(0) === "/") {
     params.set("cwd", workspaceEl.value);
   }
+  const query = sessionQueryEl.value.trim();
+  if (query) {
+    params.set("q", query);
+  }
+  params.set("archived", sessionArchivedEl.checked ? "include" : "exclude");
   if (more && sessionCursor) {
     params.set("cursor", sessionCursor);
+  }
+  sessionRetryBtn.hidden = true;
+  if (!more) {
+    sessionStatusEl.textContent = ui.loadingSessions;
   }
   const res = await api("/v1/sessions?" + params.toString());
   if (gen !== listGen) {
     return;
   }
   if (!res.ok) {
-    note("list failed " + res.status);
+    sessionStatusEl.textContent = ui.errorPrefix + ui.listFailed;
+    sessionRetryBtn.hidden = false;
+    note(ui.listFailed);
     return;
   }
   const data = await res.json();
@@ -465,19 +806,34 @@ async function pageSessions(more) {
     return;
   }
   const sessions = data.sessions || [];
-  sessions.forEach(renderSessionItem);
+  if (!more) {
+    loadedSessions = [];
+  }
+  sessions.forEach(function (sess) {
+    loadedSessions.push(sess);
+  });
   sessionCursor = data.nextCursor || "";
   moreSessionsBtn.hidden = !sessionCursor;
-  markActiveSession();
+  if (loadedSessions.length === 0) {
+    sessionStatusEl.textContent = ui.emptySessions;
+    while (sessionListEl.firstChild) {
+      sessionListEl.removeChild(sessionListEl.firstChild);
+    }
+    return;
+  }
+  sessionStatusEl.textContent = "";
+  paintSessions();
 }
 
 function renderSessionItem(sess) {
   const li = document.createElement("li");
   li.dataset.id = String(sess.sessionId || "");
-  const label = sess.title ? String(sess.title) : shortId(sess.sessionId);
+  const alias = sess.alias ? String(sess.alias) : "";
+  const label = alias || (sess.title ? String(sess.title) : shortId(sess.sessionId));
   if (caps.loadSession === true) {
     const open = document.createElement("button");
     open.type = "button";
+    open.className = "session-title";
     open.textContent = label;
     open.addEventListener("click", function () {
       loadSession(li.dataset.id).catch(function (err) {
@@ -487,16 +843,18 @@ function renderSessionItem(sess) {
     li.appendChild(open);
   } else {
     const title = document.createElement("p");
+    title.className = "session-title";
     title.textContent = label;
     li.appendChild(title);
   }
   const meta = document.createElement("p");
-  meta.textContent = baseName(sess.cwd) + " " + String(sess.updatedAt || "");
+  const when = relativeWhen(sess.updatedAt);
+  meta.textContent = baseName(sess.cwd) + (when ? " · " + when : "");
   li.appendChild(meta);
   if (caps.sessionResume === true) {
     const resume = document.createElement("button");
     resume.type = "button";
-    resume.textContent = "Retomar";
+    resume.textContent = ui.resume;
     resume.addEventListener("click", function () {
       resumeSession(li.dataset.id).catch(function (err) {
         note(String(err && err.message ? err.message : err));
@@ -504,7 +862,119 @@ function renderSessionItem(sess) {
     });
     li.appendChild(resume);
   }
+  if (metaOk) {
+    li.appendChild(sessionActions(li, sess));
+  }
   sessionListEl.appendChild(li);
+}
+
+function sessionActions(li, sess) {
+  const bar = document.createElement("div");
+  bar.className = "row-actions";
+  const rename = actionButton(ui.rename, function () {
+    startRename(li, sess);
+  });
+  const archive = actionButton(sess.archived === true ? ui.unarchive : ui.archive, function () {
+    saveMeta(sess, { archived: sess.archived !== true }, null);
+  });
+  const pin = actionButton(sess.pinned === true ? ui.unpin : ui.pin, function () {
+    saveMeta(sess, { pinned: sess.pinned !== true }, null);
+  });
+  bar.appendChild(rename);
+  bar.appendChild(archive);
+  bar.appendChild(pin);
+  return bar;
+}
+
+function actionButton(label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.setAttribute("aria-label", label);
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function startRename(li, sess) {
+  const current = li.querySelector(".session-title");
+  if (!current || li.querySelector(".rename-input")) {
+    return;
+  }
+  const input = document.createElement("input");
+  input.className = "rename-input";
+  input.type = "text";
+  input.value = sess.alias ? String(sess.alias) : "";
+  input.setAttribute("aria-label", ui.rename);
+  const err = document.createElement("p");
+  err.className = "row-error";
+  current.replaceWith(input);
+  li.appendChild(err);
+  input.focus();
+  input.addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      saveMeta(sess, { alias: input.value }, err);
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      paintSessions();
+    }
+  });
+}
+
+function saveMeta(sess, body, errEl) {
+  const id = String(sess.sessionId || "");
+  api("/v1/sessions/" + encodeURIComponent(id) + "/meta", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }).then(function (res) {
+    if (res.status === 503 || res.status === 501) {
+      metaOk = false;
+      paintSessions();
+      return res.json().then(function (payload) {
+        sessionStatusEl.textContent = ui.errorPrefix + String(payload && payload.error ? payload.error : ui.metaFailed);
+      });
+    }
+    if (!res.ok) {
+      return res.json().then(function (payload) {
+        if (errEl) {
+          errEl.textContent = ui.errorPrefix + String(payload && payload.error ? payload.error : ui.metaFailed);
+        } else {
+          note(String(payload && payload.error ? payload.error : ui.metaFailed));
+        }
+      }).catch(function () {
+        if (errEl) {
+          errEl.textContent = ui.errorPrefix + ui.metaFailed;
+        }
+      });
+    }
+    return res.json().then(function (entry) {
+      sess.alias = entry.alias || "";
+      sess.archived = entry.archived === true;
+      sess.pinned = entry.pinned === true;
+      if (!sessionArchivedEl.checked && sess.archived) {
+        loadedSessions = loadedSessions.filter(function (item) {
+          return item !== sess;
+        });
+      }
+      if (!loadedSessions.length) {
+        sessionStatusEl.textContent = ui.emptySessions;
+        while (sessionListEl.firstChild) {
+          sessionListEl.removeChild(sessionListEl.firstChild);
+        }
+        return;
+      }
+      sessionStatusEl.textContent = "";
+      paintSessions();
+    });
+  }).catch(function (err) {
+    const message = String(err && err.message ? err.message : err);
+    if (errEl) {
+      errEl.textContent = ui.errorPrefix + message;
+    } else {
+      note(message);
+    }
+  });
 }
 
 async function loadSession(id) {
@@ -519,19 +989,20 @@ async function loadSession(id) {
     body: "{}"
   });
   if (res.status === 409) {
-    note("already attached");
+    note(ui.alreadyAttached);
     sessionId = id;
     markActiveSession();
     connect(0);
     return;
   }
   if (!res.ok) {
-    note("load failed " + res.status);
+    note(ui.loadFailed);
     return;
   }
   const data = await res.json();
   sessionId = data.sessionId || id;
   applyMode(data);
+  showActiveCwd(sessionId);
   backoff = 500;
   connect(0);
 }
@@ -546,20 +1017,21 @@ async function resumeSession(id) {
     body: "{}"
   });
   if (!res.ok) {
-    note("resume failed " + res.status);
+    note(ui.resumeFailed);
     return;
   }
   const data = await res.json();
   if (data.attached === true) {
     sessionId = id;
     markActiveSession();
-    note("retomada");
+    note(ui.resumed);
     return;
   }
   abortStream();
   clearView();
   sessionId = data.sessionId || id;
   applyMode(data);
+  showActiveCwd(sessionId);
   backoff = 500;
   connect(0);
 }
@@ -644,7 +1116,7 @@ function handleBlock(block) {
     try {
       msg = JSON.parse(raw);
     } catch (err) {
-      note("bad event");
+      note(ui.badEvent);
       continue;
     }
     if (typeof msg.seq === "number") {
@@ -673,7 +1145,7 @@ function render(msg) {
   if (msg.type === "error") {
     const message = String(msg.message || "error");
     if (caps.profile === "zero" && message.indexOf("view-only") >= 0) {
-      note("sessao somente leitura");
+      note(ui.readOnly);
     } else {
       note(message);
     }
@@ -691,6 +1163,7 @@ function render(msg) {
   }
   if (msg.type === "stop") {
     addLine("event", "stop " + String(msg.stopReason || ""));
+    announce(ui.turnEnded);
     assistant = null;
     thoughtBody = null;
     sendBtn.disabled = false;
@@ -721,7 +1194,7 @@ function render(msg) {
     if (!thoughtBody) {
       const details = document.createElement("details");
       const summary = document.createElement("summary");
-      summary.textContent = "thought";
+      summary.textContent = ui.thought;
       thoughtBody = document.createElement("p");
       thoughtBody.className = "line thought";
       details.appendChild(summary);
@@ -808,13 +1281,13 @@ function renderTool(update) {
     const args = document.createElement("details");
     args.className = "tool-args";
     const argsSummary = document.createElement("summary");
-    argsSummary.textContent = "command";
+    argsSummary.textContent = ui.command;
     const argsPre = document.createElement("pre");
     args.appendChild(argsSummary);
     args.appendChild(argsPre);
     const details = document.createElement("details");
     const summary = document.createElement("summary");
-    summary.textContent = "output";
+    summary.textContent = ui.output;
     const body = document.createElement("div");
     details.appendChild(summary);
     details.appendChild(body);
@@ -926,12 +1399,16 @@ function showPermission(msg) {
     return;
   }
   permState.set(reqId, "open");
+  permTitleSeq += 1;
   const tool = msg.toolCall || {};
   const card = document.createElement("section");
   card.className = "perm";
+  card.setAttribute("role", "alertdialog");
   card.tabIndex = 0;
   const title = document.createElement("p");
-  title.textContent = String(tool.title || "permission");
+  title.id = "perm-title-" + String(permTitleSeq);
+  title.textContent = String(tool.title || ui.permission);
+  card.setAttribute("aria-labelledby", title.id);
   const kind = document.createElement("p");
   kind.className = "event";
   kind.textContent = String(tool.kind || "");
@@ -946,10 +1423,10 @@ function showPermission(msg) {
   actions.className = "perm-actions";
   const allowBtn = document.createElement("button");
   allowBtn.type = "button";
-  allowBtn.textContent = "Allow";
+  allowBtn.textContent = ui.allow;
   const denyBtn = document.createElement("button");
   denyBtn.type = "button";
-  denyBtn.textContent = "Deny";
+  denyBtn.textContent = ui.deny;
   actions.appendChild(allowBtn);
   actions.appendChild(denyBtn);
   card.appendChild(title);
@@ -983,21 +1460,21 @@ function showPermission(msg) {
       body: JSON.stringify({ decision: decision })
     }).then(function (res) {
       if (res.status === 200) {
-        status.textContent = "waiting";
+        status.textContent = ui.waiting;
         return;
       }
       if (res.status === 409) {
         return res.json().then(function (body) {
-          status.textContent = body && body.reason === "expired" ? "expired" : "already resolved";
+          status.textContent = body && body.reason === "expired" ? ui.expired : ui.resolved;
           actions.remove();
         });
       }
       if (res.status === 404) {
-        status.textContent = "not found";
+        status.textContent = ui.notFound;
         actions.remove();
         return;
       }
-      status.textContent = "failed " + res.status;
+      status.textContent = ui.failed + res.status;
       allowBtn.disabled = false;
       denyBtn.disabled = false;
     }).catch(function (err) {
@@ -1024,7 +1501,7 @@ function resolvePermission(msg) {
   }
   permState.set(reqId, decision);
   if (!activePerm || activePerm.reqId !== reqId) {
-    addLine("event", "permission " + decision);
+    addLine("event", ui.permissionLine + decision);
     return;
   }
   window.clearInterval(activePerm.timer);
@@ -1032,9 +1509,11 @@ function resolvePermission(msg) {
     activePerm.card.parentNode.removeChild(activePerm.card);
   }
   activePerm = null;
-  addLine("event", "permission " + decision);
+  addLine("event", ui.permissionLine + decision);
   if (permQueue.length) {
     showPermission(permQueue.shift());
+  } else {
+    textEl.focus();
   }
 }
 
@@ -1065,7 +1544,7 @@ modeEl.addEventListener("change", function () {
     }
     setModeEnabled(true);
     if (!res.ok) {
-      note("mode failed " + res.status);
+      note(ui.modeFailed);
     }
   }).catch(function (err) {
     if (!sendBtn.disabled) {
@@ -1081,9 +1560,16 @@ document.getElementById("sidebar-toggle").addEventListener("click", function () 
   } else {
     sidebarEl.className = "open";
   }
+  syncSidebar();
 });
 
 refreshSessionsBtn.addEventListener("click", function () {
+  refreshSessions().catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+});
+
+sessionRetryBtn.addEventListener("click", function () {
   refreshSessions().catch(function (err) {
     note(String(err && err.message ? err.message : err));
   });
@@ -1096,6 +1582,25 @@ moreSessionsBtn.addEventListener("click", function () {
 });
 
 sessionFilterEl.addEventListener("change", function () {
+  writePref("zb-session-filter", sessionFilterEl.value);
+  refreshSessions().catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+});
+
+function runSessionSearch() {
+  refreshSessions().catch(function (err) {
+    note(String(err && err.message ? err.message : err));
+  });
+}
+
+sessionQueryEl.addEventListener("input", function () {
+  window.clearTimeout(queryTimer);
+  queryTimer = window.setTimeout(runSessionSearch, 300);
+});
+
+sessionArchivedEl.addEventListener("change", function () {
+  writePref("zb-show-archived", sessionArchivedEl.checked ? "1" : "");
   refreshSessions().catch(function (err) {
     note(String(err && err.message ? err.message : err));
   });
@@ -1110,11 +1615,11 @@ function submitLogin() {
     body: JSON.stringify({ token: token })
   }).then(function (res) {
     if (res.status === 429) {
-      loginError.textContent = "muitas tentativas";
+      loginError.textContent = ui.manyTries;
       return;
     }
     if (!res.ok) {
-      loginError.textContent = "token recusado";
+      loginError.textContent = ui.tokenRejected;
       return;
     }
     tokenEl.value = "";
@@ -1125,11 +1630,14 @@ function submitLogin() {
   });
 }
 
-loginBtn.addEventListener("click", submitLogin);
+loginEl.addEventListener("submit", function (ev) {
+  ev.preventDefault();
+  submitLogin();
+});
 tokenEl.addEventListener("keydown", function (ev) {
   if (ev.key === "Enter") {
     ev.preventDefault();
-    submitLogin();
+    loginEl.requestSubmit();
   }
 });
 
@@ -1157,15 +1665,32 @@ logoutAllBtn.addEventListener("click", function () {
 });
 
 newSessionBtn.addEventListener("click", function () {
+  newSessionErrorEl.textContent = "";
   openSession().catch(function (err) {
     note(String(err && err.message ? err.message : err));
+  });
+});
+
+newSessionOptionsBtn.addEventListener("click", function () {
+  const open = newSessionPanel.hidden;
+  newSessionPanel.hidden = !open;
+  newSessionOptionsBtn.setAttribute("aria-expanded", open ? "true" : "false");
+});
+
+document.getElementById("new-session-custom").addEventListener("click", function () {
+  openSession({
+    workspace: newWorkspaceEl.value,
+    additionalDirectories: additionalDirectories(),
+    errorEl: newSessionErrorEl
+  }).catch(function (err) {
+    newSessionErrorEl.textContent = ui.errorPrefix + String(err && err.message ? err.message : err);
   });
 });
 
 form.addEventListener("submit", function (ev) {
   ev.preventDefault();
   if (!sessionId) {
-    note("no session");
+    note(ui.noSession);
     return;
   }
   const text = textEl.value;
@@ -1180,11 +1705,11 @@ form.addEventListener("submit", function (ev) {
     body: JSON.stringify({ text: text })
   }).then(function (res) {
     if (res.status === 409) {
-      note("prompt already running");
+      note(ui.promptRunning);
       return;
     }
     if (!res.ok) {
-      note("prompt failed " + res.status);
+      note(ui.promptFailed);
       sendBtn.disabled = false;
       setModeEnabled(true);
       return;

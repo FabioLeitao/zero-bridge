@@ -2,7 +2,7 @@
 
 Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRIDGE.md).
 
-**Estado** (2026-10-14). Valores: feita, feita no upstream, em andamento, desenhada, bloqueada-externa, acompanhando.
+**Estado** (2026-10-15). Valores: feita, feita no upstream, em andamento, desenhada, bloqueada-externa, acompanhando.
 
 | ID | Estado | Evidência |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S5a | feita | `6930fa4` |
 | S5b | feita | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
 | S6 | feita | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
-| S6b | desenhada | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Não construída. |
+| S6b | feita | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Construída em `epic/s6b-session-management`. Sem merge. |
 | S7 | desenhada | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3). Decisão de proxy abaixo. Não construída. |
 | S8 | desenhada | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Não construída. |
 | S9 | desenhada | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Não construída. |
@@ -28,7 +28,17 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S17 | feita | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` é a definição de pronto. Mergeada na PR #16. |
 | S18 | desenhada | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Não construída. |
 | S19 | feita | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Mergeada na PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` exercitado. Hermes e `dsh --profile acp`: não executados. |
-| S20 | feita | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Não mergeada. [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Tempos do gate neste host. |
+| S20 | feita | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Mergeada na [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Tempos do gate neste host. |
+| S21 | desenhada | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Não construída. Socket Unix e named pipe. |
+| S22 | desenhada | [#22](https://github.com/FabioLeitao/zero-bridge/issues/22). Não construída. PWA opcional. |
+| S23a | desenhada | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24). Não construída. Esqueleto do shell em `zero-bridge-desktop`. |
+| S23b | desenhada | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25). Não construída. Bandeja, notificações e seletor de pasta. |
+| S23c | desenhada | [#26](https://github.com/FabioLeitao/zero-bridge/issues/26). Não construída. e2e do desktop e pacotes Linux. |
+| S24 | desenhada | [#27](https://github.com/FabioLeitao/zero-bridge/issues/27). Não construída. Seletor de modelo. |
+| S25 | desenhada | [#28](https://github.com/FabioLeitao/zero-bridge/issues/28). Não construída. Anexo de imagem. |
+| S26 | desenhada | [#29](https://github.com/FabioLeitao/zero-bridge/issues/29). Não construída. Cartões de sugestão e chip de modo. |
+| S27 | desenhada | [#31](https://github.com/FabioLeitao/zero-bridge/issues/31). Não construída. Roteamento de modo só para baixo. |
+| S28 | desenhada | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32). Não construída. Estado da sessão. |
 
 **Nome.** O repositório continua `zero-bridge`. A expansão pode mudar neste doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Outras leituras: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. O Zero do Gitlawb é o harness recomendado e de referência, não uma dependência do desenho. Este projeto não é afiliado nem endossado por Gitlawb ou Twigpine.
 
@@ -59,7 +69,7 @@ Referências somente leitura: Hermes `plugins/platforms/a2a`, `web/`, `acp_adapt
 ## Regras globais
 
 1. **Lugar:** cada fatia declara repo + caminho.
-2. **Sequência:** **23 fatias** (S1…S15 mais S5a/S5b, S6b, S14b, S16, S17, S18, S19 e S20). Uma fatia ativa; aceite antes da seguinte. S14, S14b, S17 e S19 estão na main (PR #16, PR #18 e PR #20). A S20 está feita em `epic/s20-gate-speed` e não foi mergeada. Ordem de construção, desktop primeiro ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), shell Electron no repositório separado `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** A S15 espera um go explícito do operador.
+2. **Sequência:** **33 fatias** (S1…S15 mais S5a/S5b, S6b, S14b, S16, S17, S18, S19, S20, S21, S22, S23a/S23b/S23c, S24, S25, S26, S27 e S28). Uma fatia ativa; aceite antes da seguinte. S14, S14b, S17, S19 e S20 estão na main (PR #16, PR #18, PR #20 e PR #33). Ordem de construção, desktop primeiro ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), shell Electron no repositório separado `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** A S15 espera um go explícito do operador.
 3. **Bloqueio externo:** **BLOQUEADA-EXTERNA** pula para a próxima fatia independente.
 4. **Custo zero:** qualquer `session/prompt` real usa modelo **local** (Ollama) ou **`:free`**; nunca provedor pago. Evidências registram provedor/modelo, nunca chaves.
 5. **Nunca fechar PR sem merge:** se o upstream absorver trabalho parecido, fazer merge de `upstream/main` na branch de tópico, reduzir o PR ao delta restante e **parar para o operador**. Não fechar PR aberto sem merge nem fechar issues do upstream daqui.
@@ -92,7 +102,7 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 
 ---
 
-## Sequência linear (23 fatias)
+## Sequência linear (33 fatias)
 
 | ID | Trilha | Repo / caminho | Destrava | Bloqueio |
 | --- | --- | --- | --- | --- |
@@ -118,11 +128,21 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 | **S19** | C6e | `bridge/` | `--agent-cmd`, perfis, gate por capacidade | — |
 | **S20** | C6f | raiz do repo | Gate abaixo de 60s sem perder cobertura | — |
 | **S18** | C6d | container do `zero-bridge` | Imagem ao lado do proxy, root somente leitura | — |
+| **S21** | D1 | `zero-bridge` → `bridge/` | Socket Unix e named pipe | — |
+| **S22** | D2 | `zero-bridge` → `bridge/web/` | PWA opcional e notificações de permissão | — |
+| **S23a** | D3a | `zero-bridge-desktop` | Esqueleto do shell, sidecar e endurecimento | — |
+| **S23b** | D3b | `zero-bridge-desktop` | Bandeja, notificações e seletor de pasta | — |
+| **S23c** | D3c | `zero-bridge-desktop` | e2e do desktop e pacotes Linux | — |
+| **S24** | D4 | `zero-bridge` → `bridge/` | Seletor de modelo a partir de `configOptions` | — |
+| **S25** | D5 | `zero-bridge` → `bridge/` | Anexo de imagem com limites | — |
+| **S26** | D6 | `zero-bridge` → `bridge/web/` | Cartões de sugestão, chip de modo, teclado | — |
+| **S27** | D7 | `zero-bridge` → `bridge/` | Modo automático só para baixo | — |
+| **S28** | D8 | `zero-bridge` → `bridge/` | Estado da sessão para a lista e a bandeja | — |
 | **S15** | — | docs | checklist de publicação e Show and tell | espera go explícito do operador |
 
-**Ordem:** S1 destrava contagem de usage. As fatias C até S6, S14, S14b, S17 e S19 estão na main. A S20 está feita em `epic/s20-gate-speed` e não foi mergeada. Ordem de construção, desktop primeiro ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), shell Electron no repositório separado `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** A S15 espera um go explícito do operador. B (S8–S10) não depende do HTTP. A S11 está feita no upstream, na [#1134](https://github.com/Twigpine/zero/pull/1134). A ponte ainda precisa conferir contra um build que contenha esse merge.
+**Ordem:** S1 destrava contagem de usage. As fatias C até S6, S14, S14b, S17, S19 e S20 estão na main. A S20 foi mergeada na [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). Ordem de construção, desktop primeiro ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), shell Electron no repositório separado `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** A S15 espera um go explícito do operador. B (S8–S10) não depende do HTTP. A S11 está feita no upstream, na [#1134](https://github.com/Twigpine/zero/pull/1134). A ponte ainda precisa conferir contra um build que contenha esse merge.
 
-Mapa de issues deste repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15), [S20 #19](https://github.com/FabioLeitao/zero-bridge/issues/19).
+Mapa de issues deste repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15), [S20 #19](https://github.com/FabioLeitao/zero-bridge/issues/19), [S21 #21](https://github.com/FabioLeitao/zero-bridge/issues/21), [S22 #22](https://github.com/FabioLeitao/zero-bridge/issues/22), [S23a #24](https://github.com/FabioLeitao/zero-bridge/issues/24), [S23b #25](https://github.com/FabioLeitao/zero-bridge/issues/25), [S23c #26](https://github.com/FabioLeitao/zero-bridge/issues/26), [S24 #27](https://github.com/FabioLeitao/zero-bridge/issues/27), [S25 #28](https://github.com/FabioLeitao/zero-bridge/issues/28), [S26 #29](https://github.com/FabioLeitao/zero-bridge/issues/29), [tracker #30](https://github.com/FabioLeitao/zero-bridge/issues/30), [S27 #31](https://github.com/FabioLeitao/zero-bridge/issues/31), [S28 #32](https://github.com/FabioLeitao/zero-bridge/issues/32).
 
 ---
 
@@ -338,9 +358,9 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 ### S6b — lista de sessões em escala
 
-**Caminho:** metadados de sessão, filtros da lista e `bridge/web/`. Só desenhada. Não construída. [#2](https://github.com/FabioLeitao/zero-bridge/issues/2).
+**Caminho:** metadados de sessão, filtros da lista e `bridge/web/`. Construída em `epic/s6b-session-management`. Sem merge. [#2](https://github.com/FabioLeitao/zero-bridge/issues/2).
 
-**Decisão:** apelido, arquivada e fixada são metadados da ponte. O ACP do Zero não tem renomear, arquivar nem apagar. `zero sessions prune` fica fora. O Zero não troca o cwd de uma sessão existente. `session/load` e `session/resume` com outro cwd falham com `session cwd does not match its persisted workspace`. A UI escolhe workspace só na sessão nova e mostra o cwd real da sessão ativa.
+**Decisão:** apelido, arquivada e fixada são metadados da ponte. O ACP do Zero não tem renomear, arquivar nem apagar. `zero sessions prune` fica fora (candidata S6c). O Zero não troca o cwd de uma sessão existente. `session/load` e `session/resume` com outro cwd falham com `session cwd does not match its persisted workspace`. A UI escolhe workspace só na sessão nova e mostra o cwd real da sessão ativa. Neste host, o `zero` aceita `additionalDirectories` em new, load e resume e ignora o campo. A ponte só o encaminha em `session/new`. Load e resume não o recebem.
 
 **Aceite**
 
@@ -389,7 +409,7 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 **Parada:** não fazer bind em `0.0.0.0`. Mergeada na PR #16.
 
-**Destrava:** S17, que está feita. A S14b está feita. A S19 foi mergeada na PR #20. A S20 está feita em `epic/s20-gate-speed` e não foi mergeada. A ordem de construção é a sequência desktop primeiro nas regras globais ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). A S15 espera um go explícito do operador.
+**Destrava:** S17, que está feita. A S14b está feita. A S19 foi mergeada na PR #20. A S20 foi mergeada na [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). A ordem de construção é a sequência desktop primeiro nas regras globais ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). A S15 espera um go explícito do operador.
 
 ### S14b — endurecimento de auth II
 
@@ -458,7 +478,7 @@ Commits: `fb24d4b` modelo e sink de auditoria, `085110b` limite de Bearer em tod
 
 ### S20 — velocidade do gate
 
-**Caminho:** helpers de teste, `scripts/mutate-auth.sh`, o `Makefile` e este plano. Feita em `epic/s20-gate-speed`. Não mergeada. [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Evidência: [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt).
+**Caminho:** helpers de teste, `scripts/mutate-auth.sh`, o `Makefile` e este plano. Mergeada na [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Evidência: [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt).
 
 **Aceite**
 
@@ -470,7 +490,7 @@ Commits: `fb24d4b` modelo e sink de auditoria, `085110b` limite de Bearer em tod
 
 **Parada:** não remover teste nem mutante para ganhar tempo. Não carimbar VCS quando a cópia do módulo não tem `.git`.
 
-**Destrava:** S16.
+**Destrava:** S6b, a próxima fatia na ordem desktop primeiro.
 
 ### S18 — imagem de container
 
@@ -500,7 +520,7 @@ Commits: `fb24d4b` modelo e sink de auditoria, `085110b` limite de Bearer em tod
 
 **Parada:** não adicionar arquivo de workflow. Não documentar um jeito de pular os hooks.
 
-**Destrava:** S14b, que está feita (PR #18). A S19 foi mergeada na PR #20. A S20 está feita em `epic/s20-gate-speed` e não foi mergeada. A ordem de construção é a sequência desktop primeiro nas regras globais ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). A S15 espera um go explícito do operador. Mergeada na PR #16.
+**Destrava:** S14b, que está feita (PR #18). A S19 foi mergeada na PR #20. A S20 foi mergeada na [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). A ordem de construção é a sequência desktop primeiro nas regras globais ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). A S15 espera um go explícito do operador. Mergeada na PR #16.
 
 ### S15 — publicação
 
@@ -517,6 +537,157 @@ Commits: `fb24d4b` modelo e sink de auditoria, `085110b` limite de Bearer em tod
 **Parada:** não mudar visibilidade, não anunciar em público e não abrir a discussion a partir desta fatia sem esse go.
 
 **Destrava:** o projeto pode ser achado na lista de discussions do Zero.
+
+---
+
+## Trilha D — caminho do desktop
+
+**Decisão:** o shell Electron mora no repositório separado `zero-bridge-desktop`. O módulo do core `bridge/` fica na biblioteca padrão do Go. Só desenhada. Não construída. Tracker [#30](https://github.com/FabioLeitao/zero-bridge/issues/30).
+
+A ordem do operador (2026-10-14) é a sequência das regras globais: S20, mergeada na [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33), depois S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)), S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)), S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)), S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26)), depois S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)) e S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)), depois S16, S18 e S7. A [#30](https://github.com/FabioLeitao/zero-bridge/issues/30) lista a S21 logo depois da S6b e não numera a S28. A [#32](https://github.com/FabioLeitao/zero-bridge/issues/32) coloca a S28 depois da S6b e antes da S23b. A ordem do operador coloca a S28 logo depois da S6b. A S22 ([#22](https://github.com/FabioLeitao/zero-bridge/issues/22)) segue opcional e independente.
+
+### S21 — transporte local
+
+**Caminho:** endereço de escuta em `bridge/`. Só desenhada. Não construída. [#21](https://github.com/FabioLeitao/zero-bridge/issues/21).
+
+**Aceite**
+
+- `--listen unix:<path>` (e `npipe:` no Windows). O TCP em loopback continua o padrão. Um endereço TCP fora de loopback continua recusado.
+- O arquivo do socket fica no modo `0600` num diretório `0700`. O processo recusa um caminho que existe e não é um socket velho do mesmo usuário, remove o socket no desligamento e não segue um symlink para dentro do diretório.
+- As regras de Host, Origin, token e cookie ficam. A checagem de Origin trata o socket como origem local só quando `--public-origin` nomeia o cliente.
+
+**Parada:** não escutar fora de loopback. O acesso remoto continua no proxy reverso da S14.
+
+**Destrava:** a S23a pode usar o socket quando ele existir. A S23a não espera por ele.
+
+### S22 — PWA e notificações de permissão
+
+**Caminho:** `bridge/web/`. Opcional. Só desenhada. Não construída. [#22](https://github.com/FabioLeitao/zero-bridge/issues/22).
+
+**Aceite**
+
+- Um manifesto de web app e um service worker que cacheia só o shell. A API nunca entra no cache. A CSP não alarga.
+- Uma página oculta pode notificar uma permissão pendente só com o título da ferramenta, como texto.
+- Um check headless valida o manifesto e mantém um título hostil como texto.
+
+**Parada:** não cachear respostas da API. Não colocar saída do agente na notificação.
+
+**Destrava:** a mesma UI como página instalável. Independente da S21 e da S23.
+
+### S23a — esqueleto do shell
+
+**Caminho:** repositório separado `zero-bridge-desktop`. Só desenhada. Não construída. [#24](https://github.com/FabioLeitao/zero-bridge/issues/24).
+
+**Aceite**
+
+- TypeScript e Electron, lockfile, scripts de instalação bloqueados, `npm audit` no gate, MIT, e README em inglês e em português.
+- O processo principal sobe o `zero-bridge` como sidecar com um array de argv, um token por partida num arquivo `0600` ou no `safeStorage`, e uma janela na UI da ponte. Sair para o sidecar pelo pid registrado.
+- `contextIsolation`, `sandbox`, sem `nodeIntegration`, preload mínimo, CSP estrita, e navegação recusada fora da origem do sidecar.
+- Queda, porta em uso, arquivo de token ruim ou agente ausente mostram um erro dentro da janela.
+
+**Parada:** não colocar o shell neste repositório. Não colocar segredo em argv, log, URL ou renderer.
+
+**Destrava:** S23b.
+
+### S23b — bandeja, notificações e seletor de pasta
+
+**Caminho:** `zero-bridge-desktop`. Só desenhada. Não construída. [#25](https://github.com/FabioLeitao/zero-bridge/issues/25).
+
+**Aceite**
+
+- Um ícone de bandeja mostra, esconde e sai. O estado da janela é restaurado.
+- Uma notificação nativa com a janela oculta usa só o título da ferramenta. Um clique foca aquele cartão de permissão.
+- O seletor de pasta e uma pasta largada são conferidos contra `--workspace-root` da ponte. Um caminho fora das raízes é recusado.
+- Uma segunda partida foca a primeira janela.
+
+**Parada:** não colocar saída do agente na notificação. Não ligar `zero-bridge://` até haver um uso.
+
+**Destrava:** S23c. O MVP de desktop da [#30](https://github.com/FabioLeitao/zero-bridge/issues/30) precisa desta fatia.
+
+### S23c — e2e do desktop e pacotes Linux
+
+**Caminho:** `zero-bridge-desktop`. Só desenhada. Não construída. [#26](https://github.com/FabioLeitao/zero-bridge/issues/26).
+
+**Aceite**
+
+- O Playwright Electron cobre partida, chat contra o agente falso, o cartão de permissão, o caminho da notificação e a saída.
+- `make dist` gera um AppImage e um `.deb` com checksums. Um SBOM fica ao lado dos artefatos.
+- O app empacotado sobe, conversa com o agente falso e para o sidecar ao sair.
+
+**Parada:** não empacotar Windows nem macOS nesta fatia. Isso pede assinatura e uma execução naquele sistema.
+
+**Destrava:** o MVP de desktop definido na [#30](https://github.com/FabioLeitao/zero-bridge/issues/30).
+
+### S24 — seletor de modelo
+
+**Caminho:** `bridge/` e `bridge/web/`. Só desenhada. Não construída. [#27](https://github.com/FabioLeitao/zero-bridge/issues/27).
+
+**Aceite**
+
+- Quando o agente anuncia uma entrada `configOptions` do tipo select com `options` não vazio, a UI oferece essas opções e envia `session/set_config_option`. O controle fica oculto quando a lista está vazia.
+- Nomes e valores são texto não confiável. Um valor fora da lista é **400** e não é enviado. A ponte nunca escolhe um modelo sozinha.
+
+**Parada:** não inventar uma lista de modelos. O `zero acp` devolve `options: null` para `model` hoje, então isto espera o agente.
+
+**Destrava:** nada mais. Independente do shell. Depois da S26 na ordem de construção.
+
+### S25 — anexo de imagem
+
+**Caminho:** `bridge/` e `bridge/web/`. Só desenhada. Não construída. [#28](https://github.com/FabioLeitao/zero-bridge/issues/28).
+
+**Aceite**
+
+- Quando `promptCapabilities.image` é verdadeiro, o compositor envia uma imagem colada ou largada como bloco de imagem ACP.
+- Os tetos ficam finitos: bytes por imagem, imagens por prompt, e allowlist de MIME PNG, JPEG, WebP e GIF. Sem SVG. Checagem de magic byte. Sem renderizar EXIF. Nada escrito em disco. Sem bytes de imagem no log.
+- O controle fica oculto quando o agente não anuncia imagem. O check headless usa só o agente falso.
+
+**Parada:** não chamar um modelo para provar o anexo.
+
+**Destrava:** nada mais. Maior custo de revisão de segurança na trilha desktop.
+
+### S26 — cartões de sugestão, chip de modo, teclado
+
+**Caminho:** `bridge/web/`. Só desenhada. Não construída. [#29](https://github.com/FabioLeitao/zero-bridge/issues/29).
+
+**Aceite**
+
+- Cartões de estado vazio preenchem o compositor e não enviam sozinhos.
+- Um chip diz o modo atual em palavras, a partir dos nomes do próprio agente, como texto.
+- Enter envia, Shift+Enter insere uma linha, e o foco volta ao compositor depois do turno.
+- 320 px não tem rolagem horizontal. Uma descrição de modo hostil continua texto.
+
+**Parada:** não enviar uma sugestão sozinha.
+
+**Destrava:** S24, S25 e S27 vêm depois na ordem de construção. Não dependem do código desta fatia.
+
+### S27 — roteamento de modo só para baixo
+
+**Caminho:** seletor de modo em `bridge/`. Só desenhada. Não construída. [#31](https://github.com/FabioLeitao/zero-bridge/issues/31). A ideia vem da discussion #925 do Twigpine/zero, limitada ao modo de permissão que o ACP já expõe.
+
+**Aceite**
+
+- Uma entrada Automático, opt-in, nasce desligada. O roteador só pode baixar a autoridade abaixo do modo escolhido, a menos que `--auto-mode-ceiling` esteja definido, e nunca passa desse teto nem escolhe um modo que o agente não anunciou.
+- As regras são determinísticas e locais. Sem chamada de modelo. Ambiguidade cai no modo mais restritivo. Blocos citados ou colados não alimentam as regras.
+- A UI mostra o motivo. A aplicação acontece depois de um clique, a menos que `--auto-mode-apply` esteja definido. Uma escolha explícita ganha. O evento de auditoria `mode_routed` registra origem, de, para e id da regra, e nunca o texto do prompt.
+
+**Parada:** não mudar o esforço nem o orçamento de turno do agente. Não subir autoridade a partir do texto do prompt.
+
+**Destrava:** nada mais. Depois da S26 e da S24.
+
+### S28 — estado da sessão
+
+**Caminho:** lista de sessões e SSE em `bridge/`. Só desenhada. Não construída. [#32](https://github.com/FabioLeitao/zero-bridge/issues/32).
+
+**Aceite**
+
+- Cada sessão é `working`, `blocked`, `done`, `error` ou `idle`, derivado do tráfego ACP que a ponte já vê.
+- `GET /v1/sessions` e o fluxo SSE carregam esse estado. Sem texto de prompt e sem argumentos de ferramenta.
+- O distintivo da barra e `document.title` usam o mesmo campo, como texto. Um perfil genérico que não vê permissões cai em `working` e `idle`, nunca em `blocked`.
+- Uma permissão pendente é sempre `blocked`.
+
+**Parada:** não emitir sequências OSC de terminal. Uma ponte não tem terminal.
+
+**Destrava:** a S23b lê o mesmo campo para a bandeja. A ordem de construção coloca a S28 depois da S6b e antes da S21.
 
 ---
 

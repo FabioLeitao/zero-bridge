@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,51 +8,67 @@
 </head>
 <body>
   <div id="shell">
-  <aside id="sidebar">
-    <button id="sidebar-toggle" type="button">Sessoes</button>
+  <aside id="sidebar" aria-label="Sessões">
+    <button id="sidebar-toggle" type="button" aria-expanded="false" aria-controls="sidebar-body">Sessões</button>
     <div id="sidebar-body">
       <div id="session-browser" hidden>
       <label for="session-filter">Filtro</label>
       <select id="session-filter">
-        <option value="workspace">workspace atual</option>
+        <option value="workspace">este diretório</option>
         <option value="all">todos</option>
       </select>
+      <label for="session-query">Busca</label>
+      <input id="session-query" type="search" autocomplete="off">
+      <label class="check" for="session-archived"><input id="session-archived" type="checkbox"><span id="session-archived-label">Mostrar arquivadas</span></label>
       <button id="refresh-sessions" type="button">Atualizar</button>
       <ul id="session-list"></ul>
-      <button id="more-sessions" type="button" hidden>mais</button>
+      <p id="session-status" role="status"></p>
+      <button id="session-retry" type="button" hidden>Tentar de novo</button>
+      <button id="more-sessions" type="button" hidden>Mais</button>
       </div>
     </div>
   </aside>
   <main>
     <h1>zero-bridge</h1>
     <p id="agent-info" hidden></p>
-    <div id="login" hidden>
+    <form id="login" hidden>
       <label for="token">Token</label>
       <input id="token" name="token" type="password" autocomplete="off">
-      <button id="login-button" type="button">Entrar</button>
-      <p id="login-error"></p>
-    </div>
+      <button id="login-button" type="submit">Entrar</button>
+      <p id="login-error" role="alert"></p>
+    </form>
     <form id="session">
-      <label for="workspace">Workspace</label>
+      <label for="workspace">Diretório</label>
       <input id="workspace" name="workspace" type="text" autocomplete="off" readonly>
-      <button id="new-session" type="button">Nova sessao</button>
+      <button id="new-session" type="button">Nova sessão</button>
+      <button id="new-session-options" type="button" aria-expanded="false" aria-controls="new-session-panel">Opções</button>
+      <div id="new-session-panel" hidden>
+        <label for="new-workspace">Diretório da nova sessão</label>
+        <input id="new-workspace" name="new-workspace" type="text" autocomplete="off" list="workspace-roots">
+        <datalist id="workspace-roots"></datalist>
+        <label for="add-dirs">Diretórios adicionais</label>
+        <textarea id="add-dirs" name="add-dirs" rows="3"></textarea>
+        <p id="new-session-error" role="alert"></p>
+        <button id="new-session-custom" type="button">Criar neste diretório</button>
+      </div>
       <button id="logout" type="button" hidden>Sair</button>
       <section id="auth-sessions" hidden aria-labelledby="auth-sessions-title">
-        <h2 id="auth-sessions-title">Sessoes deste acesso</h2>
+        <h2 id="auth-sessions-title">Sessões deste acesso</h2>
         <p id="auth-sessions-status" role="status" aria-live="polite"></p>
-        <ul id="auth-session-list" aria-label="Sessoes ativas"></ul>
+        <ul id="auth-session-list" aria-label="Sessões ativas"></ul>
         <button id="logout-all" type="button">Sair de todos os dispositivos</button>
       </section>
-      <label id="mode-label" for="mode" hidden>Mode</label>
+      <label id="mode-label" for="mode" hidden>Modo</label>
       <select id="mode" hidden disabled></select>
     </form>
-    <div id="plan" hidden></div>
-    <div id="permissions"></div>
-    <div id="log" aria-live="polite"></div>
+    <p id="status" class="sr-only" role="status"></p>
+    <div id="plan" hidden aria-label="Plano"></div>
+    <div id="permissions" aria-label="Permissões"></div>
+    <div id="log" role="log" aria-live="off" aria-label="Conversa"></div>
     <form id="composer">
-      <label for="text">Message</label>
+      <label for="text">Mensagem</label>
       <textarea id="text" name="text" rows="3" required></textarea>
-      <button id="send" type="submit">Send</button>
+      <button id="send" type="submit">Enviar</button>
     </form>
   </main>
   </div>

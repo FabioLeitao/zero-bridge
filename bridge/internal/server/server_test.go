@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,6 +148,10 @@ func TestInfoAndWorkspace(t *testing.T) {
 	if ws == "" || ws != srv.DefaultWorkspace() {
 		t.Fatalf("workspace %q", ws)
 	}
+	roots, _ := body["workspaceRoots"].([]any)
+	if len(roots) != 1 || roots[0] != ws {
+		t.Fatalf("roots %v", body["workspaceRoots"])
+	}
 	st, err := os.Stat(ws)
 	if err != nil || !st.IsDir() {
 		t.Fatal(err)
@@ -275,7 +280,7 @@ func TestListSessions(t *testing.T) {
 	if originRes.StatusCode != http.StatusForbidden {
 		t.Fatalf("origin %d", originRes.StatusCode)
 	}
-	res, err := http.Get(base + "/v1/sessions?cwd=/tmp/zbridge-ws-a")
+	res, err := http.Get(base + "/v1/sessions?cwd=/tmp/zbridge-ws-a&limit=2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +299,7 @@ func TestListSessions(t *testing.T) {
 	if len(page.Sessions) != 2 || page.Sessions[0].Title != `<img src=x onerror="window.__xss=1"></script><script>window.__xss=2</script>` || page.NextCursor == "" {
 		t.Fatalf("page %+v", page)
 	}
-	res2, err := http.Get(base + "/v1/sessions?cwd=/tmp/zbridge-ws-a&cursor=" + page.NextCursor)
+	res2, err := http.Get(base + "/v1/sessions?cwd=/tmp/zbridge-ws-a&limit=2&cursor=" + url.QueryEscape(page.NextCursor))
 	if err != nil {
 		t.Fatal(err)
 	}

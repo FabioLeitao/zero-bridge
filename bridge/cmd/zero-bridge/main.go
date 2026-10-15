@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"zero-bridge/bridge/internal/acpclient"
 	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/server"
+	"zero-bridge/bridge/internal/sessionmeta"
 )
 
 func limitEnv() map[string]string {
@@ -59,18 +61,20 @@ func run() int {
 }
 
 type cliConfig struct {
-	listen        string
-	workspace     string
-	permTimeout   time.Duration
-	tokenFile     string
-	auditLog      string
-	configPath    string
-	limitFlags    map[string]string
-	allowedHosts  []string
-	publicOrigins []string
-	trustProxy    bool
-	agent         acpclient.Command
-	profile       string
+	listen         string
+	workspace      string
+	permTimeout    time.Duration
+	tokenFile      string
+	auditLog       string
+	configPath     string
+	limitFlags     map[string]string
+	allowedHosts   []string
+	publicOrigins  []string
+	trustProxy     bool
+	agent          acpclient.Command
+	profile        string
+	stateDir       string
+	workspaceRoots []string
 }
 
 func runArgs(args []string, stderr io.Writer) int {
@@ -103,6 +107,11 @@ func runArgs(args []string, stderr io.Writer) int {
 		return 2
 	}
 	logger := log.New(stderr, "", log.LstdFlags)
+	stateDir := cfg.stateDir
+	if stateDir == "" {
+		stateDir = defaultStateDir()
+	}
+	meta := openSessionMeta(stateDir, logger)
 	auditSink := auth.Sink(auth.NewLogSink(logger))
 	if cfg.auditLog != "" {
 		fileSink, err := auth.OpenFileSink(cfg.auditLog)
@@ -131,6 +140,7 @@ func runArgs(args []string, stderr io.Writer) int {
 		MaxSessions:       limits.MaxSessions,
 		AuthFailWindow:    limits.AuthFailWindow,
 		AuthFailLimit:     limits.AuthFailLimit,
+		Meta:              meta,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "zero-bridge: %v\n", err)
@@ -139,6 +149,14 @@ func runArgs(args []string, stderr io.Writer) int {
 	srv.ArmReload()
 	if err := srv.PrepareWorkspace(); err != nil {
 		fmt.Fprintf(stderr, "zero-bridge: workspace: %v\n", err)
+		return 2
+	}
+	roots := cfg.workspaceRoots
+	if len(roots) == 0 {
+		roots = []string{srv.DefaultWorkspace()}
+	}
+	if err := srv.SetWorkspaceRoots(roots); err != nil {
+		fmt.Fprintf(stderr, "zero-bridge: workspace root: %v\n", err)
 		return 2
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -158,6 +176,34 @@ func runArgs(args []string, stderr io.Writer) int {
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
 	return 0
+}
+
+func defaultStateDir() string {
+	if v := os.Getenv("XDG_STATE_HOME"); v != "" {
+		return filepath.Join(v, "zero-bridge")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".local", "state", "zero-bridge")
+}
+
+// openSessionMeta opens the label store. A failure is logged without the
+// directory path and the bridge still starts. Meta routes then answer 503.
+func openSessionMeta(dir string, logger *log.Logger) *sessionmeta.Store {
+	if dir == "" {
+		logger.Printf("session metadata store is not available")
+		return nil
+	}
+	st, err := sessionmeta.Open(dir, func(msg string) {
+		logger.Printf("%s", msg)
+	})
+	if err != nil {
+		logger.Printf("session metadata store is not available")
+		return nil
+	}
+	return st
 }
 
 func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
@@ -183,6 +229,18 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 			}
 			i++
 			cfg.listen = args[i]
+		case "--workspace-root":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("missing value for --workspace-root")
+			}
+			i++
+			cfg.workspaceRoots = append(cfg.workspaceRoots, args[i])
+		case "--state-dir":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("missing value for --state-dir")
+			}
+			i++
+			cfg.stateDir = args[i]
 		case "--workspace":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("missing value for --workspace")

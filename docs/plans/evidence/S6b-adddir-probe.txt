@@ -1,0 +1,39 @@
+S6b additionalDirectories probe — 2026-10-15
+
+Question: do session/load and session/resume on the real zero binary accept
+additionalDirectories, and does that field change the cwd check?
+
+Command, run before the result below was written:
+
+  cd bridge && go test -count=1 -timeout 60s -v -run TestAdditionalDirectoriesSpike ./internal/acpclient/
+
+The test starts `zero acp` (the binary on PATH, not the shell alias). The child
+environment is only PATH, HOME, XDG_CONFIG_HOME, XDG_CACHE_HOME, XDG_DATA_HOME,
+XDG_STATE_HOME, and TMPDIR, each under a fresh temp directory. No prompt is
+sent. The child is stopped by its pid after the test reads /proc/<pid>/cmdline
+and checks that the command is zero acp. No session id, home path, or secret
+is recorded here.
+
+Binary: zero 0.9.0+up.30.eebb3846.databoar.9bba95e7.hdrtimeout.scanignore.acpusage.rmodel.sbxcompanion
+
+Source read on this host (internal/acp/types.go, internal/acp/agent.go): the
+field is on NewSessionParams, LoadSessionParams, and ResumeSessionParams
+(an alias of LoadSessionParams). The type comment says the protocol declares
+it and this repo consumes it nowhere. handleSessionNew and
+activatePersistedSession pass only cwd through requestedWorkspace.
+
+Result of the command above: PASS, under 0.1s.
+
+  session/new with additionalDirectories set to one missing absolute path: accepted.
+  session/load with the same cwd and that missing path: accepted.
+  session/load with a different absolute cwd, with and without the field: both
+    refused with "does not match".
+  session/resume with the same cwd and that missing path: accepted.
+  session/resume with a different absolute cwd, with and without the field: both
+    refused with "does not match".
+
+Conclusion: load and resume accept the JSON field and ignore it. The cwd check
+is unchanged. session/new accepts the field and ignores it too, on this binary.
+Commit 6 (additional directories on load and resume, plus an effective cwd in
+that response) is cancelled. The bridge may still forward additionalDirectories
+on session/new only, for an agent that honors the field.

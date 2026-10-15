@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -63,6 +66,48 @@ func TestEmptyAgentCommandExit2(t *testing.T) {
 	code := runArgs([]string{"--agent-cmd", ""}, &stderr)
 	if code != 2 || !strings.Contains(stderr.String(), "empty") {
 		t.Fatalf("exit %d stderr %q", code, stderr.String())
+	}
+}
+
+func TestWorkspaceRootRepeat(t *testing.T) {
+	cfg, err := parseCLI([]string{
+		"--agent-cmd", "/bin/true",
+		"--workspace-root", "/tmp/one",
+		"--workspace-root", "/tmp/two",
+	}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.workspaceRoots) != 2 || cfg.workspaceRoots[0] != "/tmp/one" || cfg.workspaceRoots[1] != "/tmp/two" {
+		t.Fatalf("roots %#v", cfg.workspaceRoots)
+	}
+}
+
+func TestStateDirFlag(t *testing.T) {
+	cfg, err := parseCLI([]string{"--agent-cmd", "/bin/true", "--state-dir", "/tmp/zb-state"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.stateDir != "/tmp/zb-state" {
+		t.Fatalf("state dir %q", cfg.stateDir)
+	}
+}
+
+func TestOpenSessionMetaHidesPath(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "marker-state-path")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	logger := log.New(&buf, "", 0)
+	if openSessionMeta(dir, logger) != nil {
+		t.Fatal("loose directory was accepted")
+	}
+	if strings.Contains(buf.String(), "marker-state-path") {
+		t.Fatalf("log leaked the path: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "not available") {
+		t.Fatalf("log %q", buf.String())
 	}
 }
 

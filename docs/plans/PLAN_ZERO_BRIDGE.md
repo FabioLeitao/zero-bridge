@@ -2,7 +2,7 @@
 
 English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BRIDGE.pt_BR.md).
 
-**Status** (2026-10-14). States: done, done upstream, in progress, designed, blocked-external, following.
+**Status** (2026-10-15). States: done, done upstream, in progress, designed, blocked-external, following.
 
 | ID | State | Evidence |
 | --- | --- | --- |
@@ -13,7 +13,7 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S5a | done | `6930fa4` |
 | S5b | done | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
 | S6 | done | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
-| S6b | designed | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Not built. |
+| S6b | built | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Built on `epic/s6b-session-management`. Not merged. |
 | S7 | designed | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3). Proxy decision below. Not built. |
 | S8 | designed | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Not built. |
 | S9 | designed | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Not built. |
@@ -28,7 +28,17 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S17 | done | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` is the definition of done. Merged in PR #16. |
 | S18 | designed | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Not built. |
 | S19 | done | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Merged in PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` spiked. Hermes and `dsh --profile acp`: not executed. |
-| S20 | done | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Not merged. [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Gate timings on this host. |
+| S20 | done | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Merged in [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Gate timings on this host. |
+| S21 | designed | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Not built. Unix socket and named pipe. |
+| S22 | designed | [#22](https://github.com/FabioLeitao/zero-bridge/issues/22). Not built. Optional PWA. |
+| S23a | designed | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24). Not built. Shell scaffold in `zero-bridge-desktop`. |
+| S23b | designed | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25). Not built. Tray, notifications, folder picker. |
+| S23c | designed | [#26](https://github.com/FabioLeitao/zero-bridge/issues/26). Not built. Desktop e2e and Linux packages. |
+| S24 | designed | [#27](https://github.com/FabioLeitao/zero-bridge/issues/27). Not built. Model picker. |
+| S25 | designed | [#28](https://github.com/FabioLeitao/zero-bridge/issues/28). Not built. Image attachment. |
+| S26 | designed | [#29](https://github.com/FabioLeitao/zero-bridge/issues/29). Not built. Suggestion cards and mode chip. |
+| S27 | designed | [#31](https://github.com/FabioLeitao/zero-bridge/issues/31). Not built. Reduce-only mode routing. |
+| S28 | designed | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32). Not built. Session status model. |
 
 **Name.** The repository stays `zero-bridge`. The expansion may change in this doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Other readings: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. Gitlawb's Zero is the recommended reference harness, not a dependency of the design. This project is not affiliated with or endorsed by Gitlawb or Twigpine.
 
@@ -59,7 +69,7 @@ Reference patterns (read-only, no code copy): Hermes `plugins/platforms/a2a`, `w
 ## Global rules
 
 1. **Place:** every slice names repo + path and why.
-2. **Sequence:** one linear order of **23 slices** (S1…S15 plus S5a/S5b, S6b, S14b, S16, S17, S18, S19, and S20). Only one active slice; the next starts after the previous **acceptance** passes. S14, S14b, S17, and S19 are on main (PR #16, PR #18, and PR #20). S20 is done on `epic/s20-gate-speed` and is not merged. Desktop-first build order ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), Electron shell in the separate repo `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** S15 waits on an explicit operator go.
+2. **Sequence:** one linear order of **33 slices** (S1…S15 plus S5a/S5b, S6b, S14b, S16, S17, S18, S19, S20, S21, S22, S23a/S23b/S23c, S24, S25, S26, S27, and S28). Only one active slice; the next starts after the previous **acceptance** passes. S14, S14b, S17, S19, and S20 are on main (PR #16, PR #18, PR #20, and PR #33). Desktop-first build order ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), Electron shell in the separate repo `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** S15 waits on an explicit operator go.
 3. **External block:** slices that need upstream triage/merge are marked **BLOQUEADA-EXTERNA**; execution skips to the next slice that does not depend on them (order in this doc is fixed).
 4. **Zero-cost prompts:** any slice that sends a real `session/prompt` (probe, HTTP, permissions, UI) must use a **local** model (Ollama) or a **`:free`** variant; never a paid provider. Transcripts and evidence must record provider/model only (never keys).
 5. **Never close unmerged PRs from this workstream:** if upstream lands overlapping work, merge `upstream/main` into the topic branch, shrink the PR to the remaining delta, and **stop for the operator** to decide next steps. Do not close open PRs without merge and do not close upstream issues from here.
@@ -101,7 +111,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 ---
 
-## Linear sequence (23 slices)
+## Linear sequence (33 slices)
 
 | ID | Track | Repo / path | Unlocks | External block |
 | --- | --- | --- | --- | --- |
@@ -127,11 +137,21 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S19** | C6e | `zero-bridge` → `bridge/` | `--agent-cmd`, profiles, capability gate | — |
 | **S20** | C6f | `zero-bridge` repo root | Gate under 60s without dropping coverage | — |
 | **S18** | C6d | `zero-bridge` container | Image beside the proxy, read-only root | — |
+| **S21** | D1 | `zero-bridge` → `bridge/` | Unix socket and named pipe | — |
+| **S22** | D2 | `zero-bridge` → `bridge/web/` | Optional PWA and permission notifications | — |
+| **S23a** | D3a | `zero-bridge-desktop` | Shell scaffold, sidecar, hardening | — |
+| **S23b** | D3b | `zero-bridge-desktop` | Tray, notifications, folder picker | — |
+| **S23c** | D3c | `zero-bridge-desktop` | Desktop e2e and Linux packages | — |
+| **S24** | D4 | `zero-bridge` → `bridge/` | Model picker from `configOptions` | — |
+| **S25** | D5 | `zero-bridge` → `bridge/` | Image attachment with limits | — |
+| **S26** | D6 | `zero-bridge` → `bridge/web/` | Suggestion cards, mode chip, keyboard | — |
+| **S27** | D7 | `zero-bridge` → `bridge/` | Reduce-only automatic mode | — |
+| **S28** | D8 | `zero-bridge` → `bridge/` | Session status for the list and the tray | — |
 | **S15** | — | `zero-bridge` docs | Public checklist and Show and tell | waits on explicit operator go |
 
-**Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices through S6, S14, S14b, S17, and S19 are on main. S20 is done on `epic/s20-gate-speed` and is not merged. Desktop-first build order ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), Electron shell in the separate repo `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** S15 waits on an explicit operator go. B (S8–S10) does not require the HTTP server. **S11** is done upstream in [#1134](https://github.com/Twigpine/zero/pull/1134). The bridge still has to verify against a build that contains that merge.
+**Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices through S6, S14, S14b, S17, S19, and S20 are on main. S20 is merged in [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). Desktop-first build order ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), Electron shell in the separate repo `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** S15 waits on an explicit operator go. B (S8–S10) does not require the HTTP server. **S11** is done upstream in [#1134](https://github.com/Twigpine/zero/pull/1134). The bridge still has to verify against a build that contains that merge.
 
-Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15), [S20 #19](https://github.com/FabioLeitao/zero-bridge/issues/19).
+Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15), [S20 #19](https://github.com/FabioLeitao/zero-bridge/issues/19), [S21 #21](https://github.com/FabioLeitao/zero-bridge/issues/21), [S22 #22](https://github.com/FabioLeitao/zero-bridge/issues/22), [S23a #24](https://github.com/FabioLeitao/zero-bridge/issues/24), [S23b #25](https://github.com/FabioLeitao/zero-bridge/issues/25), [S23c #26](https://github.com/FabioLeitao/zero-bridge/issues/26), [S24 #27](https://github.com/FabioLeitao/zero-bridge/issues/27), [S25 #28](https://github.com/FabioLeitao/zero-bridge/issues/28), [S26 #29](https://github.com/FabioLeitao/zero-bridge/issues/29), [tracker #30](https://github.com/FabioLeitao/zero-bridge/issues/30), [S27 #31](https://github.com/FabioLeitao/zero-bridge/issues/31), [S28 #32](https://github.com/FabioLeitao/zero-bridge/issues/32).
 
 ---
 
@@ -353,9 +373,9 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 ### S6b — session list at scale
 
-**Path:** `bridge/` session metadata, list filters, and `bridge/web/`. Designed only. Not built. [#2](https://github.com/FabioLeitao/zero-bridge/issues/2).
+**Path:** `bridge/` session metadata, list filters, and `bridge/web/`. Built on `epic/s6b-session-management`. Not merged. [#2](https://github.com/FabioLeitao/zero-bridge/issues/2).
 
-**Decision:** alias, archived, and pinned are metadata of the bridge. Zero's ACP has no rename, archive, or delete. `zero sessions prune` stays out of scope. Zero does not change the cwd of an existing session. `session/load` and `session/resume` with another cwd fail with `session cwd does not match its persisted workspace`. The UI chooses a workspace only for a new session and shows the real cwd of the active session.
+**Decision:** alias, archived, and pinned are metadata of the bridge. Zero's ACP has no rename, archive, or delete. `zero sessions prune` stays out of scope (candidate S6c). Zero does not change the cwd of an existing session. `session/load` and `session/resume` with another cwd fail with `session cwd does not match its persisted workspace`. The UI chooses a workspace only for a new session and shows the real cwd of the active session. On this host, `zero` accepts `additionalDirectories` on new, load, and resume and ignores the field. The bridge forwards it only on `session/new`. Load and resume do not take it.
 
 **Acceptance**
 
@@ -404,7 +424,7 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 **Stop:** Do not bind `0.0.0.0`. Merged in PR #16.
 
-**Unlocks:** S17, which is done. S14b is done. S19 is merged in PR #20. S20 is done on `epic/s20-gate-speed` and is not merged. Build order is the desktop-first sequence in the global rules ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). S15 waits on an explicit operator go.
+**Unlocks:** S17, which is done. S14b is done. S19 is merged in PR #20. S20 is merged in [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). Build order is the desktop-first sequence in the global rules ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). S15 waits on an explicit operator go.
 
 ### S14b — auth hardening II
 
@@ -473,7 +493,7 @@ Commits: `fb24d4b` audit model and sink, `085110b` Bearer limit on every `/v1` r
 
 ### S20 — gate speed
 
-**Path:** test helpers, `scripts/mutate-auth.sh`, the `Makefile`, and this plan. Done on `epic/s20-gate-speed`. Not merged. [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Evidence: [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt).
+**Path:** test helpers, `scripts/mutate-auth.sh`, the `Makefile`, and this plan. Merged in [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Evidence: [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt).
 
 **Acceptance**
 
@@ -485,7 +505,7 @@ Commits: `fb24d4b` audit model and sink, `085110b` Bearer limit on every `/v1` r
 
 **Stop:** Do not drop a test or a mutant to buy the time. Do not stamp VCS when the module copy has no `.git`.
 
-**Unlocks:** S16.
+**Unlocks:** S6b, which is the next slice in the desktop-first order.
 
 ### S18 — container image
 
@@ -515,7 +535,7 @@ Commits: `fb24d4b` audit model and sink, `085110b` Bearer limit on every `/v1` r
 
 **Stop:** Do not add a workflow file. Do not document a way to skip the hooks.
 
-**Unlocks:** S14b, which is done (PR #18). S19 is merged in PR #20. S20 is done on `epic/s20-gate-speed` and is not merged. Build order is the desktop-first sequence in the global rules ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). S15 waits on an explicit operator go. Merged in PR #16.
+**Unlocks:** S14b, which is done (PR #18). S19 is merged in PR #20. S20 is merged in [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). Build order is the desktop-first sequence in the global rules ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). S15 waits on an explicit operator go. Merged in PR #16.
 
 ### S15 — publication
 
@@ -532,6 +552,157 @@ Commits: `fb24d4b` audit model and sink, `085110b` Bearer limit on every `/v1` r
 **Stop:** Do not change visibility, push a public announcement, or open the discussion from this slice without that go.
 
 **Unlocks:** People can find the project from the Zero discussion list.
+
+---
+
+## Track D — desktop path
+
+**Decision:** the Electron shell lives in the separate repository `zero-bridge-desktop`. The core module `bridge/` stays on the Go standard library. Designed only. Not built. Tracker [#30](https://github.com/FabioLeitao/zero-bridge/issues/30).
+
+The operator order (2026-10-14) is the sequence in the global rules: S20, merged in [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33), then S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)), S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)), S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)), S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26)), then S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), and S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)), then S16, S18, and S7. [#30](https://github.com/FabioLeitao/zero-bridge/issues/30) lists S21 immediately after S6b and does not number S28. [#32](https://github.com/FabioLeitao/zero-bridge/issues/32) places S28 after S6b and before S23b. The operator order places S28 immediately after S6b. S22 ([#22](https://github.com/FabioLeitao/zero-bridge/issues/22)) stays optional and independent.
+
+### S21 — local transport
+
+**Path:** `bridge/` listen address. Designed only. Not built. [#21](https://github.com/FabioLeitao/zero-bridge/issues/21).
+
+**Acceptance**
+
+- `--listen unix:<path>` (and `npipe:` on Windows). TCP loopback stays the default. A non-loopback TCP address is still refused.
+- The socket file is mode `0600` in a `0700` directory. The process refuses a path that exists and is not a stale socket owned by the same user, removes the socket on shutdown, and does not follow a symlink into the directory.
+- Host, Origin, token, and cookie rules stay. The Origin check treats the socket as a local origin only when `--public-origin` names the client.
+
+**Stop:** Do not bind a non-loopback address. Remote access stays on the S14 reverse proxy.
+
+**Unlocks:** S23a can use the socket when it exists. S23a does not wait on it.
+
+### S22 — PWA and permission notifications
+
+**Path:** `bridge/web/`. Optional. Designed only. Not built. [#22](https://github.com/FabioLeitao/zero-bridge/issues/22).
+
+**Acceptance**
+
+- A web app manifest and a service worker that caches the shell only. The API is never cached. The CSP does not widen.
+- A hidden page may notify a pending permission with the tool title only, as text.
+- A headless check validates the manifest and keeps a hostile tool title as text.
+
+**Stop:** Do not cache API responses. Do not put agent output in the notification.
+
+**Unlocks:** the same UI as an installable page. Independent of S21 and S23.
+
+### S23a — desktop shell scaffold
+
+**Path:** separate repository `zero-bridge-desktop`. Designed only. Not built. [#24](https://github.com/FabioLeitao/zero-bridge/issues/24).
+
+**Acceptance**
+
+- TypeScript and Electron, a lockfile, blocked install scripts, `npm audit` in the gate, MIT, and an English and Portuguese README.
+- The main process starts `zero-bridge` as a sidecar with an argv array, a per-launch token in a `0600` file or `safeStorage`, and one window on the bridge UI. Quit stops the sidecar by its recorded pid.
+- `contextIsolation`, `sandbox`, no `nodeIntegration`, a minimal preload, a strict CSP, and navigation denied outside the sidecar origin.
+- A crash, a port in use, a bad token file, or a missing agent shows an in-window error.
+
+**Stop:** Do not put the shell in this repository. Do not put a secret in argv, logs, the URL, or the renderer.
+
+**Unlocks:** S23b.
+
+### S23b — tray, notifications, folder picker
+
+**Path:** `zero-bridge-desktop`. Designed only. Not built. [#25](https://github.com/FabioLeitao/zero-bridge/issues/25).
+
+**Acceptance**
+
+- A tray icon shows, hides, and quits. Window state is restored.
+- A native notification while the window is hidden uses the tool title only. A click focuses that permission card.
+- The folder picker and a dropped folder are checked against the bridge `--workspace-root`. A path outside the roots is refused.
+- A second launch focuses the first window.
+
+**Stop:** Do not put agent output in the notification. Do not enable `zero-bridge://` until there is a use for it.
+
+**Unlocks:** S23c. The desktop MVP in [#30](https://github.com/FabioLeitao/zero-bridge/issues/30) needs this slice.
+
+### S23c — desktop e2e and Linux packages
+
+**Path:** `zero-bridge-desktop`. Designed only. Not built. [#26](https://github.com/FabioLeitao/zero-bridge/issues/26).
+
+**Acceptance**
+
+- Playwright Electron covers launch, chat against the fake agent, the permission card, the notification path, and quit.
+- `make dist` builds an AppImage and a `.deb` with checksums. An SBOM sits next to the artifacts.
+- The packaged app starts, chats against the fake agent, and stops the sidecar on quit.
+
+**Stop:** Do not package Windows or macOS in this slice. Those need signing and a run on that OS.
+
+**Unlocks:** the desktop MVP defined in [#30](https://github.com/FabioLeitao/zero-bridge/issues/30).
+
+### S24 — model picker
+
+**Path:** `bridge/` and `bridge/web/`. Designed only. Not built. [#27](https://github.com/FabioLeitao/zero-bridge/issues/27).
+
+**Acceptance**
+
+- When the agent advertises a select `configOptions` entry with a non-empty `options` list, the UI offers those options and sends `session/set_config_option`. The control stays hidden when the list is empty.
+- Names and values are untrusted text. A value outside the list is **400** and is not sent. The bridge never selects a model by itself.
+
+**Stop:** Do not invent a model list. `zero acp` returns `options: null` for `model` today, so this waits on the agent.
+
+**Unlocks:** nothing else. Independent of the shell. After S26 in the build order.
+
+### S25 — image attachment
+
+**Path:** `bridge/` and `bridge/web/`. Designed only. Not built. [#28](https://github.com/FabioLeitao/zero-bridge/issues/28).
+
+**Acceptance**
+
+- When `promptCapabilities.image` is true, the composer sends a pasted or dropped image as an ACP image block.
+- Caps stay finite: bytes per image, images per prompt, and a MIME allowlist of PNG, JPEG, WebP, and GIF. No SVG. A magic-byte check. No EXIF rendering. Nothing written to disk. No image bytes in logs.
+- The control is hidden when the agent does not advertise images. The headless check uses the fake agent only.
+
+**Stop:** Do not call a model to prove the attachment.
+
+**Unlocks:** nothing else. Highest security-review cost on the desktop track.
+
+### S26 — suggestion cards, mode chip, keyboard
+
+**Path:** `bridge/web/`. Designed only. Not built. [#29](https://github.com/FabioLeitao/zero-bridge/issues/29).
+
+**Acceptance**
+
+- Empty-state cards fill the composer and do not send by themselves.
+- A chip states the current mode in words from the agent's own names, as text.
+- Enter sends, Shift+Enter inserts a newline, and focus returns to the composer after a turn.
+- 320 px has no horizontal overflow. A hostile mode description stays text.
+
+**Stop:** Do not send a suggestion by itself.
+
+**Unlocks:** S24, S25, and S27 follow it in the build order. They do not depend on its code.
+
+### S27 — reduce-only mode routing
+
+**Path:** `bridge/` mode selector. Designed only. Not built. [#31](https://github.com/FabioLeitao/zero-bridge/issues/31). The idea comes from Twigpine/zero discussion #925, limited to the permission mode ACP already exposes.
+
+**Acceptance**
+
+- An opt-in Automatic entry is off by default. The router may only lower authority below the selected mode unless `--auto-mode-ceiling` is set, and it never goes above that ceiling or selects a mode the agent did not announce.
+- Rules are deterministic and local. No model call. Ambiguity falls back to the more restrictive mode. Quoted or pasted blocks do not feed the rules.
+- The UI shows the reason. Apply happens after one click unless `--auto-mode-apply` is set. An explicit selection wins. The audit event `mode_routed` records source, from, to, and rule id, and never the prompt text.
+
+**Stop:** Do not change the agent's effort or turn budget. Do not raise authority from prompt text.
+
+**Unlocks:** nothing else. After S26 and S24.
+
+### S28 — session status
+
+**Path:** `bridge/` session list and SSE. Designed only. Not built. [#32](https://github.com/FabioLeitao/zero-bridge/issues/32).
+
+**Acceptance**
+
+- Each session is `working`, `blocked`, `done`, `error`, or `idle`, derived from ACP traffic the bridge already sees.
+- `GET /v1/sessions` and the SSE stream carry that state. No prompt text and no tool arguments.
+- The sidebar badge and `document.title` use the same field, as text. A generic profile that cannot see permissions falls back to `working` and `idle`, never `blocked`.
+- A pending permission is always `blocked`.
+
+**Stop:** Do not emit terminal OSC sequences. A bridge has no terminal.
+
+**Unlocks:** S23b reads the same field for the tray. The build order places S28 after S6b and before S21.
 
 ---
 
