@@ -846,21 +846,40 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
 		return
 	}
-	if !requireJSONContentType(r) {
-		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
-		return
+	workspace := s.workspace
+	var extra []string
+	if r.ContentLength != 0 {
+		if !requireJSONContentType(r) {
+			s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var body struct {
+			Workspace             string   `json:"workspace"`
+			AdditionalDirectories []string `json:"additionalDirectories"`
+		}
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil && err != io.EOF {
+			s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+			return
+		}
+		if body.Workspace != "" {
+			workspace = body.Workspace
+		}
+		extra = body.AdditionalDirectories
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	var body struct {
-		Workspace string `json:"workspace"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
-		return
-	}
-	if err := validateWorkspace(body.Workspace); err != nil {
+	cwd, dirs, err := s.resolveNewSession(workspace, extra)
+	if err != nil {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
+	}
+	params := map[string]any{
+		"cwd":        cwd,
+		"mcpServers": []any{},
+	}
+	if len(dirs) > 0 {
+		params["additionalDirectories"] = dirs
 	}
 	var res struct {
 		SessionID string `json:"sessionId"`
@@ -871,10 +890,7 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 			} `json:"availableModes"`
 		} `json:"modes"`
 	}
-	if err := s.acpCall(r.Context(), "session/new", map[string]any{
-		"cwd":        body.Workspace,
-		"mcpServers": []any{},
-	}, &res); err != nil {
+	if err := s.acpCall(r.Context(), "session/new", params, &res); err != nil {
 		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
 		return
 	}
@@ -970,6 +986,19 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mode": body.Mode})
+}
+
+func (s *Server) resolveNewSession(workspace string, extra []string) (string, []string, error) {
+	if s.roots != nil {
+		return s.roots.Resolve(workspace, extra)
+	}
+	if len(extra) > 0 {
+		return "", nil, fmt.Errorf("directory is not allowed")
+	}
+	if err := validateWorkspace(workspace); err != nil {
+		return "", nil, err
+	}
+	return filepath.Clean(workspace), nil, nil
 }
 
 func validateWorkspace(p string) error {

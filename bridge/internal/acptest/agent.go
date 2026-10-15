@@ -52,6 +52,9 @@ func runAgent(r io.Reader, w io.Writer) {
 				os.Exit(0)
 			}
 		case "session/new":
+			if path := os.Getenv("ZB_FAKE_CAPTURE"); path != "" {
+				_ = os.WriteFile(path, append(line, '\n'), 0o600)
+			}
 			n := nextSessionID.Add(1)
 			body := map[string]any{"sessionId": fmt.Sprintf("sess-acptest-%d", n)}
 			if ids := os.Getenv("ZB_FAKE_MODE_IDS"); ids != "" {
