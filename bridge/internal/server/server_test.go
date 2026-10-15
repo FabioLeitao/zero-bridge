@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -23,9 +25,58 @@ import (
 	"zero-bridge/bridge/internal/acptest"
 )
 
+// testAgentBin is a non-race acpfake built once per package run.
+// Pointing ZeroBin at the race-instrumented test binary costs about a second
+// per server, and that start dominates the slow tests.
+// -buildvcs=false keeps the build working when the module copy has no .git,
+// which is how make mutate runs. GOFLAGS and GIT_* are dropped so the
+// environment cannot turn stamping back on or point git at another tree.
+var testAgentBin string
+
 func TestMain(m *testing.M) {
 	acptest.MaybeMain()
-	os.Exit(m.Run())
+	bin, err := buildTestAgent()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "test agent: %v\n", err)
+		os.Exit(1)
+	}
+	testAgentBin = bin
+	code := m.Run()
+	_ = os.RemoveAll(filepath.Dir(bin))
+	os.Exit(code)
+}
+
+func buildTestAgent() (string, error) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", fmt.Errorf("test agent: no source path")
+	}
+	root := filepath.Dir(filepath.Dir(filepath.Dir(file)))
+	dir, err := os.MkdirTemp("", "zbridge-acpfake-")
+	if err != nil {
+		return "", err
+	}
+	bin := filepath.Join(dir, "acpfake")
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "./cmd/acpfake")
+	cmd.Dir = root
+	cmd.Env = testAgentEnv(os.Environ())
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return "", fmt.Errorf("%w: %s", err, out)
+	}
+	return bin, nil
+}
+
+func testAgentEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if strings.HasPrefix(e, "GOFLAGS=") || strings.HasPrefix(e, "GIT_") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 func startTestServer(t *testing.T, extraEnv []string) (*Server, string, func()) {
@@ -43,7 +94,7 @@ func startConfigured(t *testing.T, cfg Config) (*Server, string, func()) {
 	env := []string{"ZB_FAKE_AGENT=1"}
 	env = append(env, cfg.ExtraEnv...)
 	cfg.Listen = addr
-	cfg.ZeroBin = os.Args[0]
+	cfg.ZeroBin = testAgentBin
 	cfg.ExtraEnv = env
 	if cfg.Logger == nil {
 		cfg.Logger = log.New(io.Discard, "", 0)
@@ -57,12 +108,22 @@ func startConfigured(t *testing.T, cfg Config) (*Server, string, func()) {
 	}
 	httpSrv := srv.newHTTPServer()
 	go httpSrv.Serve(ln)
-	return srv, "http://" + addr, func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = httpSrv.Shutdown(ctx)
-		_ = srv.Shutdown(ctx)
+	return srv, "http://" + addr, func() { stopTestHTTP(httpSrv, srv) }
+}
+
+// stopTestHTTP asks the listener to drain, then closes it. Shutdown with a
+// long context waits out SSE and keep-alive connections. A short context
+// plus Close drops those connections. The agent still stops through Server.Shutdown.
+func stopTestHTTP(httpSrv *http.Server, srv *Server) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	err := httpSrv.Shutdown(ctx)
+	cancel()
+	if err != nil {
+		_ = httpSrv.Close()
 	}
+	ctx, cancel = context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_ = srv.Shutdown(ctx)
 }
 
 func TestInfoAndWorkspace(t *testing.T) {
@@ -892,7 +953,7 @@ func TestLoadReplayCapAndShutdown(t *testing.T) {
 
 	before := runtime.NumGoroutine()
 	for i := 0; i < 2; i++ {
-		slow, slowBase, stop := startTestServer(t, []string{"ZB_FAKE_LOAD_SLOW_MS=2000"})
+		slow, slowBase, stop := startTestServer(t, []string{"ZB_FAKE_LOAD_SLOW_MS=200"})
 		finished := make(chan struct{})
 		go func() {
 			defer close(finished)

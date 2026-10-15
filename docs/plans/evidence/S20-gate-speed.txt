@@ -1,0 +1,114 @@
+S20 baseline — 2026-10-14, before any speedup
+
+Host Latitude-E6430, 4 cores, go1.27.2. Commit f1169c644af4583afe59e2df44195e2070450a72 (main, S19 merged). Warm cache. umask 022. Nothing in the tree was edited before these commands. Issue #19 measured internal/server -race at 99.5s wall and the hygiene selftest at about 33s on 4afb614. This remeasure is the line this slice has to beat.
+
+Commands (repo root unless noted). Wall and CPU are from /usr/bin/time -v. Per-test times are go test -json Elapsed for top-level tests.
+
+1. cd bridge && go test ./internal/server -json -count=1 -timeout 200s
+   wall 35.33s, user 1.51s, sys 0.83s (6% CPU). Package elapsed 34.016s. 55 tests, 0 failures.
+
+2. cd bridge && go test ./internal/server -race -json -count=1 -timeout 200s
+   wall 1:27.13 (87.13s), user 2.59s, sys 1.63s (4% CPU). Package elapsed 86.092s. 55 tests, 0 failures.
+
+3. cd bridge && go test ./... -json -count=1 -timeout 400s
+   wall 22.65s, user 7.31s, sys 1.97s (41% CPU). 112 top-level tests in 7 packages, 0 failures.
+   internal/server package elapsed in this run: 19.17s. The same four tests that took ~5s in command 1 were fast here. The 5s is not stable.
+
+4. cd bridge && go test ./... -race -json -count=1 -timeout 500s
+   wall 1:55.58 (115.58s), user 7.18s, sys 2.31s (8% CPU). 112 top-level tests, 0 failures.
+   Package elapsed: server 111.998s, acpclient 7.337s, permissions 1.346s, acptest 1.047s, zero-bridge 1.047s, zeroenv 1.035s, auth 1.034s.
+
+5. bash scripts/check-hygiene-selftest.sh
+   wall 1.69s, user 0.56s, sys 1.15s. selftest: ok. 20 cases, all "selftest ok". On this host the signing agent is warm, so the 18+ signed fixtures are not the 33s from the issue. The cases are still real -S commits.
+
+6. make check
+   wall 2:26.52 (146.52s), user 25.24s, sys 7.13s (22% CPU). Exit 0.
+   go test ./... -race inside it: internal/server 126.364s (higher than command 2; Shutdown flakes, below). acpclient 7.341s. Other packages about 1.0–1.4s. lint-static: 0 issues. govulncheck: no vulnerabilities. tidy-check, hygiene, diff-check clean.
+
+7. make e2e
+   wall 23.16s, user 8.18s, sys 3.06s. e2e: ok (open, token, capabilities hostile, capabilities hidden, auth, startup refuses bad session-ttl).
+
+8. make mutate
+   wall 48.94s, user 54.28s, sys 10.82s. mutate: ok. 17 mutants killed, 0 survivors:
+   login-limit-removed, csrf-missing-origin, secure-without-trust-proxy, httponly-off,
+   post-without-auth, short-token-accepted, token-file-mode-ignored, bearer-limit-removed,
+   idle-not-sliding, idle-check-removed, ttl-check-removed, logout-all-keeps-sessions,
+   sighup-keeps-token, audit-leaks-token, capability-gate-removed, mode-allowlist-restored,
+   capability-list-always-on.
+   Test count to hold: 112 top-level, 55 in internal/server. Mutants to hold: these 17.
+
+Fifteen slowest internal/server tests under -race (command 2). The shared cause is the test helper: it calls http.Server.Shutdown with a 5s context. Shutdown polls until every connection is idle. A connection left in StateNew is treated as idle only after 5s (net/http). Under -race that wait shows up as about 1.0s on almost every test that boots a server; sometimes the whole 5s context is consumed. A package test that does not boot a server stays under 0.1s in the same run, so the second is not the race runtime (that cost is paid once per process). CPU for the package is about 4s either way.
+
+ 1.  7.280s  TestLoadReplayCapAndShutdown
+     Two loads with ZB_FAKE_LOAD_SLOW_MS=2000. The fake agent sleeps the whole interval and does not notice stdin close, so Client.Close waits its 2s then kills the child. Twice, plus the Shutdown wait.
+ 2.  6.060s  TestLoginRateLimitConcurrentWrongToken
+     LoginFailureDelay is already -1. The 50 requests are not the wait. Shutdown consumed the 5s context (no race: 5.030s in command 1, 0.020s in command 3).
+ 3.  5.330s  TestLoginCookieSession
+     Five servers in one test (two at the start, one trust-proxy, two in the goroutine loop). About 1s of Shutdown each, plus a fixed 200ms sleep before the goroutine count.
+ 4.  5.170s  TestLogoutAllListRevokeAndReload
+     Five subtests, each boots a server. Command 4 (./... -race) measured the parent at 10.180s when some of those Shutdowns took the full 5s. Clocks in the subtests are already injected. One subtest waits up to 2s for SIGHUP; it returned in about 1s.
+ 5.  5.130s  TestCapabilityGate
+     Five subtests, each boots a server. No sleep in the test. The time is Shutdown.
+ 6.  4.130s  TestSessionLifetimeAndEviction
+     Four subtests, injected clock, LoginFailureDelay -1. Command 4 measured 19.120s: four Shutdowns that each took the 5s context. The idle and TTL checks themselves do not sleep.
+ 7.  4.120s  TestModesFollowAgentList
+     Four subtests, each boots a server. No sleep in the test. The time is Shutdown.
+ 8.  3.910s  TestConcurrentSessionsWhileSlowPrompt
+     Fixed sleep 2s after the prompts, plus ZB_FAKE_AGENT_SLOW_MS=800, plus Shutdown. collectSSE already waits for the stop event.
+ 9.  2.070s  TestModeConflictsWithPrompt
+     ZB_FAKE_AGENT_SLOW_MS=1500 and a 20ms poll until 409. The prompt stays in flight for 1.5s. Plus Shutdown.
+10.  2.070s  TestGenericProfileDropsModelMeta
+     Two servers. No sleep. Two Shutdown waits.
+11.  2.030s  TestSessionMode
+     The events request uses a 1s context and reads until that context fires, even after the mode event is already in the body. Plus Shutdown.
+12.  1.600s  TestPromptEventsAndReplay
+     Fixed sleep 500ms before reading the log. collectSSE then waits for stop. Plus Shutdown.
+13.  1.560s  TestPermissionTimeout
+     Permission timeout 300ms and a fixed sleep 500ms so the late decision is past the deadline. Plus Shutdown. The sleep is the object of the test; the duration does not have to be 500ms.
+14.  1.500s  TestLoadReplayIsLive
+     ZB_FAKE_LOAD_SLOW_MS=400 so replay is still in flight. Command 1 (no race) measured 5.410s: 400ms plus a Shutdown that took the 5s context.
+15.  1.360s  TestLoadReplayAndResume
+     readSessionEvents with a zero count waits out a 300ms quiet deadline to prove resume did not replay. Plus Shutdown.
+
+Also visible without -race (command 1), same Shutdown deadline, not in the race top 15 because the race run got the short poll: TestBearerAuth 5.210s (one default 200ms login-failure sleep plus a 5s Shutdown), TestCapabilitiesEndpoint 5.010s (Shutdown only; LoginFailureDelay is already -1). TestSSEReplayHandler holds the events body open for a 500ms context (0.500s). TestHealthAgentDown sleeps 200ms after closing the agent instead of waiting on Done.
+
+Baseline status before the changes: go test -race ./internal/server under 20s (now 87s), hygiene selftest under 10s (now 1.69s on this host), make check under 60s warm (now 147s). mutate must still kill all 17. Test count must stay at least 112.
+
+After, on the same host, warm cache. Commands are the same shape as the baseline. The audit of 5882843 on a clean export measured internal/server -race at 10.5s, with 112 top-level tests and 55 in internal/server.
+
+9. cd bridge && go test ./internal/server -race -json -count=1 -timeout 200s
+   After the non-race acpfake fixture (5882843). Package elapsed 11.789s. 55 tests, 0 failures.
+   Ten slowest before that fixture, still using the race-instrumented test binary as the agent (package 77.839s): TestLogoutAllListRevokeAndReload 5.380s, TestLoginCookieSession 5.380s, TestCapabilityGate 5.140s, TestSessionLifetimeAndEviction 4.610s, TestModesFollowAgentList 4.110s, TestConcurrentSessionsWhileSlowPrompt 3.920s, TestLoadReplayCapAndShutdown 3.700s, TestLoadRedactsAndViewOnly 2.130s, TestGenericProfileDropsModelMeta 2.070s, TestSessionMode 2.060s.
+   Ten slowest after the fixture: TestConcurrentSessionsWhileSlowPrompt 2.890s, TestSessionMode 1.020s, TestLoadReplayCapAndShutdown 0.630s, TestPromptEventsAndReplay 0.580s, TestPermissionTimeout 0.530s, TestSSEReplayHandler 0.500s, TestLoadReplayIsLive 0.490s, TestLoadReplayAndResume 0.330s, TestLogoutAllListRevokeAndReload 0.320s, TestSessionLifetimeAndEviction 0.260s.
+
+10. /usr/bin/time -v bash scripts/check-hygiene-selftest.sh
+    After commit-tree fixtures. Wall 2.75s, user 0.59s, sys 1.54s. selftest: ok. 20 cases. A later panel reading of 8m17s was not reproduced.
+
+11. make check
+    Serial gate, after the acpfake fixture: wall 33.0s, internal/server -race 11.429s.
+    One later serial run took 260s because govulncheck stalled; the tests themselves stayed near 11s.
+    Parallel gate (independent targets, fixed log order, diff-check last): wall 25.8s. internal/server -race 15.055s in that run. Lint 0 issues. vulncheck clean. Hygiene ok. The worktree had no extra writes.
+
+12. make mutate
+    Wall 77.6s. The copied tree, which has no .git, passed go test ./... before any edit. Each mutant below died on a "--- FAIL:" line. Build failures are a script error, not a kill.
+    login-limit-removed: TestLoginRateLimitConcurrentWrongToken
+    csrf-missing-origin: TestLoginCookieSession
+    secure-without-trust-proxy: TestLoginCookieSession
+    httponly-off: TestLoginCookieSession
+    post-without-auth: TestV1RoutesRequireCredential
+    short-token-accepted: TestLoadFile
+    token-file-mode-ignored: TestLoadFile
+    bearer-limit-removed: TestBearerRateLimitConcurrentWrongToken
+    idle-not-sliding: TestSessionLifetimeAndEviction
+    idle-check-removed: TestSessionLifetimeAndEviction
+    ttl-check-removed: TestSessionLifetimeAndEviction
+    logout-all-keeps-sessions: TestLogoutAllListRevokeAndReload
+    sighup-keeps-token: TestLogoutAllListRevokeAndReload
+    audit-leaks-token: TestRecordScrubsOutput
+    capability-gate-removed: TestCapabilityGate
+    mode-allowlist-restored: TestModesFollowAgentList
+    capability-list-always-on: TestFakeAgentCapabilities
+
+Acceptance on this host: server -race under 20s (11.8s here, 10.5s on the clean export), hygiene selftest under 10s (2.75s), make check under 60s warm (25.8s parallel, 33.0s serial). mutate killed all 17 by assertion. Test count stayed 112 and 55. Still slower than the floor: TestConcurrentSessionsWhileSlowPrompt waits 2s, and TestSessionMode holds an events body for 1s.
+
+After the changes: server -race 11s, hygiene 2.75s, make check ~21–26s, mutate 17/17 by assertion.

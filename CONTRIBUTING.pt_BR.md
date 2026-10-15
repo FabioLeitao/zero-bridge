@@ -31,6 +31,7 @@ Na raiz do repositório:
 1. `make hooks` uma vez por clone.
 2. `make check` antes de cada commit e de novo antes da pull request.
 3. `make e2e` e `make mutate` antes da pull request. `make mutate` é lento e não faz parte do gancho de pre-commit.
+4. Na iteração, `go test -run` nos pacotes tocados e um `make check` antes do commit.
 
 `make check` é a definição de pronto. Um CI futuro chama esse alvo e não cria uma segunda lista.
 

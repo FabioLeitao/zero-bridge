@@ -22,6 +22,8 @@ O agente edita a árvore. O auditor revisa o commit. O operador decide escopo, p
 
 `make check` é obrigatório antes de um commit. Antes de uma pull request, rode também `make e2e` e `make mutate`. `make mutate` é a camada lenta de pré-PR. Não é o gancho de pre-commit.
 
+Enquanto o commit ainda está sendo escrito, rode `go test -run` nos pacotes que ele toca. Rode `make check` uma vez, depois disso, antes do commit.
+
 Um clone não instala os ganchos. Rode `make hooks` uma vez.
 
 ## Um commit

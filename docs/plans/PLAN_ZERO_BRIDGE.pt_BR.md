@@ -27,7 +27,8 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S16 | desenhada | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Não construída. |
 | S17 | feita | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` é a definição de pronto. Mergeada na PR #16. |
 | S18 | desenhada | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Não construída. |
-| S19 | implementada na branch | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Não mergeada. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` exercitado. Hermes e `dsh --profile acp`: não executados. |
+| S19 | feita | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Mergeada na PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` exercitado. Hermes e `dsh --profile acp`: não executados. |
+| S20 | feita | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Não mergeada. [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Tempos do gate neste host. |
 
 **Nome.** O repositório continua `zero-bridge`. A expansão pode mudar neste doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Outras leituras: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. O Zero do Gitlawb é o harness recomendado e de referência, não uma dependência do desenho. Este projeto não é afiliado nem endossado por Gitlawb ou Twigpine.
 
@@ -58,7 +59,7 @@ Referências somente leitura: Hermes `plugins/platforms/a2a`, `web/`, `acp_adapt
 ## Regras globais
 
 1. **Lugar:** cada fatia declara repo + caminho.
-2. **Sequência:** **22 fatias** (S1…S15 mais S5a/S5b, S6b, S14b, S16, S17, S18 e S19). Uma fatia ativa; aceite antes da seguinte. S14, S14b e S17 estão na main (PR #16 e PR #18). A S19 está implementada em `epic/s19-harness-agnostic` e não foi mergeada. A ordem que resta: **S16 → S18 → S6b → S7**. A S15 espera um go explícito do operador.
+2. **Sequência:** **23 fatias** (S1…S15 mais S5a/S5b, S6b, S14b, S16, S17, S18, S19 e S20). Uma fatia ativa; aceite antes da seguinte. S14, S14b, S17 e S19 estão na main (PR #16, PR #18 e PR #20). A S20 está feita em `epic/s20-gate-speed` e não foi mergeada. Ordem de construção, desktop primeiro ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), shell Electron no repositório separado `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** A S15 espera um go explícito do operador.
 3. **Bloqueio externo:** **BLOQUEADA-EXTERNA** pula para a próxima fatia independente.
 4. **Custo zero:** qualquer `session/prompt` real usa modelo **local** (Ollama) ou **`:free`**; nunca provedor pago. Evidências registram provedor/modelo, nunca chaves.
 5. **Nunca fechar PR sem merge:** se o upstream absorver trabalho parecido, fazer merge de `upstream/main` na branch de tópico, reduzir o PR ao delta restante e **parar para o operador**. Não fechar PR aberto sem merge nem fechar issues do upstream daqui.
@@ -91,7 +92,7 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 
 ---
 
-## Sequência linear (22 fatias)
+## Sequência linear (23 fatias)
 
 | ID | Trilha | Repo / caminho | Destrava | Bloqueio |
 | --- | --- | --- | --- | --- |
@@ -115,12 +116,13 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 | **S16** | C6c | `bridge/obs/` | Traces OTel, métricas, logs JSON | — |
 | **S17** | — | raiz do repo | `make check`, hooks, CONTRIBUTING, AGENTS | — |
 | **S19** | C6e | `bridge/` | `--agent-cmd`, perfis, gate por capacidade | — |
+| **S20** | C6f | raiz do repo | Gate abaixo de 60s sem perder cobertura | — |
 | **S18** | C6d | container do `zero-bridge` | Imagem ao lado do proxy, root somente leitura | — |
 | **S15** | — | docs | checklist de publicação e Show and tell | espera go explícito do operador |
 
-**Ordem:** S1 destrava contagem de usage. As fatias C até S6, S14, S14b e S17 estão na main. A S19 está implementada em `epic/s19-harness-agnostic` e não foi mergeada. A ordem que resta é **S16 → S18 → S6b → S7**. A S15 espera um go explícito do operador. B (S8–S10) não depende do HTTP. A S11 está feita no upstream, na [#1134](https://github.com/Twigpine/zero/pull/1134). A ponte ainda precisa conferir contra um build que contenha esse merge.
+**Ordem:** S1 destrava contagem de usage. As fatias C até S6, S14, S14b, S17 e S19 estão na main. A S20 está feita em `epic/s20-gate-speed` e não foi mergeada. Ordem de construção, desktop primeiro ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), shell Electron no repositório separado `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** A S15 espera um go explícito do operador. B (S8–S10) não depende do HTTP. A S11 está feita no upstream, na [#1134](https://github.com/Twigpine/zero/pull/1134). A ponte ainda precisa conferir contra um build que contenha esse merge.
 
-Mapa de issues deste repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15).
+Mapa de issues deste repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15), [S20 #19](https://github.com/FabioLeitao/zero-bridge/issues/19).
 
 ---
 
@@ -387,7 +389,7 @@ Escopo (só inspiração): [OPEN_WEBUI_NOTES.pt_BR.md](../research/OPEN_WEBUI_NO
 
 **Parada:** não fazer bind em `0.0.0.0`. Mergeada na PR #16.
 
-**Destrava:** S17, que está feita. A S14b está feita. A S19 está implementada em `epic/s19-harness-agnostic` e não foi mergeada. A ordem que resta é S16 → S18 → S6b → S7. A S15 espera um go explícito do operador.
+**Destrava:** S17, que está feita. A S14b está feita. A S19 foi mergeada na PR #20. A S20 está feita em `epic/s20-gate-speed` e não foi mergeada. A ordem de construção é a sequência desktop primeiro nas regras globais ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). A S15 espera um go explícito do operador.
 
 ### S14b — endurecimento de auth II
 
@@ -439,7 +441,7 @@ Commits: `fb24d4b` modelo e sink de auditoria, `085110b` limite de Bearer em tod
 
 ### S19 — ponte ACP sem amarrar o harness
 
-**Caminho:** `bridge/`, comando do agente, perfis, gate por capacidade e UI web. Implementada em `epic/s19-harness-agnostic`. Não mergeada. [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Evidência: [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). O Zero do Gitlawb segue como harness recomendado e de referência. Não é dependência do desenho.
+**Caminho:** `bridge/`, comando do agente, perfis, gate por capacidade e UI web. Mergeada na PR #20. [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Evidência: [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). O Zero do Gitlawb segue como harness recomendado e de referência. Não é dependência do desenho.
 
 **Aceite**
 
@@ -451,6 +453,22 @@ Commits: `fb24d4b` modelo e sink de auditoria, `085110b` limite de Bearer em tod
 - Regra do spike: `HOME` e config isolados, workspace vazio, só `initialize` e `session/new`, sem chamada de modelo. A partida do Hermes pode reparar o checkout real, então esse candidato não foi iniciado. O perfil ACP do dsh chama `resolveModelInfo` no initialize, então esse candidato também não foi iniciado.
 
 **Parada:** não chamar modelo. Não apontar o Hermes para o checkout real nem para `~/.hermes`.
+
+**Destrava:** S20.
+
+### S20 — velocidade do gate
+
+**Caminho:** helpers de teste, `scripts/mutate-auth.sh`, o `Makefile` e este plano. Feita em `epic/s20-gate-speed`. Não mergeada. [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Evidência: [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt).
+
+**Aceite**
+
+- `go test -race ./internal/server` abaixo de 20s. Cumprido neste host, cerca de 11s.
+- Selftest de higiene abaixo de 10s. Cumprido, cerca de 3s com o agente de assinatura quente.
+- `make check` abaixo de 60s com cache quente. Cumprido, cerca de 26s com os alvos independentes juntos.
+- `make mutate` mata cada mutante anterior por uma asserção, e a cópia de base passa antes de qualquer edição. Cumprido: 17 mortes por asserção.
+- A contagem de testes fica em pelo menos 112 no topo e 55 em `internal/server`. Cumprido.
+
+**Parada:** não remover teste nem mutante para ganhar tempo. Não carimbar VCS quando a cópia do módulo não tem `.git`.
 
 **Destrava:** S16.
 
@@ -482,7 +500,7 @@ Commits: `fb24d4b` modelo e sink de auditoria, `085110b` limite de Bearer em tod
 
 **Parada:** não adicionar arquivo de workflow. Não documentar um jeito de pular os hooks.
 
-**Destrava:** S14b, que está feita (PR #18). A S19 está implementada em `epic/s19-harness-agnostic` e não foi mergeada. A ordem que resta é S16 → S18 → S6b → S7. A S15 espera um go explícito do operador. Mergeada na PR #16.
+**Destrava:** S14b, que está feita (PR #18). A S19 foi mergeada na PR #20. A S20 está feita em `epic/s20-gate-speed` e não foi mergeada. A ordem de construção é a sequência desktop primeiro nas regras globais ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). A S15 espera um go explícito do operador. Mergeada na PR #16.
 
 ### S15 — publicação
 

@@ -22,9 +22,11 @@ var nextSessionID atomic.Int64
 var nextPermID atomic.Int64
 
 func runAgent(r io.Reader, w io.Writer) {
-	reader := bufio.NewReader(r)
+	lines := make(chan []byte)
+	go readLines(r, lines)
+	src := &lineSrc{ch: lines}
 	for {
-		line, err := reader.ReadBytes('\n')
+		line, err := src.ReadBytes('\n')
 		if err != nil {
 			return
 		}
@@ -127,8 +129,8 @@ func runAgent(r io.Reader, w io.Writer) {
 				writeErr(w, env.ID, -32602, "unknown session")
 				continue
 			}
-			if ms := envMillis("ZB_FAKE_LOAD_SLOW_MS"); ms > 0 {
-				time.Sleep(time.Duration(ms) * time.Millisecond)
+			if ms := envMillis("ZB_FAKE_LOAD_SLOW_MS"); ms > 0 && !sleepUnlessClosed(src, ms) {
+				return
 			}
 			replaySession(w, sess)
 			writeResp(w, env.ID, modeResult("ask"))
@@ -162,8 +164,8 @@ func runAgent(r io.Reader, w io.Writer) {
 				writeErr(w, env.ID, -32002, msg)
 				continue
 			}
-			if ms := slowMillis(); ms > 0 {
-				time.Sleep(time.Duration(ms) * time.Millisecond)
+			if ms := slowMillis(); ms > 0 && !sleepUnlessClosed(src, ms) {
+				return
 			}
 			if os.Getenv("ZB_FAKE_NO_PERMISSION") == "1" {
 				notify(w, "session/update", map[string]any{
@@ -177,7 +179,7 @@ func runAgent(r io.Reader, w io.Writer) {
 				continue
 			}
 			if os.Getenv("ZB_FAKE_SCENARIO") == "rich" {
-				richPrompt(reader, w, sid, env.ID)
+				richPrompt(src, w, sid, env.ID)
 				continue
 			}
 			if os.Getenv("ZB_FAKE_PERMISSION") == "1" {
@@ -188,7 +190,7 @@ func runAgent(r io.Reader, w io.Writer) {
 				onlyAlways := os.Getenv("ZB_FAKE_PERMISSION_OPTIONS") == "always"
 				var parts []string
 				for i := 0; i < n; i++ {
-					parts = append(parts, permissionRound(reader, w, sid, onlyAlways))
+					parts = append(parts, permissionRound(src, w, sid, onlyAlways))
 				}
 				notify(w, "session/update", map[string]any{
 					"sessionId": sid,
@@ -394,7 +396,7 @@ func hostilePayload() string {
 	return `<img src=x onerror="window.__xss=1"></script><script>window.__xss=2</script>`
 }
 
-func richPrompt(r *bufio.Reader, w io.Writer, sid string, id json.RawMessage) {
+func richPrompt(r nlReader, w io.Writer, sid string, id json.RawMessage) {
 	hostile := hostilePayload()
 	notify(w, "session/update", map[string]any{
 		"sessionId": sid,
@@ -463,11 +465,11 @@ func richPrompt(r *bufio.Reader, w io.Writer, sid string, id json.RawMessage) {
 	writeResp(w, id, map[string]any{"stopReason": "end_turn"})
 }
 
-func permissionRound(r *bufio.Reader, w io.Writer, sessionID string, onlyAlways bool) string {
+func permissionRound(r nlReader, w io.Writer, sessionID string, onlyAlways bool) string {
 	return permissionRoundTool(r, w, sessionID, onlyAlways, "write", map[string]string{"path": "x"})
 }
 
-func permissionRoundTool(r *bufio.Reader, w io.Writer, sessionID string, onlyAlways bool, title string, rawInput any) string {
+func permissionRoundTool(r nlReader, w io.Writer, sessionID string, onlyAlways bool, title string, rawInput any) string {
 	id := nextPermID.Add(1)
 	options := []map[string]string{
 		{"optionId": "allow", "name": "Allow", "kind": "allow_once"},
@@ -540,6 +542,67 @@ func permissionRoundTool(r *bufio.Reader, w io.Writer, sessionID string, onlyAlw
 
 func slowMillis() int {
 	return envMillis("ZB_FAKE_AGENT_SLOW_MS")
+}
+
+// nlReader is one newline-delimited stdin. *bufio.Reader and *lineSrc both qualify.
+type nlReader interface {
+	ReadBytes(delim byte) ([]byte, error)
+}
+
+// lineSrc is the only consumer of the agent stdin. The reader goroutine
+// closes ch on EOF. Lines that arrive while a pause is waiting sit in stash
+// so the next ReadBytes returns them in order.
+type lineSrc struct {
+	ch    <-chan []byte
+	stash [][]byte
+}
+
+func (s *lineSrc) ReadBytes(byte) ([]byte, error) {
+	if len(s.stash) > 0 {
+		line := s.stash[0]
+		s.stash = s.stash[1:]
+		return line, nil
+	}
+	line, ok := <-s.ch
+	if !ok {
+		return nil, io.EOF
+	}
+	return line, nil
+}
+
+func readLines(r io.Reader, lines chan<- []byte) {
+	defer close(lines)
+	reader := bufio.NewReader(r)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			return
+		}
+		buf := make([]byte, len(line))
+		copy(buf, line)
+		lines <- buf
+	}
+}
+
+// sleepUnlessClosed waits ms, or returns false when stdin reaches EOF.
+// select waits on the timer or the line channel. A line is stashed, not dropped.
+func sleepUnlessClosed(s *lineSrc, ms int) bool {
+	if ms <= 0 {
+		return true
+	}
+	timer := time.NewTimer(time.Duration(ms) * time.Millisecond)
+	defer timer.Stop()
+	for {
+		select {
+		case <-timer.C:
+			return true
+		case line, ok := <-s.ch:
+			if !ok {
+				return false
+			}
+			s.stash = append(s.stash, line)
+		}
+	}
 }
 
 func envMillis(key string) int {

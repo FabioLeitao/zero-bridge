@@ -22,6 +22,8 @@ The agent edits the tree. The auditor reviews the commit. The operator decides s
 
 `make check` is required before a commit. Before a pull request, also run `make e2e` and `make mutate`. `make mutate` is the slow pre-PR layer. It is not the pre-commit hook.
 
+While a commit is still being written, run `go test -run` on the packages that commit touches. Run `make check` once, after that, before the commit.
+
 A clone does not install the hooks. Run `make hooks` once.
 
 ## One commit

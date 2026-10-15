@@ -27,7 +27,8 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S16 | designed | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Not built. |
 | S17 | done | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` is the definition of done. Merged in PR #16. |
 | S18 | designed | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Not built. |
-| S19 | implemented on the branch | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Not merged. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` spiked. Hermes and `dsh --profile acp`: not executed. |
+| S19 | done | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Merged in PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` spiked. Hermes and `dsh --profile acp`: not executed. |
+| S20 | done | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Not merged. [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Gate timings on this host. |
 
 **Name.** The repository stays `zero-bridge`. The expansion may change in this doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Other readings: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. Gitlawb's Zero is the recommended reference harness, not a dependency of the design. This project is not affiliated with or endorsed by Gitlawb or Twigpine.
 
@@ -58,7 +59,7 @@ Reference patterns (read-only, no code copy): Hermes `plugins/platforms/a2a`, `w
 ## Global rules
 
 1. **Place:** every slice names repo + path and why.
-2. **Sequence:** one linear order of **22 slices** (S1…S15 plus S5a/S5b, S6b, S14b, S16, S17, S18, and S19). Only one active slice; the next starts after the previous **acceptance** passes. S14, S14b, and S17 are on main (PR #16 and PR #18). S19 is implemented on `epic/s19-harness-agnostic` and is not merged. Remaining build order: **S16 → S18 → S6b → S7**. S15 waits on an explicit operator go.
+2. **Sequence:** one linear order of **23 slices** (S1…S15 plus S5a/S5b, S6b, S14b, S16, S17, S18, S19, and S20). Only one active slice; the next starts after the previous **acceptance** passes. S14, S14b, S17, and S19 are on main (PR #16, PR #18, and PR #20). S20 is done on `epic/s20-gate-speed` and is not merged. Desktop-first build order ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), Electron shell in the separate repo `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** S15 waits on an explicit operator go.
 3. **External block:** slices that need upstream triage/merge are marked **BLOQUEADA-EXTERNA**; execution skips to the next slice that does not depend on them (order in this doc is fixed).
 4. **Zero-cost prompts:** any slice that sends a real `session/prompt` (probe, HTTP, permissions, UI) must use a **local** model (Ollama) or a **`:free`** variant; never a paid provider. Transcripts and evidence must record provider/model only (never keys).
 5. **Never close unmerged PRs from this workstream:** if upstream lands overlapping work, merge `upstream/main` into the topic branch, shrink the PR to the remaining delta, and **stop for the operator** to decide next steps. Do not close open PRs without merge and do not close upstream issues from here.
@@ -100,7 +101,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 
 ---
 
-## Linear sequence (22 slices)
+## Linear sequence (23 slices)
 
 | ID | Track | Repo / path | Unlocks | External block |
 | --- | --- | --- | --- | --- |
@@ -124,12 +125,13 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S16** | C6c | `zero-bridge` → `bridge/obs/` | OTel traces, metrics, JSON logs | — |
 | **S17** | — | `zero-bridge` repo root | `make check`, hooks, CONTRIBUTING, AGENTS | — |
 | **S19** | C6e | `zero-bridge` → `bridge/` | `--agent-cmd`, profiles, capability gate | — |
+| **S20** | C6f | `zero-bridge` repo root | Gate under 60s without dropping coverage | — |
 | **S18** | C6d | `zero-bridge` container | Image beside the proxy, read-only root | — |
 | **S15** | — | `zero-bridge` docs | Public checklist and Show and tell | waits on explicit operator go |
 
-**Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices through S6, S14, S14b, and S17 are on main. S19 is implemented on `epic/s19-harness-agnostic` and is not merged. Remaining build order is **S16 → S18 → S6b → S7**. S15 waits on an explicit operator go. B (S8–S10) does not require the HTTP server. **S11** is done upstream in [#1134](https://github.com/Twigpine/zero/pull/1134). The bridge still has to verify against a build that contains that merge.
+**Order rationale:** S1 is the smallest approved upstream fix and makes ACP session usage visible to `zero usage report`, which bridge slices rely on when debugging prompts. C slices through S6, S14, S14b, S17, and S19 are on main. S20 is done on `epic/s20-gate-speed` and is not merged. Desktop-first build order ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)): **S20 ([#19](https://github.com/FabioLeitao/zero-bridge/issues/19)) → S6b ([#2](https://github.com/FabioLeitao/zero-bridge/issues/2)) → S28 ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) → S21 ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)) → S23a/b/c ([#24](https://github.com/FabioLeitao/zero-bridge/issues/24) [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) [#26](https://github.com/FabioLeitao/zero-bridge/issues/26), Electron shell in the separate repo `zero-bridge-desktop`) → S26 ([#29](https://github.com/FabioLeitao/zero-bridge/issues/29)), S24 ([#27](https://github.com/FabioLeitao/zero-bridge/issues/27)), S25 ([#28](https://github.com/FabioLeitao/zero-bridge/issues/28)), S27 ([#31](https://github.com/FabioLeitao/zero-bridge/issues/31)) → S16 ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12)) → S18 ([#14](https://github.com/FabioLeitao/zero-bridge/issues/14)) → S7 ([#3](https://github.com/FabioLeitao/zero-bridge/issues/3)).** S15 waits on an explicit operator go. B (S8–S10) does not require the HTTP server. **S11** is done upstream in [#1134](https://github.com/Twigpine/zero/pull/1134). The bridge still has to verify against a build that contains that merge.
 
-Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15).
+Issue map for this repo: [S14 #1](https://github.com/FabioLeitao/zero-bridge/issues/1), [S6b #2](https://github.com/FabioLeitao/zero-bridge/issues/2), [S7 #3](https://github.com/FabioLeitao/zero-bridge/issues/3), [S8 #4](https://github.com/FabioLeitao/zero-bridge/issues/4), [S9 #5](https://github.com/FabioLeitao/zero-bridge/issues/5), [S10 #6](https://github.com/FabioLeitao/zero-bridge/issues/6), [S11 #7](https://github.com/FabioLeitao/zero-bridge/issues/7), [S12 #8](https://github.com/FabioLeitao/zero-bridge/issues/8), [S13 #9](https://github.com/FabioLeitao/zero-bridge/issues/9), [S15 #10](https://github.com/FabioLeitao/zero-bridge/issues/10), [S14b #11](https://github.com/FabioLeitao/zero-bridge/issues/11), [S16 #12](https://github.com/FabioLeitao/zero-bridge/issues/12), [S17 #13](https://github.com/FabioLeitao/zero-bridge/issues/13), [S18 #14](https://github.com/FabioLeitao/zero-bridge/issues/14), [S19 #15](https://github.com/FabioLeitao/zero-bridge/issues/15), [S20 #19](https://github.com/FabioLeitao/zero-bridge/issues/19).
 
 ---
 
@@ -402,7 +404,7 @@ Component scope (inspiration only): [OPEN_WEBUI_NOTES.md](../research/OPEN_WEBUI
 
 **Stop:** Do not bind `0.0.0.0`. Merged in PR #16.
 
-**Unlocks:** S17, which is done. S14b is done. S19 is implemented on `epic/s19-harness-agnostic` and is not merged. Remaining build order is S16 → S18 → S6b → S7. S15 waits on an explicit operator go.
+**Unlocks:** S17, which is done. S14b is done. S19 is merged in PR #20. S20 is done on `epic/s20-gate-speed` and is not merged. Build order is the desktop-first sequence in the global rules ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). S15 waits on an explicit operator go.
 
 ### S14b — auth hardening II
 
@@ -454,7 +456,7 @@ Commits: `fb24d4b` audit model and sink, `085110b` Bearer limit on every `/v1` r
 
 ### S19 — harness-agnostic ACP bridge
 
-**Path:** `bridge/` agent command, profiles, capability gate, and web UI. Implemented on `epic/s19-harness-agnostic`. Not merged. [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Evidence: [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). Gitlawb's Zero stays the recommended reference harness. It is not a dependency of the design.
+**Path:** `bridge/` agent command, profiles, capability gate, and web UI. Merged in PR #20. [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Evidence: [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). Gitlawb's Zero stays the recommended reference harness. It is not a dependency of the design.
 
 **Acceptance**
 
@@ -466,6 +468,22 @@ Commits: `fb24d4b` audit model and sink, `085110b` Bearer limit on every `/v1` r
 - Spike rule: isolated `HOME` and config, empty workspace, only `initialize` and `session/new`, no model call. Hermes startup can repair the real checkout, so that candidate was not started. The dsh ACP profile calls `resolveModelInfo` on initialize, so that candidate was not started either.
 
 **Stop:** Do not call a model. Do not point Hermes at the real checkout or at `~/.hermes`.
+
+**Unlocks:** S20.
+
+### S20 — gate speed
+
+**Path:** test helpers, `scripts/mutate-auth.sh`, the `Makefile`, and this plan. Done on `epic/s20-gate-speed`. Not merged. [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Evidence: [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt).
+
+**Acceptance**
+
+- `go test -race ./internal/server` under 20s. Met on this host, about 11s.
+- Hygiene selftest under 10s. Met, about 3s with the signing agent warm.
+- `make check` under 60s on a warm cache. Met, about 26s with the independent targets running together.
+- `make mutate` kills every previous mutant by an assertion, and the copied baseline passes before any edit. Met: 17 assertion kills.
+- Test count stays at least 112 top-level and 55 in `internal/server`. Met.
+
+**Stop:** Do not drop a test or a mutant to buy the time. Do not stamp VCS when the module copy has no `.git`.
 
 **Unlocks:** S16.
 
@@ -497,7 +515,7 @@ Commits: `fb24d4b` audit model and sink, `085110b` Bearer limit on every `/v1` r
 
 **Stop:** Do not add a workflow file. Do not document a way to skip the hooks.
 
-**Unlocks:** S14b, which is done (PR #18). S19 is implemented on `epic/s19-harness-agnostic` and is not merged. Remaining build order is S16 → S18 → S6b → S7. S15 waits on an explicit operator go. Merged in PR #16.
+**Unlocks:** S14b, which is done (PR #18). S19 is merged in PR #20. S20 is done on `epic/s20-gate-speed` and is not merged. Build order is the desktop-first sequence in the global rules ([#30](https://github.com/FabioLeitao/zero-bridge/issues/30)). S15 waits on an explicit operator go. Merged in PR #16.
 
 ### S15 — publication
 
