@@ -12,7 +12,7 @@ The agent edits the tree. The auditor reviews the commit. The operator decides s
 
 - The core module `bridge/` stays on the Go standard library. No new requirement in `bridge/go.mod`. The only planned exception is the submodule `bridge/obs`, which may import the OpenTelemetry SDK and is not built yet.
 - The web UI inserts text with `textContent` and `createTextNode` only.
-- The process binds loopback. It does not terminate TLS.
+- The process binds loopback TCP, or a Unix socket at `unix:<absolute path>` (`0700` parent, `0600` socket). It does not terminate TLS. A Windows named pipe is not implemented. On the socket, an Origin is accepted only from `--public-origin`.
 - Logs, telemetry, the URL, the query string, and server-sent events do not carry a secret, a prompt, `rawInput`, a session id, or a home-directory path.
 - A session label is `working`, `blocked`, `done`, `error`, or `idle`, derived from ACP traffic the bridge already sees. The label does not carry a prompt, a tool argument, or a title. Profile `generic` reports only `working` and `idle`.
 - Do not kill processes by pattern. Stop a process you started by its recorded pid, after reading its command line.
