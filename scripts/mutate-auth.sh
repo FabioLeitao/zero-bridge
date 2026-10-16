@@ -198,7 +198,7 @@ mutants = [
         "socket-owner-unchecked",
         "internal/server",
         "TestOwnerAndModePredicates",
-        [("internal/server/unix_linux.go", "\tif uid != uint32(os.Getuid()) {\n\t\treturn errors.New(\"listen path owner does not match\")\n\t}", "\tif false && uid != uint32(os.Getuid()) {\n\t\treturn errors.New(\"listen path owner does not match\")\n\t}")],
+        [("internal/server/unix_linux.go", "\tif uid != uint32(currentUID()) {\n\t\treturn errors.New(\"listen path owner does not match\")\n\t}", "\tif false && uid != uint32(currentUID()) {\n\t\treturn errors.New(\"listen path owner does not match\")\n\t}")],
     ),
     (
         "socket-regular-file-removed",
@@ -211,6 +211,24 @@ mutants = [
         "internal/server",
         "TestUnixRefusesForeignPeer",
         [("internal/server/unix_linux.go", "\t\tuid, err := readPeerUID(c)\n\t\tif err != nil || !peerAllowed(uid) {\n\t\t\tc.Close()\n\t\t\tcontinue\n\t\t}", "\t\tif _, err := readPeerUID(c); err != nil {\n\t\t\tc.Close()\n\t\t\tcontinue\n\t\t}")],
+    ),
+    (
+        "socket-peercred-error-ignored",
+        "internal/server",
+        "TestUnixRefusesPeerCredError",
+        [("internal/server/unix_linux.go", "if err != nil || !peerAllowed(uid) {", "if err == nil && !peerAllowed(uid) {")],
+    ),
+    (
+        "dir-group-bits-unchecked",
+        "internal/server",
+        "TestUnixRefusesGroupBits",
+        [("internal/server/unix_linux.go", "if perm&0077 != 0 {", "if perm&0007 != 0 {")],
+    ),
+    (
+        "dir-owner-unchecked",
+        "internal/server",
+        "TestUnixRefusesSwappedOwner",
+        [("internal/server/unix_linux.go", "\t\treturn errors.New(\"listen directory owner does not match\")\n\t}\n\treturn ownerMatches(sys.Uid)", "\t\treturn errors.New(\"listen directory owner does not match\")\n\t}\n\t_ = sys\n\treturn nil")],
     ),
 ]
 

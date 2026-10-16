@@ -56,6 +56,10 @@ func listenUnix(path string) (net.Listener, error) {
 // present a foreign uid without a second account.
 var readPeerUID = peerUID
 
+// currentUID is the process owner. Tests replace it to present another
+// uid without a second account.
+var currentUID = os.Getuid
+
 type peerListener struct {
 	net.Listener
 }
@@ -76,7 +80,7 @@ func (l peerListener) Accept() (net.Conn, error) {
 }
 
 func peerAllowed(uid uint32) bool {
-	return uid == uint32(os.Getuid())
+	return uid == uint32(currentUID())
 }
 
 func peerUID(c net.Conn) (uint32, error) {
@@ -298,7 +302,7 @@ func refuseOpenMode(perm os.FileMode) error {
 }
 
 func ownerMatches(uid uint32) error {
-	if uid != uint32(os.Getuid()) {
+	if uid != uint32(currentUID()) {
 		return errors.New("listen path owner does not match")
 	}
 	return nil

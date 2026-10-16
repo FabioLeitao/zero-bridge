@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -48,6 +49,97 @@ func TestUnixRefusesForeignPeer(t *testing.T) {
 	if err == nil {
 		res.Body.Close()
 		t.Fatalf("foreign peer status %d", res.StatusCode)
+	}
+}
+
+func TestUnixRefusesPeerCredError(t *testing.T) {
+	prev := readPeerUID
+	readPeerUID = func(net.Conn) (uint32, error) {
+		return 0, errors.New("peer cred")
+	}
+	t.Cleanup(func() { readPeerUID = prev })
+	dir := filepath.Join(t.TempDir(), "d")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "bridge.sock")
+	srv := newUnixServer(t, path, "")
+	stop := serveUnix(t, srv, path)
+	defer stop()
+	req, err := http.NewRequest(http.MethodGet, "http://localhost/v1/info", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := unixClient(path).Do(req)
+	if err == nil {
+		res.Body.Close()
+		t.Fatalf("peer cred error status %d", res.StatusCode)
+	}
+}
+
+func TestUnixRefusesGroupBits(t *testing.T) {
+	for _, mode := range []os.FileMode{0750, 0770} {
+		t.Run(mode.String(), func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "group")
+			if err := os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(dir, mode); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "bridge.sock")
+			srv := newUnixServer(t, path, "")
+			err := serveUntilError(srv)
+			if err == nil || !strings.Contains(err.Error(), "too open") {
+				t.Fatalf("err %v", err)
+			}
+			fi, statErr := os.Lstat(dir)
+			if statErr != nil || fi.Mode().Perm() != mode {
+				t.Fatalf("dir mode changed: %v %#v", statErr, fi)
+			}
+			if _, statErr := os.Lstat(path); !os.IsNotExist(statErr) {
+				t.Fatal("socket created in a group-open directory")
+			}
+		})
+	}
+}
+
+func TestUnixRefusesSwappedOwner(t *testing.T) {
+	prev := currentUID
+	currentUID = func() int { return os.Getuid() + 1 }
+	t.Cleanup(func() { currentUID = prev })
+
+	dir := filepath.Join(t.TempDir(), "parent")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "bridge.sock")
+	err := serveUntilError(newUnixServer(t, path, ""))
+	if err == nil || !strings.Contains(err.Error(), "owner") {
+		t.Fatalf("parent err %v", err)
+	}
+	if _, statErr := os.Lstat(path); !os.IsNotExist(statErr) {
+		t.Fatal("socket created for a foreign directory owner")
+	}
+
+	sockDir := filepath.Join(t.TempDir(), "sock")
+	if err := os.Mkdir(sockDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	sock := filepath.Join(sockDir, "bridge.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.(*net.UnixListener).SetUnlinkOnClose(false)
+	ln.Close()
+	err = serveUntilError(newUnixServer(t, sock, ""))
+	if err == nil || !strings.Contains(err.Error(), "owner") {
+		t.Fatalf("socket err %v", err)
+	}
+	fi, statErr := os.Lstat(sock)
+	if statErr != nil || fi.Mode()&os.ModeSocket == 0 {
+		t.Fatalf("existing socket not left in place: %v %#v", statErr, fi)
 	}
 }
 
