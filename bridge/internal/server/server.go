@@ -327,13 +327,16 @@ func (s *Server) Handler() http.Handler {
 // ListenAndServe blocks until the server stops.
 // A unix listener does not open a TCP port. Shutdown removes the socket.
 func (s *Server) ListenAndServe() error {
+	httpSrv := s.newHTTPServer()
+	httpSrv.Addr = ""
+	s.mu.Lock()
+	s.httpSrv = httpSrv
+	s.mu.Unlock()
 	ln, err := s.openListener()
 	if err != nil {
 		return err
 	}
-	s.httpSrv = s.newHTTPServer()
-	s.httpSrv.Addr = ""
-	return s.httpSrv.Serve(ln)
+	return httpSrv.Serve(ln)
 }
 
 func (s *Server) openListener() (net.Listener, error) {
@@ -342,7 +345,9 @@ func (s *Server) openListener() (net.Listener, error) {
 		if err != nil {
 			return nil, err
 		}
+		s.mu.Lock()
 		s.ownsSocket = true
+		s.mu.Unlock()
 		return ln, nil
 	}
 	return net.Listen("tcp", s.listen)
@@ -366,9 +371,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.serveCancel()
 	}
 	s.waitReload(ctx)
+	s.mu.Lock()
+	httpSrv := s.httpSrv
+	ownsSocket := s.ownsSocket
+	sockPath := s.sockPath
+	s.mu.Unlock()
 	var err error
-	if s.httpSrv != nil {
-		err = s.httpSrv.Shutdown(ctx)
+	if httpSrv != nil {
+		err = httpSrv.Shutdown(ctx)
 	}
 	s.acpMu.Lock()
 	c := s.acp
@@ -382,8 +392,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			err = cerr
 		}
 	}
-	if s.ownsSocket {
-		_ = removeUnixSocket(s.sockPath)
+	if ownsSocket {
+		_ = removeUnixSocket(sockPath)
 	}
 	if s.workspaceOwned && s.workspace != "" {
 		_ = os.RemoveAll(s.workspace)

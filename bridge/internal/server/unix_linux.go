@@ -49,7 +49,62 @@ func listenUnix(path string) (net.Listener, error) {
 	if ul, ok := ln.(*net.UnixListener); ok {
 		ul.SetUnlinkOnClose(false)
 	}
-	return ln, nil
+	return peerListener{Listener: ln}, nil
+}
+
+// readPeerUID is the Linux peer-credential read. Tests replace it to
+// present a foreign uid without a second account.
+var readPeerUID = peerUID
+
+type peerListener struct {
+	net.Listener
+}
+
+func (l peerListener) Accept() (net.Conn, error) {
+	for {
+		c, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
+		uid, err := readPeerUID(c)
+		if err != nil || !peerAllowed(uid) {
+			c.Close()
+			continue
+		}
+		return c, nil
+	}
+}
+
+func peerAllowed(uid uint32) bool {
+	return uid == uint32(os.Getuid())
+}
+
+func peerUID(c net.Conn) (uint32, error) {
+	uc, ok := c.(*net.UnixConn)
+	if !ok {
+		return 0, errors.New("not a unix connection")
+	}
+	raw, err := uc.SyscallConn()
+	if err != nil {
+		return 0, err
+	}
+	var uid uint32
+	var gerr error
+	err = raw.Control(func(fd uintptr) {
+		cred, err := syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
+		if err != nil {
+			gerr = err
+			return
+		}
+		uid = cred.Uid
+	})
+	if err != nil {
+		return 0, err
+	}
+	if gerr != nil {
+		return 0, gerr
+	}
+	return uid, nil
 }
 
 func chmodOwnSocket(path string, mode os.FileMode) error {

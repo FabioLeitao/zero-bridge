@@ -17,6 +17,40 @@ import (
 	"time"
 )
 
+func TestPeerAllowed(t *testing.T) {
+	if !peerAllowed(uint32(os.Getuid())) {
+		t.Fatal("same uid refused")
+	}
+	if peerAllowed(uint32(os.Getuid()) + 1) {
+		t.Fatal("foreign uid accepted")
+	}
+}
+
+func TestUnixRefusesForeignPeer(t *testing.T) {
+	prev := readPeerUID
+	readPeerUID = func(net.Conn) (uint32, error) {
+		return uint32(os.Getuid()) + 1, nil
+	}
+	t.Cleanup(func() { readPeerUID = prev })
+	dir := filepath.Join(t.TempDir(), "d")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "bridge.sock")
+	srv := newUnixServer(t, path, "")
+	stop := serveUnix(t, srv, path)
+	defer stop()
+	req, err := http.NewRequest(http.MethodGet, "http://localhost/v1/info", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := unixClient(path).Do(req)
+	if err == nil {
+		res.Body.Close()
+		t.Fatalf("foreign peer status %d", res.StatusCode)
+	}
+}
+
 func TestOwnerAndModePredicates(t *testing.T) {
 	if err := ownerMatches(uint32(os.Getuid())); err != nil {
 		t.Fatal(err)
