@@ -188,6 +188,30 @@ mutants = [
         "TestSessionStateFromTraffic/pending_permission_stays_blocked",
         [("internal/server/list.go", "obj[\"state\"] = s.stateOf(view.ID)", "obj[\"state\"] = view.Title")],
     ),
+    (
+        "socket-mode-0666",
+        "internal/server",
+        "TestUnixSocketModeAndShutdown",
+        [("internal/server/unix_linux.go", "chmodOwnSocket(path, 0600)", "chmodOwnSocket(path, 0666)")],
+    ),
+    (
+        "socket-owner-unchecked",
+        "internal/server",
+        "TestOwnerAndModePredicates",
+        [("internal/server/unix_linux.go", "\tif uid != uint32(os.Getuid()) {\n\t\treturn errors.New(\"listen path owner does not match\")\n\t}", "\tif false && uid != uint32(os.Getuid()) {\n\t\treturn errors.New(\"listen path owner does not match\")\n\t}")],
+    ),
+    (
+        "socket-regular-file-removed",
+        "internal/server",
+        "TestUnixRefusesRegularFile",
+        [("internal/server/unix_linux.go", "\tif fi.Mode()&os.ModeSocket == 0 {\n\t\treturn errors.New(\"listen path is not a stale socket\")\n\t}\n\tsys, ok := fi.Sys().(*syscall.Stat_t)", "\tif fi.Mode()&os.ModeSocket == 0 {\n\t\treturn nil\n\t}\n\tsys, ok := fi.Sys().(*syscall.Stat_t)")],
+    ),
+    (
+        "socket-peer-cred-ignored",
+        "internal/server",
+        "TestUnixRefusesForeignPeer",
+        [("internal/server/unix_linux.go", "\t\tuid, err := readPeerUID(c)\n\t\tif err != nil || !peerAllowed(uid) {\n\t\t\tc.Close()\n\t\t\tcontinue\n\t\t}", "\t\tif _, err := readPeerUID(c); err != nil {\n\t\t\tc.Close()\n\t\t\tcontinue\n\t\t}")],
+    ),
 ]
 
 for name, pkg, run, edits in mutants:
