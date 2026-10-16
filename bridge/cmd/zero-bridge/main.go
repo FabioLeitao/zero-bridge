@@ -101,8 +101,7 @@ func runArgs(args []string, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "zero-bridge: %v\n", err)
 		return 2
 	}
-	resolved, err := server.ResolveListen(cfg.listen)
-	if err != nil {
+	if _, err := server.ResolveListen(cfg.listen); err != nil {
 		fmt.Fprintf(stderr, "zero-bridge: %v\n", err)
 		return 2
 	}
@@ -122,7 +121,7 @@ func runArgs(args []string, stderr io.Writer) int {
 		auditSink = auth.NewMulti(auditSink, fileSink)
 	}
 	srv, err := server.New(server.Config{
-		Listen:            resolved,
+		Listen:            cfg.listen,
 		AgentCmd:          cfg.agent.Path,
 		AgentArgs:         cfg.agent.Args,
 		Profile:           cfg.profile,

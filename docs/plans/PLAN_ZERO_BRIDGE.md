@@ -29,7 +29,7 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S18 | designed | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Not built. |
 | S19 | done | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Merged in PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` spiked. Hermes and `dsh --profile acp`: not executed. |
 | S20 | done | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Merged in [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Gate timings on this host. |
-| S21 | designed | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Not built. Unix socket and named pipe. |
+| S21 | done | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Built on `epic/s21-unix-socket`. Not merged. Unix socket. Named pipe not built. |
 | S22 | designed | [#22](https://github.com/FabioLeitao/zero-bridge/issues/22). Not built. Optional PWA. |
 | S23a | designed | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24). Not built. Shell scaffold in `zero-bridge-desktop`. |
 | S23b | designed | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25). Not built. Tray, notifications, folder picker. |
@@ -137,7 +137,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S19** | C6e | `zero-bridge` → `bridge/` | `--agent-cmd`, profiles, capability gate | — |
 | **S20** | C6f | `zero-bridge` repo root | Gate under 60s without dropping coverage | — |
 | **S18** | C6d | `zero-bridge` container | Image beside the proxy, read-only root | — |
-| **S21** | D1 | `zero-bridge` → `bridge/` | Unix socket and named pipe | — |
+| **S21** | D1 | `zero-bridge` → `bridge/` | Unix socket. Named pipe not built. | — |
 | **S22** | D2 | `zero-bridge` → `bridge/web/` | Optional PWA and permission notifications | — |
 | **S23a** | D3a | `zero-bridge-desktop` | Shell scaffold, sidecar, hardening | — |
 | **S23b** | D3b | `zero-bridge-desktop` | Tray, notifications, folder picker | — |
@@ -563,15 +563,15 @@ The operator order (2026-10-14) is the sequence in the global rules: S20, merged
 
 ### S21 — local transport
 
-**Path:** `bridge/` listen address. Designed only. Not built. [#21](https://github.com/FabioLeitao/zero-bridge/issues/21).
+**Path:** `bridge/` listen address. Built on `epic/s21-unix-socket`. Not merged. [#21](https://github.com/FabioLeitao/zero-bridge/issues/21).
 
 **Acceptance**
 
-- `--listen unix:<path>` (and `npipe:` on Windows). TCP loopback stays the default. A non-loopback TCP address is still refused.
-- The socket file is mode `0600` in a `0700` directory. The process refuses a path that exists and is not a stale socket owned by the same user, removes the socket on shutdown, and does not follow a symlink into the directory.
-- Host, Origin, token, and cookie rules stay. The Origin check treats the socket as a local origin only when `--public-origin` names the client.
+- `--listen unix:<absolute path>`. TCP loopback stays the default. A non-loopback TCP address is still refused. `npipe:` exits 2. A Windows named pipe is not built.
+- The parent directory is `0700` and owned by the user. The socket is `0600` with `os.Chmod` after bind. That parent is already private, so the interval before chmod is not open to another user. The process refuses a path that exists and is not a stale socket owned by the same user, removes only its own socket on shutdown, and does not follow a symlink.
+- On TCP, Host, Origin, token, and cookie rules stay. On the socket, `Host` is ignored. An Origin is accepted only from `--public-origin`. A request with no Origin is Bearer only. Linux refuses another uid with `SO_PEERCRED`. `GET /v1/info` reports `listen` as `unix` and omits the path.
 
-**Stop:** Do not bind a non-loopback address. Remote access stays on the S14 reverse proxy.
+**Stop:** Do not bind a non-loopback address. Remote access stays on the S14 reverse proxy. Do not add a named pipe in this slice.
 
 **Unlocks:** S23a can use the socket when it exists. S23a does not wait on it.
 

@@ -17,7 +17,7 @@ Open http://127.0.0.1:8765/. Flags:
 
 | Flag | Default | Role |
 | --- | --- | --- |
-| `--listen` | `127.0.0.1:8765` | Loopback address. Anything else exits **2**. |
+| `--listen` | `127.0.0.1:8765` | Loopback TCP, or `unix:<absolute path>`. Any other TCP host, a relative path, and `npipe:` exit **2**. |
 | `--workspace` | a fresh temp directory | Absolute directory the new session uses when the client omits one. |
 | `--workspace-root` | the `--workspace` directory | Repeatable absolute directory the browser may choose for a new session. |
 | `--state-dir` | `$XDG_STATE_HOME/zero-bridge` or `~/.local/state/zero-bridge` | Directory for `sessions-meta.json`. Mode `0700`, file `0600`. If it cannot be opened, the process still starts and meta routes return 503. |
@@ -45,14 +45,24 @@ The agent name, version, and mode names and descriptions come from the agent. Th
 
 ## Security
 
-- `--listen` must be loopback (`127.0.0.1`, `localhost`, or `::1`). Any other host exits **2**.
-- `Host` must be `127.0.0.1:<port>` or `localhost:<port>`. If `Origin` is present, it must match that host and port. Otherwise the response is **403**.
+- `--listen` is a loopback TCP address (`127.0.0.1`, `localhost`, or `::1`) or `unix:<absolute path>`. Any other TCP host exits **2**. `npipe:` exits **2**. A Windows named pipe is not implemented.
+- `unix:<absolute path>` creates a missing parent at `0700` and the socket at `0600` with `os.Chmod` after bind. The parent is already private to this user, so that interval is not open to anyone else. An existing parent that is more open, owned by someone else, or a symlink is refused. A path that exists and is not a stale socket of this user is left in place. Shutdown removes only the socket this process created.
+- On that socket, `Host` is ignored. An `Origin` is accepted only when `--public-origin` names it. A request with no `Origin` is Bearer only. Cookie CSRF still applies to POST and DELETE. Linux reads `SO_PEERCRED` and drops another uid. `GET /v1/info` reports `"listen":"unix"` and does not include the path.
+- On TCP, `Host` must be `127.0.0.1:<port>` or `localhost:<port>`. If `Origin` is present, it must match that host and port. Otherwise the response is **403**.
 - JSON bodies need `Content-Type: application/json` (`415` otherwise).
 - Responses send `Content-Security-Policy: default-src 'self'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
 - Responses do not send `Access-Control-Allow-Origin`.
 - A permission is allowed only when the agent offered `allow_once` with option id `allow`. Any other allow choice is an effective deny. Timeout, abort, and stop deny. They never become an allow.
 - The page inserts model and tool text with `textContent` and `createTextNode` only.
 - Without a token, loopback use stays open to any process of the same user that can open the port. `--token-file` (or `ZERO_BRIDGE_TOKEN`) guards `/v1/*`. External access is a reverse proxy plus that token. The bridge still refuses a non-loopback `--listen`. Guide: [docs/deploy/CADDY.md](docs/deploy/CADDY.md).
+
+```bash
+curl --unix-socket "${XDG_RUNTIME_DIR}/zero-bridge/bridge.sock" \
+  -H "Authorization: Bearer $(cat token)" \
+  http://localhost/v1/info
+```
+
+The bridge creates `zero-bridge` at `0700` when that parent is missing. The JSON field `listen` is `unix`. The path is not in the body.
 
 ## Status
 
@@ -68,6 +78,7 @@ S2–S6, S14, S14b, and S17 are on main. S14 and S17 landed in [PR #16](https://
 | S19 harness-agnostic bridge | implemented on `epic/s19-harness-agnostic`; not merged ([#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [spike](docs/plans/evidence/S19-spike-transcript.txt)) |
 | S16, S18, S7 | designed, in that order ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
 | S28 session status | done on `epic/s28-session-status`; not merged ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) |
+| S21 Unix socket | done on `epic/s21-unix-socket`; not merged ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)). Named pipe not built. |
 | S8–S10, S12, S15 | designed ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
 | S11 mode restore | done upstream ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134)) |
 | S13 frame limits | following ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), open [PR #944](https://github.com/Twigpine/zero/pull/944)) |

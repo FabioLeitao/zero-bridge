@@ -17,7 +17,7 @@ Abra http://127.0.0.1:8765/. Flags:
 
 | Flag | Padrão | Papel |
 | --- | --- | --- |
-| `--listen` | `127.0.0.1:8765` | Endereço de loopback. Qualquer outro host sai com código **2**. |
+| `--listen` | `127.0.0.1:8765` | TCP em loopback, ou `unix:<caminho absoluto>`. Outro host TCP, caminho relativo e `npipe:` saem com código **2**. |
 | `--workspace` | um diretório temporário novo | Diretório absoluto da sessão nova quando o cliente não manda um. |
 | `--workspace-root` | o diretório de `--workspace` | Diretório absoluto repetível que o navegador pode escolher numa sessão nova. |
 | `--state-dir` | `$XDG_STATE_HOME/zero-bridge` ou `~/.local/state/zero-bridge` | Diretório de `sessions-meta.json`. Modo `0700`, arquivo `0600`. Se não abrir, o processo sobe e as rotas de meta devolvem 503. |
@@ -45,14 +45,24 @@ O nome e a versão do agente, e os nomes e as descrições dos modos, vêm do ag
 
 ## Segurança
 
-- `--listen` tem de ser loopback (`127.0.0.1`, `localhost` ou `::1`). Outro host sai com código **2**.
-- `Host` tem de ser `127.0.0.1:<porta>` ou `localhost:<porta>`. Se houver `Origin`, tem de ser o mesmo host e a mesma porta. Caso contrário a resposta é **403**.
+- `--listen` é um endereço TCP de loopback (`127.0.0.1`, `localhost` ou `::1`) ou `unix:<caminho absoluto>`. Outro host TCP sai com código **2**. `npipe:` sai **2**. Named pipe do Windows não está implementado.
+- `unix:<caminho absoluto>` cria o diretório pai ausente em `0700` e o socket em `0600` com `os.Chmod` depois do bind. O pai já é privado deste usuário, então esse intervalo não fica aberto a mais ninguém. Um pai existente mais aberto, de outro dono ou symlink é recusado. Um caminho que existe e não é um socket velho deste usuário permanece. O desligamento remove só o socket que este processo criou.
+- Nesse socket, `Host` é ignorado. Um `Origin` só é aceito quando `--public-origin` o nomeia. Um pedido sem `Origin` exige Bearer. O CSRF do cookie continua valendo em POST e DELETE. No Linux, `SO_PEERCRED` descarta outro uid. `GET /v1/info` informa `"listen":"unix"` e não inclui o caminho.
+- No TCP, `Host` tem de ser `127.0.0.1:<porta>` ou `localhost:<porta>`. Se houver `Origin`, tem de ser o mesmo host e a mesma porta. Caso contrário a resposta é **403**.
 - Corpos JSON exigem `Content-Type: application/json` (`415` se não for).
 - As respostas mandam `Content-Security-Policy: default-src 'self'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` e `Cache-Control: no-store`.
 - As respostas não mandam `Access-Control-Allow-Origin`.
 - Uma permissão só é allow quando o agente ofereceu `allow_once` com option id `allow`. Qualquer outro allow vira deny efetivo. Timeout, abort e stop negam. Não viram allow.
 - A página insere texto do modelo e das tools só com `textContent` e `createTextNode`.
 - Sem token, o uso em loopback continua aberto a qualquer processo do mesmo usuário que alcance a porta. `--token-file` (ou `ZERO_BRIDGE_TOKEN`) protege `/v1/*`. Acesso externo é um proxy reverso mais esse token. A ponte continua recusando `--listen` fora de loopback. Guia: [docs/deploy/CADDY.pt_BR.md](docs/deploy/CADDY.pt_BR.md).
+
+```bash
+curl --unix-socket "${XDG_RUNTIME_DIR}/zero-bridge/bridge.sock" \
+  -H "Authorization: Bearer $(cat token)" \
+  http://localhost/v1/info
+```
+
+A ponte cria `zero-bridge` em `0700` quando esse pai não existe. O campo JSON `listen` é `unix`. O caminho não vai no corpo.
 
 ## Estado
 
@@ -68,6 +78,7 @@ S2–S6, S14, S14b e S17 estão na main. S14 e S17 entraram na [PR #16](https://
 | S19 ponte sem amarra de harness | implementada em `epic/s19-harness-agnostic`; não mergeada ([#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [spike](docs/plans/evidence/S19-spike-transcript.txt)) |
 | S16, S18, S7 | desenhadas, nessa ordem ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
 | S28 estado da sessão | feita em `epic/s28-session-status`; não mergeada ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) |
+| S21 socket Unix | feita em `epic/s21-unix-socket`; não mergeada ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)). Named pipe não construído. |
 | S8–S10, S12, S15 | desenhadas ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
 | S11 restaurar modo | feita no upstream ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134)) |
 | S13 limites de frame | acompanhando ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), [PR #944](https://github.com/Twigpine/zero/pull/944) aberta) |

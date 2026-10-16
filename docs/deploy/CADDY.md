@@ -2,7 +2,7 @@
 
 English. Portuguese: [CADDY.pt_BR.md](CADDY.pt_BR.md).
 
-The bridge process listens on loopback only. `--listen` with any other host exits **2**. TLS and the public name belong to the reverse proxy. External access is that proxy plus a token, the same pattern as Grafana and CouchDB on the operator's T14.
+The bridge process listens on loopback TCP, or on a Unix socket. `--listen` with any other TCP host exits **2**. `npipe:` exits **2**. A Windows named pipe is not implemented. TLS and the public name belong to the reverse proxy. External access is that proxy plus a token, the same pattern as Grafana and CouchDB on the operator's T14.
 
 ## Token
 
@@ -89,6 +89,22 @@ go run ./cmd/zero-bridge \
 ```
 
 Use `--allowed-host bridge.example:443` when the proxy's `Host` includes `:443`.
+
+## Unix socket
+
+`--listen unix:<absolute path>` does not open a TCP port. The parent directory is `0700` and owned by the user. The socket is `0600` via `os.Chmod` after bind. Shutdown removes that socket.
+
+There is no useful `Host` on this transport. A client `Origin` is accepted only from an explicit `--public-origin`. `curl` and the Electron main process send no `Origin`, so they authenticate with Bearer. Cookie CSRF for POST and DELETE stays. Linux drops a peer whose uid is not the process owner (`SO_PEERCRED`).
+
+`GET /v1/info` reports `"listen":"unix"` and does not include the path:
+
+```bash
+curl --unix-socket "${XDG_RUNTIME_DIR}/zero-bridge/bridge.sock" \
+  -H "Authorization: Bearer $(cat "$HOME/.config/zero-bridge/token")" \
+  http://localhost/v1/info
+```
+
+Remote browsers still use the reverse proxy above. The socket does not replace it.
 
 ## Checklist
 

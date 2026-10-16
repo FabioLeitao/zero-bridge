@@ -29,7 +29,7 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S18 | desenhada | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Não construída. |
 | S19 | feita | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Mergeada na PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` exercitado. Hermes e `dsh --profile acp`: não executados. |
 | S20 | feita | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Mergeada na [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Tempos do gate neste host. |
-| S21 | desenhada | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Não construída. Socket Unix e named pipe. |
+| S21 | feita | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Construída em `epic/s21-unix-socket`. Não mergeada. Socket Unix. Named pipe não construído. |
 | S22 | desenhada | [#22](https://github.com/FabioLeitao/zero-bridge/issues/22). Não construída. PWA opcional. |
 | S23a | desenhada | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24). Não construída. Esqueleto do shell em `zero-bridge-desktop`. |
 | S23b | desenhada | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25). Não construída. Bandeja, notificações e seletor de pasta. |
@@ -128,7 +128,7 @@ Duplicar JSON mínimo em `plugin/a2a/` e `bridge/`; pacote compartilhado só se 
 | **S19** | C6e | `bridge/` | `--agent-cmd`, perfis, gate por capacidade | — |
 | **S20** | C6f | raiz do repo | Gate abaixo de 60s sem perder cobertura | — |
 | **S18** | C6d | container do `zero-bridge` | Imagem ao lado do proxy, root somente leitura | — |
-| **S21** | D1 | `zero-bridge` → `bridge/` | Socket Unix e named pipe | — |
+| **S21** | D1 | `zero-bridge` → `bridge/` | Socket Unix. Named pipe não construído. | — |
 | **S22** | D2 | `zero-bridge` → `bridge/web/` | PWA opcional e notificações de permissão | — |
 | **S23a** | D3a | `zero-bridge-desktop` | Esqueleto do shell, sidecar e endurecimento | — |
 | **S23b** | D3b | `zero-bridge-desktop` | Bandeja, notificações e seletor de pasta | — |
@@ -548,15 +548,15 @@ A ordem do operador (2026-10-14) é a sequência das regras globais: S20, mergea
 
 ### S21 — transporte local
 
-**Caminho:** endereço de escuta em `bridge/`. Só desenhada. Não construída. [#21](https://github.com/FabioLeitao/zero-bridge/issues/21).
+**Caminho:** endereço de escuta em `bridge/`. Construída em `epic/s21-unix-socket`. Não mergeada. [#21](https://github.com/FabioLeitao/zero-bridge/issues/21).
 
 **Aceite**
 
-- `--listen unix:<path>` (e `npipe:` no Windows). O TCP em loopback continua o padrão. Um endereço TCP fora de loopback continua recusado.
-- O arquivo do socket fica no modo `0600` num diretório `0700`. O processo recusa um caminho que existe e não é um socket velho do mesmo usuário, remove o socket no desligamento e não segue um symlink para dentro do diretório.
-- As regras de Host, Origin, token e cookie ficam. A checagem de Origin trata o socket como origem local só quando `--public-origin` nomeia o cliente.
+- `--listen unix:<caminho absoluto>`. O TCP em loopback continua o padrão. Um endereço TCP fora de loopback continua recusado. `npipe:` sai 2. Named pipe do Windows não foi construído.
+- O diretório pai é `0700` e pertence ao usuário. O socket fica `0600` com `os.Chmod` depois do bind. Esse pai já é privado, então o intervalo antes do chmod não fica aberto a outro usuário. O processo recusa um caminho que existe e não é um socket velho do mesmo usuário, remove no desligamento só o socket que ele criou e não segue um symlink.
+- No TCP, as regras de Host, Origin, token e cookie ficam. No socket, `Host` é ignorado. Um Origin só é aceito com `--public-origin`. Um pedido sem Origin exige Bearer. No Linux, outro uid é recusado com `SO_PEERCRED`. `GET /v1/info` informa `listen` como `unix` e omite o caminho.
 
-**Parada:** não escutar fora de loopback. O acesso remoto continua no proxy reverso da S14.
+**Parada:** não escutar fora de loopback. O acesso remoto continua no proxy reverso da S14. Não acrescentar named pipe nesta fatia.
 
 **Destrava:** a S23a pode usar o socket quando ele existir. A S23a não espera por ele.
 
