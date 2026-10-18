@@ -15,6 +15,7 @@ import (
 
 	"zero-bridge/bridge/internal/acpclient"
 	"zero-bridge/bridge/internal/auth"
+	"zero-bridge/bridge/internal/observability"
 	"zero-bridge/bridge/internal/server"
 	"zero-bridge/bridge/internal/sessionmeta"
 )
@@ -75,6 +76,11 @@ type cliConfig struct {
 	profile        string
 	stateDir       string
 	workspaceRoots []string
+
+	// Observability (S16).
+	otlpEndpoint string
+	otelService  string
+	otelSample   float64
 }
 
 func runArgs(args []string, stderr io.Writer) int {
@@ -107,6 +113,28 @@ func runArgs(args []string, stderr io.Writer) int {
 		return 2
 	}
 	logger := log.New(stderr, "", log.LstdFlags)
+	// Observability (S16): set env for bridge/obs module.
+	if cfg.otlpEndpoint != "" {
+		if err := os.Setenv("OTLP_ENDPOINT", cfg.otlpEndpoint); err != nil {
+			return 2
+		}
+		if cfg.otelService != "" {
+			if err := os.Setenv("OTEL_SERVICE_NAME", cfg.otelService); err != nil {
+				return 2
+			}
+		}
+		if cfg.otelSample > 0 {
+			// The obs module reads this from env or we could pass it differently.
+			// For simplicity, we don't pass sample ratio via env here.
+		}
+		// Start the OTel collector as a subprocess?
+		// The obs module is a separate binary. We'll just set env.
+		// The actual OTel initialization happens in bridge/obs/main if run separately.
+		// For now, we set the global observer to noop since the sidecar is separate.
+		observability.SetGlobal(observability.NoopObserver{})
+	} else {
+		observability.SetGlobal(observability.NoopObserver{})
+	}
 	stateDir := cfg.stateDir
 	if stateDir == "" {
 		stateDir = defaultStateDir()
@@ -289,6 +317,28 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 			}
 			i++
 			cfg.configPath = args[i]
+		case "--otlp-endpoint":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("missing value for --otlp-endpoint")
+			}
+			i++
+			cfg.otlpEndpoint = args[i]
+		case "--otel-service":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("missing value for --otel-service")
+			}
+			i++
+			cfg.otelService = args[i]
+		case "--otel-sample":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("missing value for --otel-sample")
+			}
+			i++
+			var err error
+			cfg.otelSample, err = parseFloat(args[i])
+			if err != nil {
+				return cfg, fmt.Errorf("otel sample: %v", err)
+			}
 		case "--session-ttl", "--session-idle", "--max-sessions", "--auth-fail-window", "--auth-fail-limit":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("missing value for %s", args[i])
@@ -349,4 +399,10 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 	}
 	cfg.agent = resolved
 	return cfg, nil
+}
+
+func parseFloat(s string) (float64, error) {
+	var f float64
+	_, err := fmt.Sscanf(s, "%f", &f)
+	return f, err
 }

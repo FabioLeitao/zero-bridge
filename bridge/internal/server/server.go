@@ -20,6 +20,7 @@ import (
 
 	"zero-bridge/bridge/internal/acpclient"
 	"zero-bridge/bridge/internal/auth"
+	"zero-bridge/bridge/internal/observability"
 	"zero-bridge/bridge/internal/permissions"
 	"zero-bridge/bridge/internal/sessionmeta"
 	"zero-bridge/bridge/internal/workroot"
@@ -1434,17 +1435,27 @@ func (s *Server) validateImage(data []byte, mime string) error {
 }
 
 func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	ctx, endSpan := observability.StartHTTPSpan(r.Context(), "/v1/sessions/{id}/prompt", "POST",
+		observability.WithAttributes(map[string]string{"session_id": r.PathValue("id")}))
+	defer endSpan()
+
+	r = r.WithContext(ctx)
+
 	if !requireJSONContentType(r) {
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusUnsupportedMediaType, time.Since(start).Seconds()*1000)
 		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
 		return
 	}
 	id := r.PathValue("id")
 	hub := s.sessionHub(id)
 	if hub == nil {
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusNotFound, time.Since(start).Seconds()*1000)
 		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
 		return
 	}
 	if !hub.tryStartPrompt() {
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusConflict, time.Since(start).Seconds()*1000)
 		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
 		return
 	}
@@ -1456,16 +1467,19 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		hub.endPrompt()
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
 	if body.Text == "" && len(body.Images) == 0 {
 		hub.endPrompt()
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text or images required"})
 		return
 	}
 	if len(body.Images) > s.cfg.MaxImages {
 		hub.endPrompt()
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("too many images (max %d)", s.cfg.MaxImages)})
 		return
 	}
@@ -1474,16 +1488,19 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 		data, err := base64.StdEncoding.DecodeString(img.Data)
 		if err != nil {
 			hub.endPrompt()
+			observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
 			s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("image %d: invalid base64", i)})
 			return
 		}
 		if err := s.validateImage(data, img.MIME); err != nil {
 			hub.endPrompt()
+			observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
 			s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("image %d: %v", i, err)})
 			return
 		}
 		body.Images[i].Data = string(data) // Store decoded bytes for runPrompt
 	}
+	observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusAccepted, time.Since(start).Seconds()*1000)
 	s.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 	go s.runPrompt(id, hub, body.Text, body.Images)
 }
@@ -1494,13 +1511,18 @@ type ImageAttachment struct {
 }
 
 func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string, images []ImageAttachment) {
+	start := time.Now()
+	ctx, endSpan := observability.StartACPSpan(context.Background(), "session/prompt",
+		observability.WithAttributes(map[string]string{"session_id": sessionID}))
+	defer endSpan()
+
 	defer func() {
 		hub.endPrompt()
 		if s.perms != nil {
 			s.perms.AbortSession(sessionID)
 		}
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	var res struct {
 		StopReason string `json:"stopReason"`
@@ -1521,6 +1543,7 @@ func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string, image
 		"sessionId": sessionID,
 		"prompt":    prompt,
 	}, &res)
+	observability.RecordACPMetric("session/prompt", time.Since(start).Seconds()*1000, err)
 	if err != nil {
 		hub.emit(map[string]any{"type": "error", "message": s.redact(err.Error())})
 		return
