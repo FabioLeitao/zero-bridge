@@ -17,17 +17,17 @@ import (
 )
 
 type Config struct {
-	URL      string   `json:"url"`
+	URL       string   `json:"url"`
 	Allowlist []string `json:"allowlist,omitempty"`
 }
 
 type AgentCard struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	URL         string   `json:"url,omitempty"`
-	Version     string   `json:"version,omitempty"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description,omitempty"`
+	URL          string   `json:"url,omitempty"`
+	Version      string   `json:"version,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
-	Skills      []Skill  `json:"skills,omitempty"`
+	Skills       []Skill  `json:"skills,omitempty"`
 }
 
 type Skill struct {

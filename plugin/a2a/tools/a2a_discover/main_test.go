@@ -20,9 +20,9 @@ func TestA2ADiscover_ValidLocalhost(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		card := map[string]any{
-			"name":        "test-agent",
-			"description": "Test A2A Agent",
-			"version":     "1.0.0",
+			"name":         "test-agent",
+			"description":  "Test A2A Agent",
+			"version":      "1.0.0",
 			"capabilities": []string{"streaming", "tools"},
 			"skills": []map[string]any{
 				{"id": "chat", "name": "Chat", "description": "Chat with the agent", "tags": []string{"chat"}},
