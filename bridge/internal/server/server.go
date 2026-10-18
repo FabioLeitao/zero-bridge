@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,6 +56,11 @@ type Config struct {
 	AuthFailLimit     int
 	// Meta is the local session label store. Nil makes the meta route answer 503.
 	Meta *sessionmeta.Store
+
+	// Image attachment limits (S25).
+	MaxImageBytes  int64    // 0 = default (4 MiB)
+	MaxImages      int      // 0 = default (4)
+	AllowImageMIME []string // empty = default (PNG, JPEG, WebP, GIF)
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -104,6 +111,33 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Audit == nil {
 		cfg.Audit = auth.NewLogSink(cfg.Logger)
+	}
+	// Image attachment defaults (S25).
+	const (
+		defaultMaxImageBytes = 4 << 20 // 4 MiB
+		defaultMaxImages     = 4
+	)
+	if cfg.MaxImageBytes <= 0 {
+		cfg.MaxImageBytes = defaultMaxImageBytes
+	}
+	if cfg.MaxImageBytes > 16<<20 { // hard cap 16 MiB
+		return nil, fmt.Errorf("max-image-bytes exceeds hard cap 16MiB")
+	}
+	if cfg.MaxImages <= 0 {
+		cfg.MaxImages = defaultMaxImages
+	}
+	if cfg.MaxImages > 16 { // hard cap
+		return nil, fmt.Errorf("max-images exceeds hard cap 16")
+	}
+	if len(cfg.AllowImageMIME) == 0 {
+		cfg.AllowImageMIME = []string{"image/png", "image/jpeg", "image/webp", "image/gif"}
+	}
+	for _, m := range cfg.AllowImageMIME {
+		switch m {
+		case "image/png", "image/jpeg", "image/webp", "image/gif":
+		default:
+			return nil, fmt.Errorf("unsupported image MIME %q", m)
+		}
 	}
 	if err := applyLimitDefaults(&cfg); err != nil {
 		return nil, err
@@ -1095,6 +1129,47 @@ func validateWorkspace(p string) error {
 	return nil
 }
 
+func (s *Server) validateImage(data []byte, mime string) error {
+	if int64(len(data)) > s.cfg.MaxImageBytes {
+		return fmt.Errorf("image size %d exceeds limit %d", len(data), s.cfg.MaxImageBytes)
+	}
+	allowed := false
+	for _, m := range s.cfg.AllowImageMIME {
+		if m == mime {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return fmt.Errorf("MIME type %q not allowed", mime)
+	}
+	// Magic byte check.
+	if len(data) < 12 {
+		return fmt.Errorf("image too small for magic byte check")
+	}
+	switch {
+	case bytes.HasPrefix(data, []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}): // PNG
+		if mime != "image/png" {
+			return fmt.Errorf("magic bytes indicate PNG but MIME is %q", mime)
+		}
+	case bytes.HasPrefix(data, []byte{0xFF, 0xD8, 0xFF}): // JPEG
+		if mime != "image/jpeg" {
+			return fmt.Errorf("magic bytes indicate JPEG but MIME is %q", mime)
+		}
+	case bytes.HasPrefix(data, []byte{0x52, 0x49, 0x46, 0x46}) && bytes.HasPrefix(data[8:12], []byte{0x57, 0x45, 0x42, 0x50}): // WebP (RIFF + WEBP)
+		if mime != "image/webp" {
+			return fmt.Errorf("magic bytes indicate WebP but MIME is %q", mime)
+		}
+	case bytes.HasPrefix(data, []byte{0x47, 0x49, 0x46, 0x38, 0x37, 0x61}) || bytes.HasPrefix(data, []byte{0x47, 0x49, 0x46, 0x38, 0x39, 0x61}): // GIF87a / GIF89a
+		if mime != "image/gif" {
+			return fmt.Errorf("magic bytes indicate GIF but MIME is %q", mime)
+		}
+	default:
+		return fmt.Errorf("unrecognized image format")
+	}
+	return nil
+}
+
 func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 	if !requireJSONContentType(r) {
 		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
@@ -1110,20 +1185,52 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	// Allow up to max images + text in body.
+	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxImageBytes*int64(s.cfg.MaxImages+1))
 	var body struct {
-		Text string `json:"text"`
+		Text   string            `json:"text"`
+		Images []ImageAttachment `json:"images,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		hub.endPrompt()
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
+	if body.Text == "" && len(body.Images) == 0 {
+		hub.endPrompt()
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text or images required"})
+		return
+	}
+	if len(body.Images) > s.cfg.MaxImages {
+		hub.endPrompt()
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("too many images (max %d)", s.cfg.MaxImages)})
+		return
+	}
+	// Validate each image.
+	for i, img := range body.Images {
+		data, err := base64.StdEncoding.DecodeString(img.Data)
+		if err != nil {
+			hub.endPrompt()
+			s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("image %d: invalid base64", i)})
+			return
+		}
+		if err := s.validateImage(data, img.MIME); err != nil {
+			hub.endPrompt()
+			s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("image %d: %v", i, err)})
+			return
+		}
+		body.Images[i].Data = string(data) // Store decoded bytes for runPrompt
+	}
 	s.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
-	go s.runPrompt(id, hub, body.Text)
+	go s.runPrompt(id, hub, body.Text, body.Images)
 }
 
-func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string) {
+type ImageAttachment struct {
+	Data string `json:"data"` // base64 encoded
+	MIME string `json:"mimeType"`
+}
+
+func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string, images []ImageAttachment) {
 	defer func() {
 		hub.endPrompt()
 		if s.perms != nil {
@@ -1135,11 +1242,21 @@ func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string) {
 	var res struct {
 		StopReason string `json:"stopReason"`
 	}
+	// Build prompt content blocks.
+	prompt := make([]map[string]any, 0, 1+len(images))
+	if text != "" {
+		prompt = append(prompt, map[string]any{"type": "text", "text": text})
+	}
+	for _, img := range images {
+		prompt = append(prompt, map[string]any{
+			"type":     "image",
+			"data":     img.Data,
+			"mimeType": img.MIME,
+		})
+	}
 	err := s.acpCall(ctx, "session/prompt", map[string]any{
 		"sessionId": sessionID,
-		"prompt": []map[string]string{
-			{"type": "text", "text": text},
-		},
+		"prompt":    prompt,
 	}, &res)
 	if err != nil {
 		hub.emit(map[string]any{"type": "error", "message": s.redact(err.Error())})

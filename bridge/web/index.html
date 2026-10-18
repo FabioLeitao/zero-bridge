@@ -68,7 +68,9 @@
     <div id="suggestions" hidden aria-label="Sugestões"></div>
     <form id="composer">
       <label for="text">Mensagem</label>
+      <div id="image-preview" hidden aria-label="Anexos de imagem"></div>
       <textarea id="text" name="text" rows="3" required></textarea>
+      <input type="file" id="image-input" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden aria-label="Anexar imagem">
       <div id="composer-footer">
         <span id="mode-chip" hidden aria-live="polite" aria-atomic="true"></span>
         <button id="send" type="submit">Enviar</button>

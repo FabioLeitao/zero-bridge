@@ -92,7 +92,11 @@ const ui = {
   suggestDebug: "Depurar um problema",
   suggestTest: "Escrever testes",
   configLabel: "Configuração",
-  configModel: "Modelo"
+  configModel: "Modelo",
+  imgTooLarge: "Imagem muito grande (máx. {n} MiB)",
+  imgBadType: "Tipo de imagem não permitido",
+  imgTooMany: "Muitas imagens (máx. {n})",
+  imgInvalid: "Imagem inválida"
 };
 
 const loginEl = document.getElementById("login");
@@ -135,6 +139,8 @@ const planEl = document.getElementById("plan");
 const permEl = document.getElementById("permissions");
 const suggestionsEl = document.getElementById("suggestions");
 const modeChipEl = document.getElementById("mode-chip");
+const imagePreviewEl = document.getElementById("image-preview");
+const imageInputEl = document.getElementById("image-input");
 
 function applyChrome() {
   sidebarToggleEl.textContent = ui.sessions;
@@ -348,15 +354,119 @@ async function setConfigOption(optionId, value) {
   }
 }
 
-async function loadCapabilities() {
-  const res = await api("/v1/capabilities");
-  if (!res.ok) {
-    note(ui.capsFailed);
+// Image attachment handling (S25).
+let pendingImages = []; // Array of {data: base64, mime: string, preview: URL}
+
+function updateImagePreview() {
+  if (!imagePreviewEl) return;
+  while (imagePreviewEl.firstChild) {
+    imagePreviewEl.removeChild(imagePreviewEl.firstChild);
+  }
+  if (pendingImages.length === 0) {
+    imagePreviewEl.hidden = true;
     return;
   }
-  caps = await res.json();
-  applyCapabilities();
+  imagePreviewEl.hidden = false;
+  pendingImages.forEach(function (img, idx) {
+    const wrap = document.createElement("div");
+    wrap.className = "img-preview";
+    wrap.dataset.index = idx;
+    const preview = document.createElement("img");
+    preview.src = img.preview;
+    preview.alt = "Image attachment " + (idx + 1);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "img-remove";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", "Remover imagem " + (idx + 1));
+    remove.addEventListener("click", function () {
+      removeImage(idx);
+    });
+    wrap.appendChild(preview);
+    wrap.appendChild(remove);
+    imagePreviewEl.appendChild(wrap);
+  });
 }
+
+function addImage(file) {
+  if (!caps.promptCapabilities || !caps.promptCapabilities.image) {
+    note(ui.errorPrefix + "Agent does not support images");
+    return;
+  }
+  if (pendingImages.length >= (caps.maxImages || 4)) {
+    note(ui.imgTooMany.replace("{n}", String(caps.maxImages || 4)));
+    return;
+  }
+  const maxBytes = caps.maxImageBytes || (4 << 20);
+  if (file.size > maxBytes) {
+    note(ui.imgTooLarge.replace("{n}", String(Math.round(maxBytes / (1 << 20)))));
+    return;
+  }
+  const allowed = (caps.allowImageMIME || ["image/png", "image/jpeg", "image/webp", "image/gif"]);
+  if (!allowed.includes(file.type)) {
+    note(ui.imgBadType);
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function () {
+    const base64 = reader.result.split(",")[1];
+    pendingImages.push({ data: base64, mime: file.type, preview: reader.result });
+    updateImagePreview();
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImage(idx) {
+  pendingImages.splice(idx, 1);
+  updateImagePreview();
+}
+
+function clearImages() {
+  pendingImages = [];
+  updateImagePreview();
+}
+
+function readImagesFromInput(input) {
+  if (!input.files || input.files.length === 0) return;
+  Array.from(input.files).forEach(addImage);
+  input.value = "";
+}
+
+function readImagesFromDataTransfer(dt) {
+  if (!dt.items) return;
+  Array.from(dt.items).forEach(function (item) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      addImage(item.getAsFile());
+    }
+  });
+}
+
+// Paste handler
+document.addEventListener("paste", function (ev) {
+  if (ev.target === textEl) {
+    ev.clipboardData.items.forEach(function (item) {
+      if (item.type.startsWith("image/")) {
+        addImage(item.getAsFile());
+        ev.preventDefault();
+      }
+    });
+  }
+});
+
+// Drag & drop on composer
+form.addEventListener("dragover", function (ev) {
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = "copy";
+});
+form.addEventListener("drop", function (ev) {
+  ev.preventDefault();
+  readImagesFromDataTransfer(ev.dataTransfer);
+});
+
+// File input click handler (optional: could add a button)
+imageInputEl.addEventListener("change", function () {
+  readImagesFromInput(imageInputEl);
+});
 
 function clearSessionList() {
   listGen += 1;
@@ -652,6 +762,7 @@ function clearView() {
     permEl.removeChild(permEl.firstChild);
   }
   hideSuggestions();
+  clearImages();
   tools.clear();
   permState.clear();
   permQueue.length = 0;
@@ -1872,7 +1983,17 @@ form.addEventListener("submit", function (ev) {
     return;
   }
   const text = textEl.value;
-  addLine("user", text);
+  const images = pendingImages.map(function (img) {
+    return { data: img.data, mimeType: img.mime };
+  });
+  if (!text && images.length === 0) {
+    return;
+  }
+  // Show user message with images
+  if (text) addLine("user", text);
+  images.forEach(function (img) {
+    addLine("user", "[image: " + img.mimeType + "]");
+  });
   sendBtn.disabled = true;
   setModeEnabled(false);
   assistant = null;
@@ -1880,7 +2001,7 @@ form.addEventListener("submit", function (ev) {
   api("/v1/sessions/" + encodeURIComponent(sessionId) + "/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: text })
+    body: JSON.stringify({ text: text, images: images })
   }).then(function (res) {
     if (res.status === 409) {
       note(ui.promptRunning);
@@ -1893,6 +2014,7 @@ form.addEventListener("submit", function (ev) {
       return;
     }
     textEl.value = "";
+    clearImages();
   }).catch(function (err) {
     note(String(err && err.message ? err.message : err));
     sendBtn.disabled = false;
