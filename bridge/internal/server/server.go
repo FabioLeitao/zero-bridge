@@ -1507,8 +1507,7 @@ func (s *Server) validateImage(data []byte, mime string) error {
 
 func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	ctx, endSpan := observability.StartHTTPSpan(r.Context(), "/v1/sessions/{id}/prompt", "POST",
-		observability.WithAttributes(map[string]string{"session_id": r.PathValue("id")}))
+	ctx, endSpan := observability.StartHTTPSpan(r.Context(), "/v1/sessions/{id}/prompt", "POST")
 	defer endSpan()
 
 	r = r.WithContext(ctx)
@@ -1584,8 +1583,7 @@ type ImageAttachment struct {
 
 func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string, images []ImageAttachment) {
 	start := time.Now()
-	ctx, endSpan := observability.StartACPSpan(context.Background(), "session/prompt",
-		observability.WithAttributes(map[string]string{"session_id": sessionID}))
+	ctx, endSpan := observability.StartACPSpan(context.Background(), "session/prompt")
 	defer endSpan()
 
 	defer func() {
