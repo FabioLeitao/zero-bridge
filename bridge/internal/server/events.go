@@ -11,16 +11,17 @@ const defaultReplayLogCap = 5000
 const defaultSubQueue = 256
 
 type sessionHub struct {
-	mu         sync.Mutex
-	seq        int64
-	log        [][]byte
-	logCap     int
-	subQueue   int
-	subs       map[int]*subscriber
-	nextSub    int
-	promptBusy bool
-	replay     bool
-	logger     *log.Logger
+	mu          sync.Mutex
+	seq         int64
+	log         [][]byte
+	logCap      int
+	subQueue    int
+	subs        map[int]*subscriber
+	nextSub     int
+	promptBusy  bool
+	replay      bool
+	logger      *log.Logger
+	currentMode string
 }
 
 func newSessionHub(logCap, subQueue int) *sessionHub {

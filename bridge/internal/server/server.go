@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,11 +14,13 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"zero-bridge/bridge/internal/acpclient"
 	"zero-bridge/bridge/internal/auth"
+	"zero-bridge/bridge/internal/observability"
 	"zero-bridge/bridge/internal/permissions"
 	"zero-bridge/bridge/internal/sessionmeta"
 	"zero-bridge/bridge/internal/sessionstate"
@@ -55,6 +59,16 @@ type Config struct {
 	AuthFailLimit     int
 	// Meta is the local session label store. Nil makes the meta route answer 503.
 	Meta *sessionmeta.Store
+
+	// Image attachment limits (S25).
+	MaxImageBytes  int64    // 0 = default (4 MiB)
+	MaxImages      int      // 0 = default (4)
+	AllowImageMIME []string // empty = default (PNG, JPEG, WebP, GIF)
+
+	// Automatic mode routing (S27).
+	AutoModeEnabled bool   // off by default
+	AutoModeCeiling string // empty = reduce-only (never raise)
+	AutoModeApply   bool   // if true, apply without click (requires ceiling)
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -111,6 +125,47 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Audit == nil {
 		cfg.Audit = auth.NewLogSink(cfg.Logger)
+	}
+	// Image attachment defaults (S25).
+	const (
+		defaultMaxImageBytes = 4 << 20 // 4 MiB
+		defaultMaxImages     = 4
+	)
+	if cfg.MaxImageBytes <= 0 {
+		cfg.MaxImageBytes = defaultMaxImageBytes
+	}
+	if cfg.MaxImageBytes > 16<<20 { // hard cap 16 MiB
+		return nil, fmt.Errorf("max-image-bytes exceeds hard cap 16MiB")
+	}
+	if cfg.MaxImages <= 0 {
+		cfg.MaxImages = defaultMaxImages
+	}
+	if cfg.MaxImages > 16 { // hard cap
+		return nil, fmt.Errorf("max-images exceeds hard cap 16")
+	}
+	if len(cfg.AllowImageMIME) == 0 {
+		cfg.AllowImageMIME = []string{"image/png", "image/jpeg", "image/webp", "image/gif"}
+	}
+	for _, m := range cfg.AllowImageMIME {
+		switch m {
+		case "image/png", "image/jpeg", "image/webp", "image/gif":
+		default:
+			return nil, fmt.Errorf("unsupported image MIME %q", m)
+		}
+	}
+	// Automatic mode routing defaults (S27).
+	if cfg.AutoModeEnabled {
+		if cfg.AutoModeApply && cfg.AutoModeCeiling == "" {
+			return nil, fmt.Errorf("auto-mode-apply requires auto-mode-ceiling")
+		}
+		// Validate ceiling if provided.
+		if cfg.AutoModeCeiling != "" {
+			switch cfg.AutoModeCeiling {
+			case "plan", "ask", "auto":
+			default:
+				return nil, fmt.Errorf("auto-mode-ceiling must be plan, ask, or auto")
+			}
+		}
 	}
 	if err := applyLimitDefaults(&cfg); err != nil {
 		return nil, err
@@ -305,6 +360,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{id}/resume", s.handleResume)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
 	mux.HandleFunc("POST /v1/sessions/{id}/mode", s.handleMode)
+	mux.HandleFunc("POST /v1/sessions/{id}/mode/recommend", s.handleModeRecommend)
+	mux.HandleFunc("POST /v1/sessions/{id}/config_option", s.handleConfigOption)
 	mux.HandleFunc("GET /v1/sessions/{id}/events", s.handleEvents)
 	mux.HandleFunc("GET /v1/sessions/{id}/permissions/pending", s.handlePending)
 	mux.HandleFunc("POST /v1/sessions/{id}/permissions/{reqId}", s.handlePermission)
@@ -641,6 +698,12 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	if modes == nil {
 		modes = []acpclient.Mode{}
 	}
+	// Include configOptions from the first session offer (they're per-session but usually same)
+	var configOptions []acpclient.ConfigOption
+	offer, ok := c.SessionOffer("")
+	if ok {
+		configOptions = offer.ConfigOptions
+	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"profile":       s.cfg.Profile,
 		"agent":         map[string]string{"name": snap.AgentInfo.Name, "version": snap.AgentInfo.Version},
@@ -650,6 +713,13 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 		"prompt":        snap.Capabilities.PromptCapabilities,
 		"modes":         modes,
 		"sessionStatus": s.stateLevel(),
+		"configOptions": configOptions,
+		"workspaceRoots": func() []string {
+			if s.roots != nil {
+				return s.roots.Paths()
+			}
+			return []string{}
+		}(),
 	})
 }
 
@@ -1063,6 +1133,309 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mode": body.Mode})
 }
 
+func (s *Server) handleConfigOption(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(r) {
+		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
+		return
+	}
+	id := r.PathValue("id")
+	hub := s.sessionHub(id)
+	if hub == nil {
+		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+		return
+	}
+	if hub.promptInProgress() {
+		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
+		return
+	}
+	c, err := s.acpClient()
+	if err != nil {
+		s.notSupported(w)
+		return
+	}
+	offer, _ := c.SessionOffer(id)
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var body struct {
+		OptionID string `json:"optionId"`
+		Value    string `json:"value"`
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if body.OptionID == "" || body.Value == "" {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "optionId and value are required"})
+		return
+	}
+	// Validate against the offered options
+	allowed := false
+	for _, opt := range offer.ConfigOptions {
+		if opt.ID == body.OptionID && opt.Type == "select" {
+			for _, v := range opt.Options {
+				if v.Value == body.Value {
+					allowed = true
+					break
+				}
+			}
+			break
+		}
+	}
+	if !allowed {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "value not offered by the agent"})
+		return
+	}
+	var ignored map[string]any
+	if err := s.acpCall(r.Context(), "session/set_config_option", map[string]any{
+		"sessionId": id,
+		"optionId":  body.OptionID,
+		"value":     body.Value,
+	}, &ignored); err != nil {
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "optionId": body.OptionID, "value": body.Value})
+}
+
+func (s *Server) handleModeRecommend(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.AutoModeEnabled {
+		s.writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "automatic mode routing is disabled"})
+		return
+	}
+	if !requireJSONContentType(r) {
+		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
+		return
+	}
+	id := r.PathValue("id")
+	hub := s.sessionHub(id)
+	if hub == nil {
+		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+		return
+	}
+	if hub.promptInProgress() {
+		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
+		return
+	}
+	c, err := s.acpClient()
+	if err != nil {
+		s.notSupported(w)
+		return
+	}
+	offer, _ := c.SessionOffer(id)
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var body struct {
+		Text string `json:"text"`
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if body.Text == "" {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text is required"})
+		return
+	}
+	// Get current mode and available modes.
+	offerModes := offer.Modes
+	if len(offerModes) == 0 && s.cfg.Profile == "zero" {
+		offerModes = []acpclient.Mode{
+			{ID: "auto", Name: "Auto", Description: "Agent decides"},
+			{ID: "ask", Name: "Ask", Description: "Writes ask for approval"},
+			{ID: "plan", Name: "Plan", Description: "Read-only planning"},
+		}
+	}
+	if len(offerModes) == 0 {
+		s.notSupported(w)
+		return
+	}
+	// Build allowed map from offered modes.
+	allowed := map[string]bool{}
+	for _, m := range offerModes {
+		if m.ID != "" {
+			allowed[m.ID] = true
+		}
+	}
+	// Determine current mode from session.
+	var currentMode string
+	if hub.currentMode != "" {
+		currentMode = hub.currentMode
+	} else {
+		// Fallback to first offered mode.
+		currentMode = offerModes[0].ID
+	}
+	// Run the routing rules.
+	recommended, ruleID := s.routeMode(currentMode, body.Text, allowed)
+	// Enforce ceiling.
+	ceiling := s.cfg.AutoModeCeiling
+	if ceiling != "" && !allowed[ceiling] {
+		ceiling = ""
+	}
+	if ceiling != "" {
+		// Check if recommended is above ceiling.
+		ceilingRank := modeRank(ceiling)
+		recommendedRank := modeRank(recommended)
+		if recommendedRank > ceilingRank {
+			recommended = ceiling
+			ruleID = "ceiling"
+		}
+	} else {
+		// Reduce-only: never raise authority.
+		currentRank := modeRank(currentMode)
+		recommendedRank := modeRank(recommended)
+		if recommendedRank > currentRank {
+			recommended = currentMode
+			ruleID = "reduce-only"
+		}
+	}
+	// Audit event (no prompt text).
+	s.audit.Record(auth.Event{
+		Kind:   auth.KindModeRouted,
+		Source: "auto",
+		Method: "POST",
+		Path:   "/v1/sessions/" + id + "/mode/recommend",
+		Reason: fmt.Sprintf("from=%s to=%s rule=%s", currentMode, recommended, ruleID),
+	})
+	// If apply is enabled and recommendation differs, apply it.
+	applied := false
+	if s.cfg.AutoModeApply && recommended != currentMode {
+		var ignored map[string]any
+		if err := s.acpCall(r.Context(), "session/set_mode", map[string]any{
+			"sessionId": id,
+			"modeId":    recommended,
+		}, &ignored); err == nil {
+			applied = true
+			hub.currentMode = recommended
+		}
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"ok":          true,
+		"currentMode": currentMode,
+		"recommended": recommended,
+		"rule":        ruleID,
+		"applied":     applied,
+	})
+}
+
+// modeRank returns an ordering: plan=0, ask=1, auto=2.
+func modeRank(m string) int {
+	switch m {
+	case "plan":
+		return 0
+	case "ask":
+		return 1
+	case "auto":
+		return 2
+	default:
+		return -1
+	}
+}
+
+// routeMode applies deterministic, reduce-only rules.
+func (s *Server) routeMode(current, text string, allowed map[string]bool) (string, string) {
+	// Rules are applied in order; first match wins.
+	// Lower rank = more restrictive.
+	planID := "plan"
+	askID := "ask"
+	if !allowed[planID] {
+		planID = ""
+	}
+	if !allowed[askID] {
+		askID = ""
+	}
+	// Rule 1: Empty or whitespace-only -> plan (most restrictive).
+	if strings.TrimSpace(text) == "" {
+		if planID != "" {
+			return planID, "empty"
+		}
+	}
+	// Rule 2: Hostile/override attempts -> never raise.
+	// "ignore the rules", "use auto", "switch to auto", etc.
+	lower := strings.ToLower(text)
+	overridePatterns := []string{
+		"ignore the rules",
+		"use auto",
+		"switch to auto",
+		"force auto",
+		"auto mode",
+		"bypass",
+		"override",
+	}
+	for _, p := range overridePatterns {
+		if strings.Contains(lower, p) {
+			// Stay at or below current.
+			return current, "override-attempt"
+		}
+	}
+	// Rule 3: Keywords that suggest read-only/planning.
+	planKeywords := []string{
+		"explain",
+		"analyze",
+		"review",
+		"audit",
+		"describe",
+		"how does",
+		"what is",
+		"summarize",
+		"plan",
+		"design",
+		"architecture",
+		"read only",
+		"read-only",
+		"just look",
+		"only read",
+	}
+	for _, k := range planKeywords {
+		if strings.Contains(lower, k) && planID != "" {
+			return planID, "plan-keyword"
+		}
+	}
+	// Rule 4: Keywords that suggest write/ask.
+	askKeywords := []string{
+		"create",
+		"write",
+		"edit",
+		"modify",
+		"change",
+		"update",
+		"delete",
+		"remove",
+		"add",
+		"implement",
+		"fix",
+		"refactor",
+		"rename",
+		"move",
+		"copy",
+		"run",
+		"execute",
+		"test",
+		"build",
+		"deploy",
+		"commit",
+		"push",
+		"merge",
+	}
+	for _, k := range askKeywords {
+		if strings.Contains(lower, k) && askID != "" {
+			return askID, "ask-keyword"
+		}
+	}
+	// Rule 5: Code blocks or diffs in prompt -> ask (user showing code to edit).
+	if strings.Contains(text, "```") || strings.Contains(text, "diff") {
+		if askID != "" {
+			return askID, "code-block"
+		}
+	}
+	// Rule 6: Very short prompts without clear intent -> ask (default to safer).
+	if len(strings.TrimSpace(text)) < 20 && askID != "" {
+		return askID, "short"
+	}
+	// Default: stay at current.
+	return current, "default"
+}
+
 func (s *Server) resolveNewSession(workspace string, extra []string) (string, []string, error) {
 	if s.roots != nil {
 		return s.roots.Resolve(workspace, extra)
@@ -1091,53 +1464,156 @@ func validateWorkspace(p string) error {
 	return nil
 }
 
+func (s *Server) validateImage(data []byte, mime string) error {
+	if int64(len(data)) > s.cfg.MaxImageBytes {
+		return fmt.Errorf("image size %d exceeds limit %d", len(data), s.cfg.MaxImageBytes)
+	}
+	allowed := false
+	for _, m := range s.cfg.AllowImageMIME {
+		if m == mime {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return fmt.Errorf("MIME type %q not allowed", mime)
+	}
+	// Magic byte check.
+	if len(data) < 12 {
+		return fmt.Errorf("image too small for magic byte check")
+	}
+	switch {
+	case bytes.HasPrefix(data, []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}): // PNG
+		if mime != "image/png" {
+			return fmt.Errorf("magic bytes indicate PNG but MIME is %q", mime)
+		}
+	case bytes.HasPrefix(data, []byte{0xFF, 0xD8, 0xFF}): // JPEG
+		if mime != "image/jpeg" {
+			return fmt.Errorf("magic bytes indicate JPEG but MIME is %q", mime)
+		}
+	case bytes.HasPrefix(data, []byte{0x52, 0x49, 0x46, 0x46}) && bytes.HasPrefix(data[8:12], []byte{0x57, 0x45, 0x42, 0x50}): // WebP (RIFF + WEBP)
+		if mime != "image/webp" {
+			return fmt.Errorf("magic bytes indicate WebP but MIME is %q", mime)
+		}
+	case bytes.HasPrefix(data, []byte{0x47, 0x49, 0x46, 0x38, 0x37, 0x61}) || bytes.HasPrefix(data, []byte{0x47, 0x49, 0x46, 0x38, 0x39, 0x61}): // GIF87a / GIF89a
+		if mime != "image/gif" {
+			return fmt.Errorf("magic bytes indicate GIF but MIME is %q", mime)
+		}
+	default:
+		return fmt.Errorf("unrecognized image format")
+	}
+	return nil
+}
+
 func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	ctx, endSpan := observability.StartHTTPSpan(r.Context(), "/v1/sessions/{id}/prompt", "POST")
+	defer endSpan()
+
+	r = r.WithContext(ctx)
+
 	if !requireJSONContentType(r) {
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusUnsupportedMediaType, time.Since(start).Seconds()*1000)
 		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
 		return
 	}
 	id := r.PathValue("id")
 	hub := s.sessionHub(id)
 	if hub == nil {
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusNotFound, time.Since(start).Seconds()*1000)
 		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
 		return
 	}
 	if !hub.tryStartPrompt() {
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusConflict, time.Since(start).Seconds()*1000)
 		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	// Allow up to max images + text in body.
+	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxImageBytes*int64(s.cfg.MaxImages+1))
 	var body struct {
-		Text string `json:"text"`
+		Text   string            `json:"text"`
+		Images []ImageAttachment `json:"images,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		hub.endPrompt()
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
+	if body.Text == "" && len(body.Images) == 0 {
+		hub.endPrompt()
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text or images required"})
+		return
+	}
+	if len(body.Images) > s.cfg.MaxImages {
+		hub.endPrompt()
+		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("too many images (max %d)", s.cfg.MaxImages)})
+		return
+	}
+	// Validate each image.
+	for i, img := range body.Images {
+		data, err := base64.StdEncoding.DecodeString(img.Data)
+		if err != nil {
+			hub.endPrompt()
+			observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
+			s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("image %d: invalid base64", i)})
+			return
+		}
+		if err := s.validateImage(data, img.MIME); err != nil {
+			hub.endPrompt()
+			observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
+			s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("image %d: %v", i, err)})
+			return
+		}
+		body.Images[i].Data = string(data) // Store decoded bytes for runPrompt
+	}
+	observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusAccepted, time.Since(start).Seconds()*1000)
 	s.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 	s.applyState(id, sessionstate.Event{Kind: sessionstate.KindPrompt})
-	go s.runPrompt(id, hub, body.Text)
+	go s.runPrompt(id, hub, body.Text, body.Images)
 }
 
-func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string) {
+type ImageAttachment struct {
+	Data string `json:"data"` // base64 encoded
+	MIME string `json:"mimeType"`
+}
+
+func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string, images []ImageAttachment) {
+	start := time.Now()
+	ctx, endSpan := observability.StartACPSpan(context.Background(), "session/prompt")
+	defer endSpan()
+
 	defer func() {
 		hub.endPrompt()
 		if s.perms != nil {
 			s.perms.AbortSession(sessionID)
 		}
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	var res struct {
 		StopReason string `json:"stopReason"`
 	}
+	// Build prompt content blocks.
+	prompt := make([]map[string]any, 0, 1+len(images))
+	if text != "" {
+		prompt = append(prompt, map[string]any{"type": "text", "text": text})
+	}
+	for _, img := range images {
+		prompt = append(prompt, map[string]any{
+			"type":     "image",
+			"data":     img.Data,
+			"mimeType": img.MIME,
+		})
+	}
 	err := s.acpCall(ctx, "session/prompt", map[string]any{
 		"sessionId": sessionID,
-		"prompt": []map[string]string{
-			{"type": "text", "text": text},
-		},
+		"prompt":    prompt,
 	}, &res)
+	observability.RecordACPMetric("session/prompt", time.Since(start).Seconds()*1000, err)
 	if err != nil {
 		s.applyState(sessionID, sessionstate.Event{Kind: sessionstate.KindFail})
 		hub.emit(map[string]any{"type": "error", "message": s.redact(err.Error())})

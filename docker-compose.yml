@@ -1,0 +1,73 @@
+# Docker Compose for zero-bridge with Caddy reverse proxy
+# Usage: docker compose up -d
+# Requires: Caddyfile, token file, zero binary mount
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: zero-bridge-caddy
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - zero-bridge-net
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M,mode=1777
+
+  zero-bridge:
+    image: zero-bridge:dev
+    container_name: zero-bridge
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        VERSION: "dev"
+        COMMIT: "local"
+        BUILD_DATE: "now"
+    restart: unless-stopped
+    network_mode: "service:caddy"  # Share network namespace with Caddy
+    volumes:
+      # Mount patched zero binary (read-only) - REPLACE with actual path
+      - ${ZERO_BINARY_PATH:-/HOST_PATH_TO_PATCHED_ZERO}:/usr/local/bin/zero:ro
+      # Token file (mode 0600, owned by 10001:10001) - REPLACE with actual path
+      - ${TOKEN_FILE_PATH:-./token.txt}:/var/lib/zerobridge/.local/state/zero-bridge/token.txt:ro
+      # State directory for session metadata and audit log
+      - zero-bridge-state:/var/lib/zerobridge/.local/state/zero-bridge
+      # Workspace root(s) - bind mount only the directories the agent may access
+      - ${WORKSPACE_PATH:-/HOST_PATH_TO_WORKSPACE}:/workspace:ro
+      # Optional: additional directories for the agent
+      - ${EXTRA_PATH:-/HOST_PATH_TO_EXTRA}:/extra:ro
+    environment:
+      - ZERO_BRIDGE_TOKEN_FILE=/var/lib/zerobridge/.local/state/zero-bridge/token.txt
+      # Telemetry (S16) - optional
+      - OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_SERVICE_NAME=zero-bridge
+      - OTEL_SAMPLE=0.1
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M,mode=1777
+    depends_on:
+      - caddy
+
+networks:
+  zero-bridge-net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  zero-bridge-state:
+    driver: local

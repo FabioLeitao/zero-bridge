@@ -1,0 +1,23 @@
+# .dockerignore for zero-bridge
+# Exclude everything not needed for the build
+
+.git
+.github
+.gitignore
+*.md
+!Dockerfile
+!docker-compose.yml
+!Caddyfile
+!.dockerignore
+docs/
+deploy/
+scripts/
+*.log
+*.tmp
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/
+*.env
+.env.*

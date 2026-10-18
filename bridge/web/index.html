@@ -61,15 +61,25 @@
       </section>
       <label id="mode-label" for="mode" hidden>Modo</label>
       <select id="mode" hidden disabled></select>
+      <div id="auto-mode-recommend" hidden aria-label="Recomendação de modo automático">
+        <span id="auto-mode-text"></span>
+        <button id="auto-mode-apply" type="button" hidden>Aplicar</button>
+      </div>
     </form>
     <p id="status" class="sr-only" role="status"></p>
     <div id="plan" hidden aria-label="Plano"></div>
     <div id="permissions" aria-label="Permissões"></div>
     <div id="log" role="log" aria-live="off" aria-label="Conversa"></div>
+    <div id="suggestions" hidden aria-label="Sugestões"></div>
     <form id="composer">
       <label for="text">Mensagem</label>
+      <div id="image-preview" hidden aria-label="Anexos de imagem"></div>
       <textarea id="text" name="text" rows="3" required></textarea>
-      <button id="send" type="submit">Enviar</button>
+      <input type="file" id="image-input" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden aria-label="Anexar imagem">
+      <div id="composer-footer">
+        <span id="mode-chip" hidden aria-live="polite" aria-atomic="true"></span>
+        <button id="send" type="submit">Enviar</button>
+      </div>
     </form>
   </main>
   </div>

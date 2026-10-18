@@ -34,3 +34,7 @@ Um commit é uma coisa. Compila, os testes que o cobrem passam, e ele pode ser r
 ## Fluxo da fatia
 
 O trabalho cai numa branch `epic/sN-slug`. O corpo da pull request nomeia a issue com uma palavra que fecha issue. A mensagem do commit não nomeia. O merge é `git merge --merge`, para os commits originais permanecerem. Squash merge e rebase merge são recusados.
+
+## Habilidades disponíveis
+
+As habilidades disponíveis no sistema são as mesmas da versão em inglês. Consulte [AGENTS.md](AGENTS.md) para a lista completa.

@@ -1,0 +1,59 @@
+# Caddyfile for zero-bridge reverse proxy
+# Usage with docker-compose.yml
+
+{
+    # Disable admin endpoint
+    admin off
+    # Disable automatic HTTPS (we're on loopback)
+    auto_https off
+}
+
+# Bridge backend (upstream is zero-bridge container sharing network namespace)
+# The zero-bridge container listens on 127.0.0.1:8765 inside the shared namespace
+# Caddy is the only published port
+:8765 {
+    # Security headers
+    header {
+        # CSP: allow self only, no inline scripts/styles
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self';"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        Cache-Control "no-store"
+        # No Access-Control-Allow-Origin
+    }
+
+    # Rate limiting for login
+    @login {
+        path /v1/login
+        method POST
+    }
+    rate_limit @login {
+        zone login 10r/m
+        key {remote}
+    }
+
+    # Reverse proxy to zero-bridge (shared network namespace)
+    # Note: bridge listens on 127.0.0.1:8765 inside the same namespace
+    reverse_proxy http://127.0.0.1:8765 {
+        # Disable response buffering for SSE
+        flush_interval -1
+        # No response body encoding on SSE
+        header_down -Content-Encoding
+        # Trusted proxy headers
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+
+    # Health check endpoint (bypasses auth)
+    handle /health {
+        reverse_proxy http://127.0.0.1:8765
+    }
+
+    # Log format
+    log {
+        output stdout
+        format json
+    }
+}

@@ -87,6 +87,29 @@ const ui = {
   newWorkspace: "Diretório da nova sessão",
   addDirs: "Diretórios adicionais",
   createHere: "Criar neste diretório",
+  suggestExplore: "Explorar o código",
+  suggestReview: "Revisar o projeto",
+  suggestDebug: "Depurar um problema",
+  suggestTest: "Escrever testes",
+  configLabel: "Configuração",
+  configModel: "Modelo",
+  imgTooLarge: "Imagem muito grande (máx. {n} MiB)",
+  imgBadType: "Tipo de imagem não permitido",
+  imgTooMany: "Muitas imagens (máx. {n})",
+  imgInvalid: "Imagem inválida",
+  autoMode: "Automático",
+  autoRecommend: "Recomendado: {mode} ({rule})",
+  autoApply: "Aplicar",
+  autoApplied: "Modo alterado para {mode} ({rule})",
+  autoRuleEmpty: "vazio",
+  autoRuleOverride: "tentativa de override",
+  autoRulePlanKeyword: "palavra-chave de planejamento",
+  autoRuleAskKeyword: "palavra-chave de escrita",
+  autoRuleCodeBlock: "bloco de código",
+  autoRuleShort: "prompt curto",
+  autoRuleCeiling: "teto de modo",
+  autoRuleReduce: "somente redução",
+  autoRuleDefault: "padrão",
   stateWorking: "trabalhando",
   stateBlocked: "precisa de voce",
   stateDone: "concluido",
@@ -133,6 +156,13 @@ const sidebarToggleEl = document.getElementById("sidebar-toggle");
 const statusEl = document.getElementById("status");
 const planEl = document.getElementById("plan");
 const permEl = document.getElementById("permissions");
+const suggestionsEl = document.getElementById("suggestions");
+const modeChipEl = document.getElementById("mode-chip");
+const autoModeRecommendEl = document.getElementById("auto-mode-recommend");
+const autoModeTextEl = document.getElementById("auto-mode-text");
+const autoModeApplyBtn = document.getElementById("auto-mode-apply");
+const imagePreviewEl = document.getElementById("image-preview");
+const imageInputEl = document.getElementById("image-input");
 
 function applyChrome() {
   sidebarToggleEl.textContent = ui.sessions;
@@ -193,6 +223,7 @@ let caps = {
   sessionList: false,
   sessionResume: false,
   modes: [],
+  configOptions: [],
   agent: { name: "", version: "" }
 };
 
@@ -213,6 +244,7 @@ function applyCapabilities() {
   sidebarEl.hidden = caps.sessionList !== true;
   sessionStatusLevel = caps.sessionStatus === "full" ? "full" : "basic";
   fillModes(caps.modes || []);
+  renderConfigOptions(caps.configOptions || []);
   if (loadedSessions.length) {
     paintSessions();
   } else {
@@ -234,6 +266,13 @@ function fillModes(modes) {
     }
     modeEl.appendChild(opt);
   });
+  // Add "Automatic" option if auto-mode is enabled.
+  if (caps.autoModeEnabled === true) {
+    const autoOpt = document.createElement("option");
+    autoOpt.value = "auto-mode";
+    autoOpt.textContent = ui.autoMode;
+    modeEl.appendChild(autoOpt);
+  }
   const on = modes.length > 0;
   modeEl.hidden = !on;
   modeLabelEl.hidden = !on;
@@ -264,21 +303,209 @@ function selectMode(id) {
       return;
     }
   }
+  // If selecting a regular mode, hide auto-mode recommendation.
+  hideAutoModeRecommendation();
 }
 
 function setModeEnabled(on) {
   modeEl.disabled = modeEl.hidden || !on;
 }
 
-async function loadCapabilities() {
-  const res = await api("/v1/capabilities");
-  if (!res.ok) {
-    note(ui.capsFailed);
+function renderConfigOptions(opts) {
+  if (!opts || !Array.isArray(opts)) {
     return;
   }
-  caps = await res.json();
-  applyCapabilities();
+  // Find select-type options with non-empty options list
+  const selectOpts = opts.filter(function (opt) {
+    return opt.type === "select" && opt.options && Array.isArray(opt.options) && opt.options.length > 0;
+  });
+  if (selectOpts.length === 0) {
+    return;
+  }
+  // Create a container for config pickers if not exists
+  let pickerEl = document.getElementById("config-pickers");
+  if (!pickerEl) {
+    pickerEl = document.createElement("div");
+    pickerEl.id = "config-pickers";
+    // Insert before the composer
+    const composer = document.getElementById("composer");
+    composer.parentNode.insertBefore(pickerEl, composer);
+  }
+  while (pickerEl.firstChild) {
+    pickerEl.removeChild(pickerEl.firstChild);
+  }
+  selectOpts.forEach(function (opt) {
+    const row = document.createElement("div");
+    row.className = "config-picker";
+    row.dataset.optionId = opt.id;
+    const label = document.createElement("label");
+    label.htmlFor = "config-" + opt.id;
+    label.textContent = opt.name || opt.id;
+    const select = document.createElement("select");
+    select.id = "config-" + opt.id;
+    select.dataset.optionId = opt.id;
+    opt.options.forEach(function (v) {
+      const option = document.createElement("option");
+      option.value = String(v.value || "");
+      option.textContent = v.name ? String(v.name) : String(v.value || "");
+      if (v.description) {
+        option.setAttribute("aria-description", String(v.description));
+      }
+      select.appendChild(option);
+    });
+    select.value = String(opt.currentValue || "");
+    select.addEventListener("change", function () {
+      setConfigOption(opt.id, select.value);
+    });
+    row.appendChild(label);
+    row.appendChild(select);
+    pickerEl.appendChild(row);
+  });
 }
+
+async function setConfigOption(optionId, value) {
+  if (!sessionId) {
+    return;
+  }
+  const res = await api("/v1/sessions/" + encodeURIComponent(sessionId) + "/config_option", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ optionId: optionId, value: value })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(function () { return {}; });
+    note(ui.errorPrefix + (data.error || "failed to set config option"));
+    // Reset to current value on error
+    const select = document.getElementById("config-" + optionId);
+    if (select) {
+      // Find the current value from caps
+      const opt = (caps.configOptions || []).find(function (o) { return o.id === optionId; });
+      if (opt) {
+        select.value = String(opt.currentValue || "");
+      }
+    }
+    return;
+  }
+  // Update local caps
+  const opt = (caps.configOptions || []).find(function (o) { return o.id === optionId; });
+  if (opt) {
+    opt.currentValue = value;
+  }
+}
+
+// Image attachment handling (S25).
+let pendingImages = []; // Array of {data: base64, mime: string, preview: URL}
+
+function updateImagePreview() {
+  if (!imagePreviewEl) return;
+  while (imagePreviewEl.firstChild) {
+    imagePreviewEl.removeChild(imagePreviewEl.firstChild);
+  }
+  if (pendingImages.length === 0) {
+    imagePreviewEl.hidden = true;
+    return;
+  }
+  imagePreviewEl.hidden = false;
+  pendingImages.forEach(function (img, idx) {
+    const wrap = document.createElement("div");
+    wrap.className = "img-preview";
+    wrap.dataset.index = idx;
+    const preview = document.createElement("img");
+    preview.src = img.preview;
+    preview.alt = "Image attachment " + (idx + 1);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "img-remove";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", "Remover imagem " + (idx + 1));
+    remove.addEventListener("click", function () {
+      removeImage(idx);
+    });
+    wrap.appendChild(preview);
+    wrap.appendChild(remove);
+    imagePreviewEl.appendChild(wrap);
+  });
+}
+
+function addImage(file) {
+  if (!caps.promptCapabilities || !caps.promptCapabilities.image) {
+    note(ui.errorPrefix + "Agent does not support images");
+    return;
+  }
+  if (pendingImages.length >= (caps.maxImages || 4)) {
+    note(ui.imgTooMany.replace("{n}", String(caps.maxImages || 4)));
+    return;
+  }
+  const maxBytes = caps.maxImageBytes || (4 << 20);
+  if (file.size > maxBytes) {
+    note(ui.imgTooLarge.replace("{n}", String(Math.round(maxBytes / (1 << 20)))));
+    return;
+  }
+  const allowed = (caps.allowImageMIME || ["image/png", "image/jpeg", "image/webp", "image/gif"]);
+  if (!allowed.includes(file.type)) {
+    note(ui.imgBadType);
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function () {
+    const base64 = reader.result.split(",")[1];
+    pendingImages.push({ data: base64, mime: file.type, preview: reader.result });
+    updateImagePreview();
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImage(idx) {
+  pendingImages.splice(idx, 1);
+  updateImagePreview();
+}
+
+function clearImages() {
+  pendingImages = [];
+  updateImagePreview();
+}
+
+function readImagesFromInput(input) {
+  if (!input.files || input.files.length === 0) return;
+  Array.from(input.files).forEach(addImage);
+  input.value = "";
+}
+
+function readImagesFromDataTransfer(dt) {
+  if (!dt.items) return;
+  Array.from(dt.items).forEach(function (item) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      addImage(item.getAsFile());
+    }
+  });
+}
+
+// Paste handler
+document.addEventListener("paste", function (ev) {
+  if (ev.target === textEl) {
+    ev.clipboardData.items.forEach(function (item) {
+      if (item.type.startsWith("image/")) {
+        addImage(item.getAsFile());
+        ev.preventDefault();
+      }
+    });
+  }
+});
+
+// Drag & drop on composer
+form.addEventListener("dragover", function (ev) {
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = "copy";
+});
+form.addEventListener("drop", function (ev) {
+  ev.preventDefault();
+  readImagesFromDataTransfer(ev.dataTransfer);
+});
+
+// File input click handler (optional: could add a button)
+imageInputEl.addEventListener("change", function () {
+  readImagesFromInput(imageInputEl);
+});
 
 function clearSessionList() {
   listGen += 1;
@@ -464,6 +691,43 @@ function showLogHint() {
   p.className = "log-hint";
   p.textContent = ui.emptyLog;
   logEl.appendChild(p);
+  renderSuggestions();
+}
+
+function renderSuggestions() {
+  if (suggestionsEl && !suggestionsEl.querySelector(".suggestion-card")) {
+    const cards = [
+      ui.suggestExplore,
+      ui.suggestReview,
+      ui.suggestDebug,
+      ui.suggestTest
+    ];
+    suggestionsEl.hidden = false;
+    while (suggestionsEl.firstChild) {
+      suggestionsEl.removeChild(suggestionsEl.firstChild);
+    }
+    cards.forEach(function (text) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "suggestion-card";
+      card.textContent = text;
+      card.addEventListener("click", function () {
+        textEl.value = text;
+        textEl.focus();
+        hideSuggestions();
+      });
+      suggestionsEl.appendChild(card);
+    });
+  }
+}
+
+function hideSuggestions() {
+  if (suggestionsEl) {
+    while (suggestionsEl.firstChild) {
+      suggestionsEl.removeChild(suggestionsEl.firstChild);
+    }
+    suggestionsEl.hidden = true;
+  }
 }
 
 function note(value) {
@@ -538,6 +802,9 @@ function clearView() {
   while (permEl.firstChild) {
     permEl.removeChild(permEl.firstChild);
   }
+  hideSuggestions();
+  clearImages();
+  hideAutoModeRecommendation();
   tools.clear();
   permState.clear();
   permQueue.length = 0;
@@ -636,6 +903,37 @@ function applyMode(data) {
   }
   setModeEnabled(true);
   markActiveSession();
+  updateModeChip(data);
+}
+
+function updateModeChip(data) {
+  if (!modeChipEl) {
+    return;
+  }
+  if (!data || !data.modes || !Array.isArray(data.modes)) {
+    modeChipEl.hidden = true;
+    modeChipEl.textContent = "";
+    return;
+  }
+  const currentMode = modeEl.value;
+  let description = "";
+  for (const mode of data.modes) {
+    if (String(mode.id || "") === currentMode) {
+      description = String(mode.description || "");
+      break;
+    }
+  }
+  if (!description && data.modes.length > 0) {
+    // Fallback to first mode's description
+    description = String(data.modes[0].description || "");
+  }
+  if (description) {
+    modeChipEl.textContent = description;
+    modeChipEl.hidden = false;
+  } else {
+    modeChipEl.textContent = "";
+    modeChipEl.hidden = true;
+  }
 }
 
 function baseName(cwd) {
@@ -1255,6 +1553,8 @@ function render(msg) {
     }
     sendBtn.disabled = false;
     setModeEnabled(true);
+    // Return focus to composer on error
+    textEl.focus();
     return;
   }
   if (msg.type === "permission_request") {
@@ -1272,6 +1572,8 @@ function render(msg) {
     thoughtBody = null;
     sendBtn.disabled = false;
     setModeEnabled(true);
+    // Return focus to composer after turn
+    textEl.focus();
     return;
   }
   if (msg.type !== "session/update" || !msg.params || !msg.params.update) {
@@ -1318,6 +1620,19 @@ function render(msg) {
   }
   if (kind === "current_mode_update" && modeEl) {
     selectMode(update.currentModeId);
+    // Update mode chip with the new mode's description
+    if (caps.modes && Array.isArray(caps.modes)) {
+      for (const mode of caps.modes) {
+        if (String(mode.id || "") === update.currentModeId) {
+          const desc = String(mode.description || "");
+          if (desc && modeChipEl) {
+            modeChipEl.textContent = desc;
+            modeChipEl.hidden = false;
+          }
+          break;
+        }
+      }
+    }
     return;
   }
   addLine("event", "event: " + kind);
@@ -1637,6 +1952,11 @@ modeEl.addEventListener("change", function () {
     return;
   }
   const mode = modeEl.value;
+  // If "Automatic" is selected, request a recommendation.
+  if (mode === "auto-mode") {
+    requestModeRecommendation();
+    return;
+  }
   setModeEnabled(false);
   api("/v1/sessions/" + encodeURIComponent(sessionId) + "/mode", {
     method: "POST",
@@ -1657,6 +1977,77 @@ modeEl.addEventListener("change", function () {
     note(String(err && err.message ? err.message : err));
   });
 });
+
+function requestModeRecommendation() {
+  if (!sessionId) return;
+  setModeEnabled(false);
+  hideAutoModeRecommendation();
+  api("/v1/sessions/" + encodeURIComponent(sessionId) + "/mode/recommend", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: textEl.value })
+  }).then(function (res) {
+    setModeEnabled(true);
+    if (!res.ok) {
+      note(ui.modeFailed);
+      return;
+    }
+    return res.json();
+  }).then(function (data) {
+    if (!data || !data.ok) return;
+    showAutoModeRecommendation(data.recommended, data.rule, data.applied);
+    if (data.applied) {
+      // Mode was auto-applied, update the selector to show the actual mode.
+      selectMode(data.recommended);
+    }
+  }).catch(function (err) {
+    setModeEnabled(true);
+    note(String(err && err.message ? err.message : err));
+  });
+}
+
+function showAutoModeRecommendation(mode, rule, applied) {
+  if (!autoModeRecommendEl || !autoModeTextEl || !autoModeApplyBtn) return;
+  var ruleText = ui["autoRule" + rule.charAt(0).toUpperCase() + rule.slice(1)] || rule;
+  autoModeTextEl.textContent = ui.autoRecommend.replace("{mode}", mode).replace("{rule}", ruleText);
+  autoModeRecommendEl.hidden = false;
+  if (applied) {
+    autoModeApplyBtn.hidden = true;
+    autoModeTextEl.textContent = ui.autoApplied.replace("{mode}", mode).replace("{rule}", ruleText);
+  } else {
+    autoModeApplyBtn.hidden = false;
+    autoModeApplyBtn.onclick = function () {
+      applyRecommendedMode(mode);
+    };
+  }
+}
+
+function hideAutoModeRecommendation() {
+  if (autoModeRecommendEl) {
+    autoModeRecommendEl.hidden = true;
+  }
+}
+
+function applyRecommendedMode(mode) {
+  if (!sessionId) return;
+  setModeEnabled(false);
+  api("/v1/sessions/" + encodeURIComponent(sessionId) + "/mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: mode })
+  }).then(function (res) {
+    setModeEnabled(true);
+    if (!res.ok) {
+      note(ui.modeFailed);
+      return;
+    }
+    selectMode(mode);
+    hideAutoModeRecommendation();
+  }).catch(function (err) {
+    setModeEnabled(true);
+    note(String(err && err.message ? err.message : err));
+  });
+}
 
 document.getElementById("sidebar-toggle").addEventListener("click", function () {
   if (sidebarEl.className.indexOf("open") >= 0) {
@@ -1798,7 +2189,17 @@ form.addEventListener("submit", function (ev) {
     return;
   }
   const text = textEl.value;
-  addLine("user", text);
+  const images = pendingImages.map(function (img) {
+    return { data: img.data, mimeType: img.mime };
+  });
+  if (!text && images.length === 0) {
+    return;
+  }
+  // Show user message with images
+  if (text) addLine("user", text);
+  images.forEach(function (img) {
+    addLine("user", "[image: " + img.mimeType + "]");
+  });
   sendBtn.disabled = true;
   setModeEnabled(false);
   assistant = null;
@@ -1806,7 +2207,7 @@ form.addEventListener("submit", function (ev) {
   api("/v1/sessions/" + encodeURIComponent(sessionId) + "/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: text })
+    body: JSON.stringify({ text: text, images: images })
   }).then(function (res) {
     if (res.status === 409) {
       note(ui.promptRunning);
@@ -1819,6 +2220,7 @@ form.addEventListener("submit", function (ev) {
       return;
     }
     textEl.value = "";
+    clearImages();
   }).catch(function (err) {
     note(String(err && err.message ? err.message : err));
     sendBtn.disabled = false;
