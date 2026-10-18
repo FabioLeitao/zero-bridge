@@ -122,10 +122,7 @@ func runArgs(args []string, stderr io.Writer) int {
 				return 2
 			}
 		}
-		if cfg.otelSample > 0 {
-			// The obs module reads this from env or we could pass it differently.
-			// For simplicity, we don't pass sample ratio via env here.
-		}
+		// The sample ratio (cfg.otelSample) is not passed to the obs module through the environment here.
 		// Start the OTel collector as a subprocess?
 		// The obs module is a separate binary. We'll just set env.
 		// The actual OTel initialization happens in bridge/obs/main if run separately.
