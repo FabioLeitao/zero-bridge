@@ -47,7 +47,7 @@ RUN apk add --no-cache \
     dumb-init
 
 # Create non-root user
-ARG HOME_DIR=/home/zerobridge
+ARG HOME_DIR=/var/lib/zerobridge
 RUN addgroup -g 10001 -S zerobridge && \
     adduser -u 10001 -S -D -H -h ${HOME_DIR} -G zerobridge zerobridge
 

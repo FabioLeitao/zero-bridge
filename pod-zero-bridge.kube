@@ -67,7 +67,7 @@ spec:
         readOnlyRootFilesystem: true
       env:
         - name: ZERO_BRIDGE_TOKEN_FILE
-          value: /home/zerobridge/.local/state/zero-bridge/token.txt
+          value: /var/lib/zerobridge/.local/state/zero-bridge/token.txt
         - name: OTLP_ENDPOINT
           value: "http://otel-collector:4318"
         - name: OTEL_SERVICE_NAME
@@ -79,11 +79,11 @@ spec:
           mountPath: /usr/local/bin/zero
           readOnly: true
         - name: token
-          mountPath: /home/zerobridge/.local/state/zero-bridge/token.txt
+          mountPath: /var/lib/zerobridge/.local/state/zero-bridge/token.txt
           subPath: token.txt
           readOnly: true
         - name: state
-          mountPath: /home/zerobridge/.local/state/zero-bridge
+          mountPath: /var/lib/zerobridge/.local/state/zero-bridge
         - name: workspace
           mountPath: /workspace
           readOnly: true

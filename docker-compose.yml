@@ -39,15 +39,15 @@ services:
       # Mount patched zero binary (read-only) - REPLACE with actual path
       - ${ZERO_BINARY_PATH:-/HOST_PATH_TO_PATCHED_ZERO}:/usr/local/bin/zero:ro
       # Token file (mode 0600, owned by 10001:10001) - REPLACE with actual path
-      - ${TOKEN_FILE_PATH:-./token.txt}:/home/zerobridge/.local/state/zero-bridge/token.txt:ro
+      - ${TOKEN_FILE_PATH:-./token.txt}:/var/lib/zerobridge/.local/state/zero-bridge/token.txt:ro
       # State directory for session metadata and audit log
-      - zero-bridge-state:/home/zerobridge/.local/state/zero-bridge
+      - zero-bridge-state:/var/lib/zerobridge/.local/state/zero-bridge
       # Workspace root(s) - bind mount only the directories the agent may access
       - ${WORKSPACE_PATH:-/HOST_PATH_TO_WORKSPACE}:/workspace:ro
       # Optional: additional directories for the agent
       - ${EXTRA_PATH:-/HOST_PATH_TO_EXTRA}:/extra:ro
     environment:
-      - ZERO_BRIDGE_TOKEN_FILE=/home/zerobridge/.local/state/zero-bridge/token.txt
+      - ZERO_BRIDGE_TOKEN_FILE=/var/lib/zerobridge/.local/state/zero-bridge/token.txt
       # Telemetry (S16) - optional
       - OTLP_ENDPOINT=http://otel-collector:4318
       - OTEL_SERVICE_NAME=zero-bridge

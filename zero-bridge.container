@@ -28,13 +28,13 @@ Network=pod:zero-bridge
 
 # Volumes - REPLACE with actual paths
 Volume=${ZERO_BINARY_PATH:-/HOST_PATH_TO_PATCHED_ZERO}:/usr/local/bin/zero:ro,z
-Volume=${TOKEN_FILE_PATH:-/HOST_PATH_TO_TOKEN}:/home/zerobridge/.local/state/zero-bridge/token.txt:ro,z
-Volume=zero-bridge-state:/home/zerobridge/.local/state/zero-bridge,z
+Volume=${TOKEN_FILE_PATH:-/HOST_PATH_TO_TOKEN}:/var/lib/zerobridge/.local/state/zero-bridge/token.txt:ro,z
+Volume=zero-bridge-state:/var/lib/zerobridge/.local/state/zero-bridge,z
 Volume=${WORKSPACE_PATH:-/HOST_PATH_TO_WORKSPACE}:/workspace:ro,z
 Volume=${EXTRA_PATH:-/HOST_PATH_TO_EXTRA}:/extra:ro,z
 
 # Environment
-Environment=ZERO_BRIDGE_TOKEN_FILE=/home/zerobridge/.local/state/zero-bridge/token.txt
+Environment=ZERO_BRIDGE_TOKEN_FILE=/var/lib/zerobridge/.local/state/zero-bridge/token.txt
 Environment=OTLP_ENDPOINT=http://otel-collector:4318
 Environment=OTEL_SERVICE_NAME=zero-bridge
 Environment=OTEL_SAMPLE=0.1
