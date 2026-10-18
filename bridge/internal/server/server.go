@@ -289,6 +289,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{id}/resume", s.handleResume)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
 	mux.HandleFunc("POST /v1/sessions/{id}/mode", s.handleMode)
+	mux.HandleFunc("POST /v1/sessions/{id}/config_option", s.handleConfigOption)
 	mux.HandleFunc("GET /v1/sessions/{id}/events", s.handleEvents)
 	mux.HandleFunc("GET /v1/sessions/{id}/permissions/pending", s.handlePending)
 	mux.HandleFunc("POST /v1/sessions/{id}/permissions/{reqId}", s.handlePermission)
@@ -567,6 +568,12 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	if modes == nil {
 		modes = []acpclient.Mode{}
 	}
+	// Include configOptions from the first session offer (they're per-session but usually same)
+	var configOptions []acpclient.ConfigOption
+	offer, ok := c.SessionOffer("")
+	if ok {
+		configOptions = offer.ConfigOptions
+	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"profile":       s.cfg.Profile,
 		"agent":         map[string]string{"name": snap.AgentInfo.Name, "version": snap.AgentInfo.Version},
@@ -575,6 +582,13 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 		"sessionResume": snap.Capabilities.Resume(),
 		"prompt":        snap.Capabilities.PromptCapabilities,
 		"modes":         modes,
+		"configOptions": configOptions,
+		"workspaceRoots": func() []string {
+			if s.roots != nil {
+				return s.roots.Paths()
+			}
+			return []string{}
+		}(),
 	})
 }
 
@@ -986,6 +1000,71 @@ func (s *Server) handleMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mode": body.Mode})
+}
+
+func (s *Server) handleConfigOption(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(r) {
+		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
+		return
+	}
+	id := r.PathValue("id")
+	hub := s.sessionHub(id)
+	if hub == nil {
+		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+		return
+	}
+	if hub.promptInProgress() {
+		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
+		return
+	}
+	c, err := s.acpClient()
+	if err != nil {
+		s.notSupported(w)
+		return
+	}
+	offer, _ := c.SessionOffer(id)
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var body struct {
+		OptionID string `json:"optionId"`
+		Value    string `json:"value"`
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if body.OptionID == "" || body.Value == "" {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "optionId and value are required"})
+		return
+	}
+	// Validate against the offered options
+	allowed := false
+	for _, opt := range offer.ConfigOptions {
+		if opt.ID == body.OptionID && opt.Type == "select" {
+			for _, v := range opt.Options {
+				if v.Value == body.Value {
+					allowed = true
+					break
+				}
+			}
+			break
+		}
+	}
+	if !allowed {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "value not offered by the agent"})
+		return
+	}
+	var ignored map[string]any
+	if err := s.acpCall(r.Context(), "session/set_config_option", map[string]any{
+		"sessionId": id,
+		"optionId":  body.OptionID,
+		"value":     body.Value,
+	}, &ignored); err != nil {
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": s.redact(err.Error())})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "optionId": body.OptionID, "value": body.Value})
 }
 
 func (s *Server) resolveNewSession(workspace string, extra []string) (string, []string, error) {

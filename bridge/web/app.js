@@ -90,7 +90,9 @@ const ui = {
   suggestExplore: "Explorar o código",
   suggestReview: "Revisar o projeto",
   suggestDebug: "Depurar um problema",
-  suggestTest: "Escrever testes"
+  suggestTest: "Escrever testes",
+  configLabel: "Configuração",
+  configModel: "Modelo"
 };
 
 const loginEl = document.getElementById("login");
@@ -191,6 +193,7 @@ let caps = {
   sessionList: false,
   sessionResume: false,
   modes: [],
+  configOptions: [],
   agent: { name: "", version: "" }
 };
 
@@ -210,6 +213,7 @@ function applyCapabilities() {
   sessionBrowserEl.hidden = caps.sessionList !== true;
   sidebarEl.hidden = caps.sessionList !== true;
   fillModes(caps.modes || []);
+  renderConfigOptions(caps.configOptions || []);
 }
 
 function fillModes(modes) {
@@ -260,6 +264,88 @@ function selectMode(id) {
 
 function setModeEnabled(on) {
   modeEl.disabled = modeEl.hidden || !on;
+}
+
+function renderConfigOptions(opts) {
+  if (!opts || !Array.isArray(opts)) {
+    return;
+  }
+  // Find select-type options with non-empty options list
+  const selectOpts = opts.filter(function (opt) {
+    return opt.type === "select" && opt.options && Array.isArray(opt.options) && opt.options.length > 0;
+  });
+  if (selectOpts.length === 0) {
+    return;
+  }
+  // Create a container for config pickers if not exists
+  let pickerEl = document.getElementById("config-pickers");
+  if (!pickerEl) {
+    pickerEl = document.createElement("div");
+    pickerEl.id = "config-pickers";
+    // Insert before the composer
+    const composer = document.getElementById("composer");
+    composer.parentNode.insertBefore(pickerEl, composer);
+  }
+  while (pickerEl.firstChild) {
+    pickerEl.removeChild(pickerEl.firstChild);
+  }
+  selectOpts.forEach(function (opt) {
+    const row = document.createElement("div");
+    row.className = "config-picker";
+    row.dataset.optionId = opt.id;
+    const label = document.createElement("label");
+    label.htmlFor = "config-" + opt.id;
+    label.textContent = opt.name || opt.id;
+    const select = document.createElement("select");
+    select.id = "config-" + opt.id;
+    select.dataset.optionId = opt.id;
+    opt.options.forEach(function (v) {
+      const option = document.createElement("option");
+      option.value = String(v.value || "");
+      option.textContent = v.name ? String(v.name) : String(v.value || "");
+      if (v.description) {
+        option.setAttribute("aria-description", String(v.description));
+      }
+      select.appendChild(option);
+    });
+    select.value = String(opt.currentValue || "");
+    select.addEventListener("change", function () {
+      setConfigOption(opt.id, select.value);
+    });
+    row.appendChild(label);
+    row.appendChild(select);
+    pickerEl.appendChild(row);
+  });
+}
+
+async function setConfigOption(optionId, value) {
+  if (!sessionId) {
+    return;
+  }
+  const res = await api("/v1/sessions/" + encodeURIComponent(sessionId) + "/config_option", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ optionId: optionId, value: value })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(function () { return {}; });
+    note(ui.errorPrefix + (data.error || "failed to set config option"));
+    // Reset to current value on error
+    const select = document.getElementById("config-" + optionId);
+    if (select) {
+      // Find the current value from caps
+      const opt = (caps.configOptions || []).find(function (o) { return o.id === optionId; });
+      if (opt) {
+        select.value = String(opt.currentValue || "");
+      }
+    }
+    return;
+  }
+  // Update local caps
+  const opt = (caps.configOptions || []).find(function (o) { return o.id === optionId; });
+  if (opt) {
+    opt.currentValue = value;
+  }
 }
 
 async function loadCapabilities() {

@@ -246,6 +246,42 @@ button:disabled, select:disabled { opacity: 0.5; cursor: default; }
 }
 #mode-chip[hidden] { display: none; }
 
+/* Config pickers (model, etc.) */
+#config-pickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+}
+.config-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 160px;
+  flex: 1 1 160px;
+}
+.config-picker label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.config-picker select {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.4rem 0.5rem;
+}
+.config-picker select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 @media (max-width: 40rem) {
   #shell { flex-direction: column; }
   #sidebar {
