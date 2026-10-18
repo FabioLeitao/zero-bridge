@@ -1338,15 +1338,11 @@ func (s *Server) routeMode(current, text string, allowed map[string]bool) (strin
 	// Lower rank = more restrictive.
 	planID := "plan"
 	askID := "ask"
-	autoID := "auto"
 	if !allowed[planID] {
 		planID = ""
 	}
 	if !allowed[askID] {
 		askID = ""
-	}
-	if !allowed[autoID] {
-		autoID = ""
 	}
 	// Rule 1: Empty or whitespace-only -> plan (most restrictive).
 	if strings.TrimSpace(text) == "" {
