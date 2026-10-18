@@ -1,0 +1,10 @@
+{
+  "peers": [
+    {
+      "name": "local-bridge",
+      "url": "http://127.0.0.1:8765/a2a/message/send",
+      "description": "Local zero-bridge A2A ingress",
+      "allowed": true
+    }
+  ]
+}
