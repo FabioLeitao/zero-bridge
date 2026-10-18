@@ -26,6 +26,7 @@ const (
 	KindSessionEvicted    Kind = "session_evicted"
 	KindTokenReloaded     Kind = "token_reloaded"
 	KindTokenReloadFailed Kind = "token_reload_failed"
+	KindModeRouted        Kind = "mode_routed"
 )
 
 // Event is one audit record. It has no token, no token prefix, and no session

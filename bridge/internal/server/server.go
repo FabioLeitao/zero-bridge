@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,6 +62,11 @@ type Config struct {
 	MaxImageBytes  int64    // 0 = default (4 MiB)
 	MaxImages      int      // 0 = default (4)
 	AllowImageMIME []string // empty = default (PNG, JPEG, WebP, GIF)
+
+	// Automatic mode routing (S27).
+	AutoModeEnabled bool   // off by default
+	AutoModeCeiling string // empty = reduce-only (never raise)
+	AutoModeApply   bool   // if true, apply without click (requires ceiling)
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -137,6 +143,20 @@ func New(cfg Config) (*Server, error) {
 		case "image/png", "image/jpeg", "image/webp", "image/gif":
 		default:
 			return nil, fmt.Errorf("unsupported image MIME %q", m)
+		}
+	}
+	// Automatic mode routing defaults (S27).
+	if cfg.AutoModeEnabled {
+		if cfg.AutoModeApply && cfg.AutoModeCeiling == "" {
+			return nil, fmt.Errorf("auto-mode-apply requires auto-mode-ceiling")
+		}
+		// Validate ceiling if provided.
+		if cfg.AutoModeCeiling != "" {
+			switch cfg.AutoModeCeiling {
+			case "plan", "ask", "auto":
+			default:
+				return nil, fmt.Errorf("auto-mode-ceiling must be plan, ask, or auto")
+			}
 		}
 	}
 	if err := applyLimitDefaults(&cfg); err != nil {
@@ -323,6 +343,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{id}/resume", s.handleResume)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
 	mux.HandleFunc("POST /v1/sessions/{id}/mode", s.handleMode)
+	mux.HandleFunc("POST /v1/sessions/{id}/mode/recommend", s.handleModeRecommend)
 	mux.HandleFunc("POST /v1/sessions/{id}/config_option", s.handleConfigOption)
 	mux.HandleFunc("GET /v1/sessions/{id}/events", s.handleEvents)
 	mux.HandleFunc("GET /v1/sessions/{id}/permissions/pending", s.handlePending)
@@ -1099,6 +1120,248 @@ func (s *Server) handleConfigOption(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "optionId": body.OptionID, "value": body.Value})
+}
+
+func (s *Server) handleModeRecommend(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.AutoModeEnabled {
+		s.writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "automatic mode routing is disabled"})
+		return
+	}
+	if !requireJSONContentType(r) {
+		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
+		return
+	}
+	id := r.PathValue("id")
+	hub := s.sessionHub(id)
+	if hub == nil {
+		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+		return
+	}
+	if hub.promptInProgress() {
+		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
+		return
+	}
+	c, err := s.acpClient()
+	if err != nil {
+		s.notSupported(w)
+		return
+	}
+	offer, _ := c.SessionOffer(id)
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var body struct {
+		Text string `json:"text"`
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if body.Text == "" {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text is required"})
+		return
+	}
+	// Get current mode and available modes.
+	offerModes := offer.Modes
+	if len(offerModes) == 0 && s.cfg.Profile == "zero" {
+		offerModes = []acpclient.Mode{
+			{ID: "auto", Name: "Auto", Description: "Agent decides"},
+			{ID: "ask", Name: "Ask", Description: "Writes ask for approval"},
+			{ID: "plan", Name: "Plan", Description: "Read-only planning"},
+		}
+	}
+	if len(offerModes) == 0 {
+		s.notSupported(w)
+		return
+	}
+	// Build allowed map from offered modes.
+	allowed := map[string]bool{}
+	for _, m := range offerModes {
+		if m.ID != "" {
+			allowed[m.ID] = true
+		}
+	}
+	// Determine current mode from session.
+	var currentMode string
+	if hub.currentMode != "" {
+		currentMode = hub.currentMode
+	} else {
+		// Fallback to first offered mode.
+		currentMode = offerModes[0].ID
+	}
+	// Run the routing rules.
+	recommended, ruleID := s.routeMode(currentMode, body.Text, allowed)
+	// Enforce ceiling.
+	ceiling := s.cfg.AutoModeCeiling
+	if ceiling != "" && !allowed[ceiling] {
+		ceiling = ""
+	}
+	if ceiling != "" {
+		// Check if recommended is above ceiling.
+		ceilingRank := modeRank(ceiling)
+		recommendedRank := modeRank(recommended)
+		if recommendedRank > ceilingRank {
+			recommended = ceiling
+			ruleID = "ceiling"
+		}
+	} else {
+		// Reduce-only: never raise authority.
+		currentRank := modeRank(currentMode)
+		recommendedRank := modeRank(recommended)
+		if recommendedRank > currentRank {
+			recommended = currentMode
+			ruleID = "reduce-only"
+		}
+	}
+	// Audit event (no prompt text).
+	s.audit.Record(auth.Event{
+		Kind:   auth.KindModeRouted,
+		Source: "auto",
+		Method: "POST",
+		Path:   "/v1/sessions/" + id + "/mode/recommend",
+		Reason: fmt.Sprintf("from=%s to=%s rule=%s", currentMode, recommended, ruleID),
+	})
+	// If apply is enabled and recommendation differs, apply it.
+	applied := false
+	if s.cfg.AutoModeApply && recommended != currentMode {
+		var ignored map[string]any
+		if err := s.acpCall(r.Context(), "session/set_mode", map[string]any{
+			"sessionId": id,
+			"modeId":    recommended,
+		}, &ignored); err == nil {
+			applied = true
+			hub.currentMode = recommended
+		}
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"ok":          true,
+		"currentMode": currentMode,
+		"recommended": recommended,
+		"rule":        ruleID,
+		"applied":     applied,
+	})
+}
+
+// modeRank returns an ordering: plan=0, ask=1, auto=2.
+func modeRank(m string) int {
+	switch m {
+	case "plan":
+		return 0
+	case "ask":
+		return 1
+	case "auto":
+		return 2
+	default:
+		return -1
+	}
+}
+
+// routeMode applies deterministic, reduce-only rules.
+func (s *Server) routeMode(current, text string, allowed map[string]bool) (string, string) {
+	// Rules are applied in order; first match wins.
+	// Lower rank = more restrictive.
+	planID := "plan"
+	askID := "ask"
+	autoID := "auto"
+	if !allowed[planID] {
+		planID = ""
+	}
+	if !allowed[askID] {
+		askID = ""
+	}
+	if !allowed[autoID] {
+		autoID = ""
+	}
+	// Rule 1: Empty or whitespace-only -> plan (most restrictive).
+	if strings.TrimSpace(text) == "" {
+		if planID != "" {
+			return planID, "empty"
+		}
+	}
+	// Rule 2: Hostile/override attempts -> never raise.
+	// "ignore the rules", "use auto", "switch to auto", etc.
+	lower := strings.ToLower(text)
+	overridePatterns := []string{
+		"ignore the rules",
+		"use auto",
+		"switch to auto",
+		"force auto",
+		"auto mode",
+		"bypass",
+		"override",
+	}
+	for _, p := range overridePatterns {
+		if strings.Contains(lower, p) {
+			// Stay at or below current.
+			return current, "override-attempt"
+		}
+	}
+	// Rule 3: Keywords that suggest read-only/planning.
+	planKeywords := []string{
+		"explain",
+		"analyze",
+		"review",
+		"audit",
+		"describe",
+		"how does",
+		"what is",
+		"summarize",
+		"plan",
+		"design",
+		"architecture",
+		"read only",
+		"read-only",
+		"just look",
+		"only read",
+	}
+	for _, k := range planKeywords {
+		if strings.Contains(lower, k) && planID != "" {
+			return planID, "plan-keyword"
+		}
+	}
+	// Rule 4: Keywords that suggest write/ask.
+	askKeywords := []string{
+		"create",
+		"write",
+		"edit",
+		"modify",
+		"change",
+		"update",
+		"delete",
+		"remove",
+		"add",
+		"implement",
+		"fix",
+		"refactor",
+		"rename",
+		"move",
+		"copy",
+		"run",
+		"execute",
+		"test",
+		"build",
+		"deploy",
+		"commit",
+		"push",
+		"merge",
+	}
+	for _, k := range askKeywords {
+		if strings.Contains(lower, k) && askID != "" {
+			return askID, "ask-keyword"
+		}
+	}
+	// Rule 5: Code blocks or diffs in prompt -> ask (user showing code to edit).
+	if strings.Contains(text, "```") || strings.Contains(text, "diff") {
+		if askID != "" {
+			return askID, "code-block"
+		}
+	}
+	// Rule 6: Very short prompts without clear intent -> ask (default to safer).
+	if len(strings.TrimSpace(text)) < 20 && askID != "" {
+		return askID, "short"
+	}
+	// Default: stay at current.
+	return current, "default"
 }
 
 func (s *Server) resolveNewSession(workspace string, extra []string) (string, []string, error) {

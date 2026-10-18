@@ -96,7 +96,20 @@ const ui = {
   imgTooLarge: "Imagem muito grande (máx. {n} MiB)",
   imgBadType: "Tipo de imagem não permitido",
   imgTooMany: "Muitas imagens (máx. {n})",
-  imgInvalid: "Imagem inválida"
+  imgInvalid: "Imagem inválida",
+  autoMode: "Automático",
+  autoRecommend: "Recomendado: {mode} ({rule})",
+  autoApply: "Aplicar",
+  autoApplied: "Modo alterado para {mode} ({rule})",
+  autoRuleEmpty: "vazio",
+  autoRuleOverride: "tentativa de override",
+  autoRulePlanKeyword: "palavra-chave de planejamento",
+  autoRuleAskKeyword: "palavra-chave de escrita",
+  autoRuleCodeBlock: "bloco de código",
+  autoRuleShort: "prompt curto",
+  autoRuleCeiling: "teto de modo",
+  autoRuleReduce: "somente redução",
+  autoRuleDefault: "padrão"
 };
 
 const loginEl = document.getElementById("login");
@@ -139,6 +152,9 @@ const planEl = document.getElementById("plan");
 const permEl = document.getElementById("permissions");
 const suggestionsEl = document.getElementById("suggestions");
 const modeChipEl = document.getElementById("mode-chip");
+const autoModeRecommendEl = document.getElementById("auto-mode-recommend");
+const autoModeTextEl = document.getElementById("auto-mode-text");
+const autoModeApplyBtn = document.getElementById("auto-mode-apply");
 const imagePreviewEl = document.getElementById("image-preview");
 const imageInputEl = document.getElementById("image-input");
 
@@ -236,6 +252,13 @@ function fillModes(modes) {
     }
     modeEl.appendChild(opt);
   });
+  // Add "Automatic" option if auto-mode is enabled.
+  if (caps.autoModeEnabled === true) {
+    const autoOpt = document.createElement("option");
+    autoOpt.value = "auto-mode";
+    autoOpt.textContent = ui.autoMode;
+    modeEl.appendChild(autoOpt);
+  }
   const on = modes.length > 0;
   modeEl.hidden = !on;
   modeLabelEl.hidden = !on;
@@ -266,6 +289,8 @@ function selectMode(id) {
       return;
     }
   }
+  // If selecting a regular mode, hide auto-mode recommendation.
+  hideAutoModeRecommendation();
 }
 
 function setModeEnabled(on) {
@@ -763,6 +788,7 @@ function clearView() {
   }
   hideSuggestions();
   clearImages();
+  hideAutoModeRecommendation();
   tools.clear();
   permState.clear();
   permQueue.length = 0;
@@ -1822,6 +1848,11 @@ modeEl.addEventListener("change", function () {
     return;
   }
   const mode = modeEl.value;
+  // If "Automatic" is selected, request a recommendation.
+  if (mode === "auto-mode") {
+    requestModeRecommendation();
+    return;
+  }
   setModeEnabled(false);
   api("/v1/sessions/" + encodeURIComponent(sessionId) + "/mode", {
     method: "POST",
@@ -1842,6 +1873,77 @@ modeEl.addEventListener("change", function () {
     note(String(err && err.message ? err.message : err));
   });
 });
+
+function requestModeRecommendation() {
+  if (!sessionId) return;
+  setModeEnabled(false);
+  hideAutoModeRecommendation();
+  api("/v1/sessions/" + encodeURIComponent(sessionId) + "/mode/recommend", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: textEl.value })
+  }).then(function (res) {
+    setModeEnabled(true);
+    if (!res.ok) {
+      note(ui.modeFailed);
+      return;
+    }
+    return res.json();
+  }).then(function (data) {
+    if (!data || !data.ok) return;
+    showAutoModeRecommendation(data.recommended, data.rule, data.applied);
+    if (data.applied) {
+      // Mode was auto-applied, update the selector to show the actual mode.
+      selectMode(data.recommended);
+    }
+  }).catch(function (err) {
+    setModeEnabled(true);
+    note(String(err && err.message ? err.message : err));
+  });
+}
+
+function showAutoModeRecommendation(mode, rule, applied) {
+  if (!autoModeRecommendEl || !autoModeTextEl || !autoModeApplyBtn) return;
+  var ruleText = ui["autoRule" + rule.charAt(0).toUpperCase() + rule.slice(1)] || rule;
+  autoModeTextEl.textContent = ui.autoRecommend.replace("{mode}", mode).replace("{rule}", ruleText);
+  autoModeRecommendEl.hidden = false;
+  if (applied) {
+    autoModeApplyBtn.hidden = true;
+    autoModeTextEl.textContent = ui.autoApplied.replace("{mode}", mode).replace("{rule}", ruleText);
+  } else {
+    autoModeApplyBtn.hidden = false;
+    autoModeApplyBtn.onclick = function () {
+      applyRecommendedMode(mode);
+    };
+  }
+}
+
+function hideAutoModeRecommendation() {
+  if (autoModeRecommendEl) {
+    autoModeRecommendEl.hidden = true;
+  }
+}
+
+function applyRecommendedMode(mode) {
+  if (!sessionId) return;
+  setModeEnabled(false);
+  api("/v1/sessions/" + encodeURIComponent(sessionId) + "/mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: mode })
+  }).then(function (res) {
+    setModeEnabled(true);
+    if (!res.ok) {
+      note(ui.modeFailed);
+      return;
+    }
+    selectMode(mode);
+    hideAutoModeRecommendation();
+  }).catch(function (err) {
+    setModeEnabled(true);
+    note(String(err && err.message ? err.message : err));
+  });
+}
 
 document.getElementById("sidebar-toggle").addEventListener("click", function () {
   if (sidebarEl.className.indexOf("open") >= 0) {
