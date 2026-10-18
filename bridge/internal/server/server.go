@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"zero-bridge/bridge/a2a"
 	"zero-bridge/bridge/internal/acpclient"
 	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/observability"
@@ -69,6 +70,9 @@ type Config struct {
 	AutoModeEnabled bool   // off by default
 	AutoModeCeiling string // empty = reduce-only (never raise)
 	AutoModeApply   bool   // if true, apply without click (requires ceiling)
+
+	// A2A ingress (S7).
+	A2AMaxBodyBytes int64 // 0 = default (1 MiB)
 }
 
 // Server bridges HTTP to a single long-lived zero acp child.
@@ -152,6 +156,16 @@ func New(cfg Config) (*Server, error) {
 		default:
 			return nil, fmt.Errorf("unsupported image MIME %q", m)
 		}
+	}
+	// A2A ingress defaults (S7).
+	const (
+		defaultA2AMaxBodyBytes = 1 << 20 // 1 MiB
+	)
+	if cfg.A2AMaxBodyBytes <= 0 {
+		cfg.A2AMaxBodyBytes = defaultA2AMaxBodyBytes
+	}
+	if cfg.A2AMaxBodyBytes > 16<<20 { // hard cap 16 MiB
+		return nil, fmt.Errorf("a2a-max-body-bytes exceeds hard cap 16MiB")
 	}
 	// Automatic mode routing defaults (S27).
 	if cfg.AutoModeEnabled {
@@ -353,6 +367,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/auth/sessions/{handle}", s.handleRevokeAuthSession)
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("GET /v1/capabilities", s.handleCapabilities)
+	// A2A ingress (S7) - Agent Card is public, message/send requires auth
+	mux.HandleFunc("GET /.well-known/agent-card.json", s.handleAgentCard)
+	mux.HandleFunc("POST /a2a/message/send", s.handleA2AMessageSend)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
 	mux.HandleFunc("POST /v1/sessions/{id}/meta", s.handleSessionMeta)
@@ -721,6 +738,196 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 			return []string{}
 		}(),
 	})
+}
+
+// handleAgentCard handles GET /.well-known/agent-card.json
+func (s *Server) handleAgentCard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		return
+	}
+	c, err := s.acpClient()
+	if err != nil {
+		s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "agent down"})
+		return
+	}
+	snap, ok := c.InitializeSnapshot()
+	if !ok {
+		s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "agent down"})
+		return
+	}
+	card := a2a.DefaultAgentCard(snap.AgentInfo.Name, snap.AgentInfo.Version)
+	s.writeJSON(w, http.StatusOK, card)
+}
+
+// handleA2AMessageSend handles POST /a2a/message/send (JSON-RPC 2.0)
+func (s *Server) handleA2AMessageSend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.A2AMaxBodyBytes)
+
+	var req struct {
+		JSONRPC string          `json:"jsonrpc"`
+		Method  string          `json:"method"`
+		Params  json.RawMessage `json:"params,omitempty"`
+		ID      json.RawMessage `json:"id,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{
+			"jsonrpc": "2.0",
+			"error":   map[string]any{"code": -32700, "message": "parse error"},
+			"id":      nil,
+		})
+		return
+	}
+
+	if req.JSONRPC != "2.0" {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{
+			"jsonrpc": "2.0",
+			"error":   map[string]any{"code": -32600, "message": "invalid request"},
+			"id":      req.ID,
+		})
+		return
+	}
+
+	if req.Method != "message/send" {
+		s.writeJSON(w, http.StatusNotFound, map[string]any{
+			"jsonrpc": "2.0",
+			"error":   map[string]any{"code": -32601, "message": "method not found"},
+			"id":      req.ID,
+		})
+		return
+	}
+
+	var params struct {
+		Message struct {
+			Role  string `json:"role"`
+			Parts []struct {
+				Type string `json:"type"`
+				Text string `json:"text,omitempty"`
+			} `json:"parts"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{
+			"jsonrpc": "2.0",
+			"error":   map[string]any{"code": -32602, "message": "invalid params"},
+			"id":      req.ID,
+		})
+		return
+	}
+
+	if params.Message.Role != "user" {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{
+			"jsonrpc": "2.0",
+			"error":   map[string]any{"code": -32602, "message": "only user role supported"},
+			"id":      req.ID,
+		})
+		return
+	}
+
+	if len(params.Message.Parts) == 0 {
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{
+			"jsonrpc": "2.0",
+			"error":   map[string]any{"code": -32602, "message": "at least one part required"},
+			"id":      req.ID,
+		})
+		return
+	}
+
+	// Extract text from parts (only text parts supported for S7)
+	var textParts []string
+	for _, part := range params.Message.Parts {
+		if part.Type != "text" {
+			s.writeJSON(w, http.StatusBadRequest, map[string]any{
+				"jsonrpc": "2.0",
+				"error":   map[string]any{"code": -32602, "message": "only text parts supported"},
+				"id":      req.ID,
+			})
+			return
+		}
+		textParts = append(textParts, part.Text)
+	}
+	text := strings.Join(textParts, "\n")
+
+	// Get or create a session for this A2A interaction
+	c, err := s.acpClient()
+	if err != nil {
+		s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"jsonrpc": "2.0",
+			"error":   map[string]any{"code": -32603, "message": "agent down"},
+			"id":      req.ID,
+		})
+		return
+	}
+
+	sessionID, err := s.getOrCreateA2ASession(r.Context(), c)
+	if err != nil {
+		s.writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"jsonrpc": "2.0",
+			"error":   map[string]any{"code": -32603, "message": "session error: " + err.Error()},
+			"id":      req.ID,
+		})
+		return
+	}
+
+	// Send prompt via ACP
+	start := time.Now()
+	var res struct {
+		StopReason string `json:"stopReason"`
+	}
+	err = s.acpCall(r.Context(), "session/prompt", map[string]any{
+		"sessionId": sessionID,
+		"prompt": []map[string]any{
+			{"type": "text", "text": text},
+		},
+	}, &res)
+	observability.RecordACPMetric("session/prompt", time.Since(start).Seconds()*1000, err)
+
+	if err != nil {
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{
+			"jsonrpc": "2.0",
+			"error":   map[string]any{"code": -32603, "message": "ACP error: " + err.Error()},
+			"id":      req.ID,
+		})
+		return
+	}
+
+	// Generate a task ID
+	taskID := fmt.Sprintf("task-%d", time.Now().UnixNano())
+
+	// Return a completed task
+	task := map[string]any{
+		"id":        taskID,
+		"status":    map[string]any{"state": "completed"},
+		"artifacts": []map[string]any{{"parts": []map[string]any{{"type": "text", "text": "Task completed"}}}},
+	}
+	result, _ := json.Marshal(task)
+
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"jsonrpc": "2.0",
+		"result":  json.RawMessage(result),
+		"id":      req.ID,
+	})
+}
+
+func (s *Server) getOrCreateA2ASession(ctx context.Context, c *acpclient.Client) (string, error) {
+	var res json.RawMessage
+	err := c.Call(ctx, "session/new", map[string]any{
+		"workspace": "/tmp",
+	}, &res)
+	if err != nil {
+		return "", err
+	}
+	var result struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(res, &result); err != nil {
+		return "", err
+	}
+	return result.SessionID, nil
 }
 
 func (s *Server) agentCaps() (acpclient.AgentCapabilities, bool) {
