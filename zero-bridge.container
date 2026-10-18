@@ -1,0 +1,50 @@
+# Podman quadlet for zero-bridge + Caddy pod
+# Install: cp zero-bridge.container /etc/containers/systemd/
+# Install: cp caddy.container /etc/containers/systemd/
+# systemctl daemon-reload && systemctl enable --now pod-zero-bridge.service
+
+[Unit]
+Description=zero-bridge container
+After=network.target
+
+[Container]
+# Image built locally or from registry
+Image=localhost/zero-bridge:dev
+# Or pull from registry: Image=ghcr.io/fabioleitao/zero-bridge:latest
+
+# Non-root user
+User=10001
+Group=10001
+
+# Security
+SecurityOpt=label=disable
+NoNewPrivileges=true
+CapDrop=CAP_ALL
+ReadOnly=true
+Tmpfs=/tmp:size=64M,mode=1777
+
+# Network: join the pod's network namespace
+Network=pod:zero-bridge
+
+# Volumes - REPLACE with actual paths
+Volume=${ZERO_BINARY_PATH:-/HOST_PATH_TO_PATCHED_ZERO}:/usr/local/bin/zero:ro,z
+Volume=${TOKEN_FILE_PATH:-/HOST_PATH_TO_TOKEN}:/home/zerobridge/.local/state/zero-bridge/token.txt:ro,z
+Volume=zero-bridge-state:/home/zerobridge/.local/state/zero-bridge,z
+Volume=${WORKSPACE_PATH:-/HOST_PATH_TO_WORKSPACE}:/workspace:ro,z
+Volume=${EXTRA_PATH:-/HOST_PATH_TO_EXTRA}:/extra:ro,z
+
+# Environment
+Environment=ZERO_BRIDGE_TOKEN_FILE=/home/zerobridge/.local/state/zero-bridge/token.txt
+Environment=OTLP_ENDPOINT=http://otel-collector:4318
+Environment=OTEL_SERVICE_NAME=zero-bridge
+Environment=OTEL_SAMPLE=0.1
+
+# Health check
+HealthCheckInterval=30
+HealthCheckTimeout=3
+HealthCheckStartPeriod=10
+HealthCheckRetries=3
+Exec=/usr/local/bin/zero-bridge --listen 127.0.0.1:8765
+
+[Install]
+WantedBy=multi-user.target

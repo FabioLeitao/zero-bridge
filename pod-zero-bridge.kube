@@ -1,0 +1,154 @@
+# Podman pod definition (kube YAML format)
+# Alternative to .container files: podman play kube pod-zero-bridge.kube
+# Generate: podman generate kube pod-zero-bridge > pod-zero-bridge.kube
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: zero-bridge
+  labels:
+    app: zero-bridge
+spec:
+  containers:
+    - name: caddy
+      image: docker.io/library/caddy:2.8-alpine
+      user: "101:101"
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        readOnlyRootFilesystem: true
+      ports:
+        - containerPort: 8765
+          hostPort: 8765
+          protocol: TCP
+      volumeMounts:
+        - name: caddy-config
+          mountPath: /etc/caddy/Caddyfile
+          subPath: Caddyfile
+          readOnly: true
+        - name: caddy-data
+          mountPath: /data
+        - name: caddy-config-dir
+          mountPath: /config
+        - name: tmp
+          mountPath: /tmp
+      resources:
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
+        requests:
+          memory: "64Mi"
+          cpu: "100m"
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8765
+        initialDelaySeconds: 10
+        periodSeconds: 30
+        timeoutSeconds: 3
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8765
+        initialDelaySeconds: 5
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+
+    - name: zero-bridge
+      image: localhost/zero-bridge:dev
+      user: "10001:10001"
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        readOnlyRootFilesystem: true
+      env:
+        - name: ZERO_BRIDGE_TOKEN_FILE
+          value: /home/zerobridge/.local/state/zero-bridge/token.txt
+        - name: OTLP_ENDPOINT
+          value: "http://otel-collector:4318"
+        - name: OTEL_SERVICE_NAME
+          value: "zero-bridge"
+        - name: OTEL_SAMPLE
+          value: "0.1"
+      volumeMounts:
+        - name: zero-binary
+          mountPath: /usr/local/bin/zero
+          readOnly: true
+        - name: token
+          mountPath: /home/zerobridge/.local/state/zero-bridge/token.txt
+          subPath: token.txt
+          readOnly: true
+        - name: state
+          mountPath: /home/zerobridge/.local/state/zero-bridge
+        - name: workspace
+          mountPath: /workspace
+          readOnly: true
+        - name: extra
+          mountPath: /extra
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      resources:
+        limits:
+          memory: "512Mi"
+          cpu: "1000m"
+        requests:
+          memory: "128Mi"
+          cpu: "250m"
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8765
+        initialDelaySeconds: 10
+        periodSeconds: 30
+        timeoutSeconds: 3
+        failureThreshold: 3
+      startupProbe:
+        httpGet:
+          path: /health
+          port: 8765
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 30
+
+  volumes:
+    - name: caddy-config
+      configMap:
+        name: caddy-config
+        items:
+          - key: Caddyfile
+            path: Caddyfile
+    - name: caddy-data
+      emptyDir: {}
+    - name: caddy-config-dir
+      emptyDir: {}
+    - name: zero-binary
+      hostPath:
+        # REPLACE with actual path to patched zero binary
+        path: /HOST_PATH_TO_PATCHED_ZERO
+        type: File
+    - name: token
+      secret:
+        secretName: zero-bridge-token
+        defaultMode: 0600
+    - name: state
+      persistentVolumeClaim:
+        claimName: zero-bridge-state
+    - name: workspace
+      hostPath:
+        # REPLACE with actual workspace path
+        path: /HOST_PATH_TO_WORKSPACE
+        type: Directory
+    - name: extra
+      hostPath:
+        # REPLACE with actual extra path
+        path: /HOST_PATH_TO_EXTRA
+        type: Directory
+    - name: tmp
+      emptyDir:
+        sizeLimit: 64Mi

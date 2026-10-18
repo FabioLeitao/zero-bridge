@@ -1,0 +1,42 @@
+# Podman quadlet for Caddy reverse proxy
+# Part of the zero-bridge pod
+# Install: cp caddy.container /etc/containers/systemd/
+# systemctl daemon-reload && systemctl enable --now pod-zero-bridge.service
+
+[Unit]
+Description=Caddy reverse proxy for zero-bridge
+After=network.target
+
+[Container]
+Image=docker.io/library/caddy:2.8-alpine
+
+# Run as non-root (Caddy default is non-root)
+User=101
+Group=101
+
+# Security
+SecurityOpt=label=disable
+NoNewPrivileges=true
+CapDrop=CAP_ALL
+ReadOnly=true
+Tmpfs=/tmp:size=64M,mode=1777
+
+# Network: join the pod's network namespace
+Network=pod:zero-bridge
+
+# Publish port 8765 on host
+PublishPort=8765:8765
+
+# Volumes
+Volume=/path/to/Caddyfile:/etc/caddy/Caddyfile:ro,z
+Volume=caddy_data:/data,z
+Volume=caddy_config:/config,z
+
+# Health check
+HealthCheckInterval=30
+HealthCheckTimeout=3
+HealthCheckStartPeriod=10
+HealthCheckRetries=3
+
+[Install]
+WantedBy=multi-user.target
