@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "name": "zero-bridge-a2a",
+  "version": "0.1.0",
+  "description": "A2A (Agent-to-Agent) protocol plugin for zero",
+  "tools": [
+    {
+      "name": "a2a_discover",
+      "description": "Discover an A2A peer by fetching its Agent Card",
+      "permission": "prompt",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL of the A2A peer's Agent Card (e.g., http://127.0.0.1:8765/.well-known/agent-card.json)"
+          },
+          "allowlist": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Allowed hosts for the peer URL. Defaults to 127.0.0.1"
+          }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "url": { "type": "string" },
+          "version": { "type": "string" },
+          "capabilities": { "type": "array", "items": { "type": "string" } },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "description": { "type": "string" },
+                "tags": { "type": "array", "items": { "type": "string" } }
+              },
+              "required": ["id", "name"]
+            }
+          }
+        },
+        "required": ["name"]
+      }
+    }
+  ]
+}
