@@ -204,7 +204,7 @@ func recentFailures(prev []time.Time, now time.Time, window time.Duration) []tim
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	authOn := s.currentToken() != ""
-	ok := !authOn || s.hasBearer(r) || s.sessionOK(r)
+	ok := !authOn || s.credentialOK(r)
 	s.writeJSON(w, http.StatusOK, map[string]any{"auth": authOn, "authenticated": ok})
 }
 

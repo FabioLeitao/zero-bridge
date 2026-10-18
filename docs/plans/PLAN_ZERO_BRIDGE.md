@@ -13,7 +13,7 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S5a | done | `6930fa4` |
 | S5b | done | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
 | S6 | done | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
-| S6b | built | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Built on `epic/s6b-session-management`. Not merged. |
+| S6b | done | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Merged in [PR #35](https://github.com/FabioLeitao/zero-bridge/pull/35). |
 | S7 | designed | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3). Proxy decision below. Not built. |
 | S8 | designed | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Not built. |
 | S9 | designed | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Not built. |
@@ -29,7 +29,7 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S18 | designed | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Not built. |
 | S19 | done | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Merged in PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` spiked. Hermes and `dsh --profile acp`: not executed. |
 | S20 | done | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Merged in [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Gate timings on this host. |
-| S21 | designed | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Not built. Unix socket and named pipe. |
+| S21 | done | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Built on `epic/s21-unix-socket`. Not merged. Unix socket. Named pipe not built. |
 | S22 | designed | [#22](https://github.com/FabioLeitao/zero-bridge/issues/22). Not built. Optional PWA. |
 | S23a | designed | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24). Not built. Shell scaffold in `zero-bridge-desktop`. |
 | S23b | designed | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25). Not built. Tray, notifications, folder picker. |
@@ -38,7 +38,7 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S25 | designed | [#28](https://github.com/FabioLeitao/zero-bridge/issues/28). Not built. Image attachment. |
 | S26 | designed | [#29](https://github.com/FabioLeitao/zero-bridge/issues/29). Not built. Suggestion cards and mode chip. |
 | S27 | designed | [#31](https://github.com/FabioLeitao/zero-bridge/issues/31). Not built. Reduce-only mode routing. |
-| S28 | designed | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32). Not built. Session status model. |
+| S28 | done | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32). Built on `epic/s28-session-status`. Not merged. Session status from ACP traffic. |
 
 **Name.** The repository stays `zero-bridge`. The expansion may change in this doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Other readings: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. Gitlawb's Zero is the recommended reference harness, not a dependency of the design. This project is not affiliated with or endorsed by Gitlawb or Twigpine.
 
@@ -137,7 +137,7 @@ The only upstream-shaped idea the maintainer called reasonable on #622 is a **re
 | **S19** | C6e | `zero-bridge` → `bridge/` | `--agent-cmd`, profiles, capability gate | — |
 | **S20** | C6f | `zero-bridge` repo root | Gate under 60s without dropping coverage | — |
 | **S18** | C6d | `zero-bridge` container | Image beside the proxy, read-only root | — |
-| **S21** | D1 | `zero-bridge` → `bridge/` | Unix socket and named pipe | — |
+| **S21** | D1 | `zero-bridge` → `bridge/` | Unix socket. Named pipe not built. | — |
 | **S22** | D2 | `zero-bridge` → `bridge/web/` | Optional PWA and permission notifications | — |
 | **S23a** | D3a | `zero-bridge-desktop` | Shell scaffold, sidecar, hardening | — |
 | **S23b** | D3b | `zero-bridge-desktop` | Tray, notifications, folder picker | — |
@@ -563,15 +563,15 @@ The operator order (2026-10-14) is the sequence in the global rules: S20, merged
 
 ### S21 — local transport
 
-**Path:** `bridge/` listen address. Designed only. Not built. [#21](https://github.com/FabioLeitao/zero-bridge/issues/21).
+**Path:** `bridge/` listen address. Built on `epic/s21-unix-socket`. Not merged. [#21](https://github.com/FabioLeitao/zero-bridge/issues/21).
 
 **Acceptance**
 
-- `--listen unix:<path>` (and `npipe:` on Windows). TCP loopback stays the default. A non-loopback TCP address is still refused.
-- The socket file is mode `0600` in a `0700` directory. The process refuses a path that exists and is not a stale socket owned by the same user, removes the socket on shutdown, and does not follow a symlink into the directory.
-- Host, Origin, token, and cookie rules stay. The Origin check treats the socket as a local origin only when `--public-origin` names the client.
+- `--listen unix:<absolute path>`. TCP loopback stays the default. A non-loopback TCP address is still refused. `npipe:` exits 2. A Windows named pipe is not built.
+- The parent directory is `0700` and owned by the user. The socket is `0600` with `os.Chmod` after bind. That parent is already private, so the interval before chmod is not open to another user. The process refuses a path that exists and is not a stale socket owned by the same user, removes only its own socket on shutdown, and does not follow a symlink.
+- On TCP, Host, Origin, token, and cookie rules stay. On the socket, `Host` is ignored. An Origin is accepted only from `--public-origin`. A request with no Origin is Bearer only. Linux refuses another uid with `SO_PEERCRED`. `GET /v1/info` reports `listen` as `unix` and omits the path.
 
-**Stop:** Do not bind a non-loopback address. Remote access stays on the S14 reverse proxy.
+**Stop:** Do not bind a non-loopback address. Remote access stays on the S14 reverse proxy. Do not add a named pipe in this slice.
 
 **Unlocks:** S23a can use the socket when it exists. S23a does not wait on it.
 
@@ -691,7 +691,18 @@ The operator order (2026-10-14) is the sequence in the global rules: S20, merged
 
 ### S28 — session status
 
-**Path:** `bridge/` session list and SSE. Designed only. Not built. [#32](https://github.com/FabioLeitao/zero-bridge/issues/32).
+**Path:** `bridge/internal/sessionstate`, the session list, SSE, and the web sidebar. Built on `epic/s28-session-status`. Not merged. [#32](https://github.com/FabioLeitao/zero-bridge/issues/32).
+
+The label is derived only from ACP traffic the bridge already sees. Full priority is blocked, then error, then working, then done, then idle. A pending permission stays blocked while a prompt is in flight. Profile `generic` reports `sessionStatus: basic` and only `working` or `idle`.
+
+| Event | Label |
+| --- | --- |
+| permission pending | blocked, ahead of every other label |
+| prompt call failed, or the agent process exited | error |
+| prompt in flight, nothing pending | working |
+| stop reason `end_turn`, `max_tokens`, `max_turn_requests`, `refusal`, or any other non-empty reason | done |
+| stop reason `cancelled`, or an empty stop reason | idle |
+| no turn and no pending permission | idle |
 
 **Acceptance**
 

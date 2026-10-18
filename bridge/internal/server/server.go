@@ -23,6 +23,7 @@ import (
 	"zero-bridge/bridge/internal/observability"
 	"zero-bridge/bridge/internal/permissions"
 	"zero-bridge/bridge/internal/sessionmeta"
+	"zero-bridge/bridge/internal/sessionstate"
 	"zero-bridge/bridge/internal/workroot"
 	"zero-bridge/bridge/internal/zeroenv"
 	"zero-bridge/bridge/web"
@@ -72,14 +73,20 @@ type Config struct {
 
 // Server bridges HTTP to a single long-lived zero acp child.
 type Server struct {
-	cfg      Config
-	listen   string
-	allowed  []string
-	acp      *acpclient.Client
-	acpMu    sync.RWMutex
-	sessions map[string]*sessionHub
-	mu       sync.RWMutex
-	httpSrv  *http.Server
+	cfg        Config
+	listen     string
+	network    string
+	sockPath   string
+	ownsSocket bool
+	allowed    []string
+	acp        *acpclient.Client
+	acpMu      sync.RWMutex
+	sessions   map[string]*sessionHub
+	mu         sync.RWMutex
+	states     map[string]sessionstate.Machine
+	stateMu    sync.Mutex
+	agentDown  bool
+	httpSrv    *http.Server
 
 	serveCtx    context.Context
 	serveCancel context.CancelFunc
@@ -178,18 +185,22 @@ func New(cfg Config) (*Server, error) {
 	if delay < 0 {
 		delay = 0
 	}
-	listen, err := ResolveListen(cfg.Listen)
+	ep, err := ResolveListen(cfg.Listen)
 	if err != nil {
 		return nil, err
 	}
-	allowed, err := allowedHosts(listen)
-	if err != nil {
-		return nil, err
+	var allowed []string
+	if ep.Network == "tcp" {
+		allowed, err = allowedHosts(ep.Addr)
+		if err != nil {
+			return nil, err
+		}
 	}
 	serveCtx, serveCancel := context.WithCancel(context.Background())
 	s := &Server{
 		cfg:         cfg,
-		listen:      listen,
+		listen:      ep.Addr,
+		network:     ep.Network,
 		allowed:     allowed,
 		sessions:    make(map[string]*sessionHub),
 		serveCtx:    serveCtx,
@@ -200,6 +211,10 @@ func New(cfg Config) (*Server, error) {
 		audit:       cfg.Audit,
 		meta:        cfg.Meta,
 		token:       cfg.Token,
+	}
+	if ep.Network == "unix" {
+		s.sockPath = ep.Addr
+		s.listen = ""
 	}
 	s.perms.OnEvent = s.onPermission
 	return s, nil
@@ -256,6 +271,7 @@ func (s *Server) Boot(ctx context.Context) error {
 	go func() {
 		<-client.Done()
 		s.perms.Stop()
+		s.markAgentDown()
 	}()
 	return nil
 }
@@ -366,9 +382,32 @@ func (s *Server) Handler() http.Handler {
 }
 
 // ListenAndServe blocks until the server stops.
+// A unix listener does not open a TCP port. Shutdown removes the socket.
 func (s *Server) ListenAndServe() error {
-	s.httpSrv = s.newHTTPServer()
-	return s.httpSrv.ListenAndServe()
+	httpSrv := s.newHTTPServer()
+	httpSrv.Addr = ""
+	s.mu.Lock()
+	s.httpSrv = httpSrv
+	s.mu.Unlock()
+	ln, err := s.openListener()
+	if err != nil {
+		return err
+	}
+	return httpSrv.Serve(ln)
+}
+
+func (s *Server) openListener() (net.Listener, error) {
+	if s.network == "unix" {
+		ln, err := listenUnix(s.sockPath)
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		s.ownsSocket = true
+		s.mu.Unlock()
+		return ln, nil
+	}
+	return net.Listen("tcp", s.listen)
 }
 
 func (s *Server) newHTTPServer() *http.Server {
@@ -389,9 +428,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.serveCancel()
 	}
 	s.waitReload(ctx)
+	s.mu.Lock()
+	httpSrv := s.httpSrv
+	ownsSocket := s.ownsSocket
+	sockPath := s.sockPath
+	s.mu.Unlock()
 	var err error
-	if s.httpSrv != nil {
-		err = s.httpSrv.Shutdown(ctx)
+	if httpSrv != nil {
+		err = httpSrv.Shutdown(ctx)
 	}
 	s.acpMu.Lock()
 	c := s.acp
@@ -404,6 +448,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		if cerr := c.Close(); err == nil {
 			err = cerr
 		}
+	}
+	if ownsSocket {
+		_ = removeUnixSocket(sockPath)
 	}
 	if s.workspaceOwned && s.workspace != "" {
 		_ = os.RemoveAll(s.workspace)
@@ -443,7 +490,7 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		writeSecurityHeaders(rec)
-		if !checkHostOrigin(r, s.allowed, s.cfg.AllowedHosts, s.cfg.PublicOrigins) {
+		if !s.requestAllowed(r) {
 			s.writeJSON(rec, http.StatusForbidden, map[string]any{"error": "forbidden"})
 			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusForbidden, time.Since(start))
 			return
@@ -517,11 +564,16 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 	if s.agentUp() {
 		agent = "up"
 	}
+	kind := "tcp"
+	if s.network == "unix" {
+		kind = "unix"
+	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"agent":            agent,
 		"defaultWorkspace": s.workspace,
 		"workspaceRoots":   s.workspaceRoots(),
 		"version":          "0",
+		"listen":           kind,
 	})
 }
 
@@ -563,7 +615,29 @@ func (s *Server) authorized(r *http.Request) bool {
 	if r.URL.Path == "/v1/login" && r.Method == http.MethodPost {
 		return true
 	}
+	return s.credentialOK(r)
+}
+
+// credentialOK is Bearer or a session cookie. On a unix socket a request
+// without Origin is Bearer only: curl and the Electron main process do not
+// send Origin, and a cookie without Origin is not accepted. Cookie CSRF for
+// POST and DELETE is unchanged.
+func (s *Server) credentialOK(r *http.Request) bool {
+	if s.network == "unix" && r.Header.Get("Origin") == "" {
+		return s.hasBearer(r)
+	}
 	return s.hasBearer(r) || s.sessionOK(r)
+}
+
+func (s *Server) requestAllowed(r *http.Request) bool {
+	if s.network != "unix" {
+		return checkHostOrigin(r, s.allowed, s.cfg.AllowedHosts, s.cfg.PublicOrigins)
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	return originAllowed(origin, nil, s.cfg.PublicOrigins)
 }
 
 func isPublic(r *http.Request) bool {
@@ -638,6 +712,7 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 		"sessionResume": snap.Capabilities.Resume(),
 		"prompt":        snap.Capabilities.PromptCapabilities,
 		"modes":         modes,
+		"sessionStatus": s.stateLevel(),
 		"configOptions": configOptions,
 		"workspaceRoots": func() []string {
 			if s.roots != nil {
@@ -1502,6 +1577,7 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 	}
 	observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusAccepted, time.Since(start).Seconds()*1000)
 	s.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
+	s.applyState(id, sessionstate.Event{Kind: sessionstate.KindPrompt})
 	go s.runPrompt(id, hub, body.Text, body.Images)
 }
 
@@ -1545,9 +1621,11 @@ func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string, image
 	}, &res)
 	observability.RecordACPMetric("session/prompt", time.Since(start).Seconds()*1000, err)
 	if err != nil {
+		s.applyState(sessionID, sessionstate.Event{Kind: sessionstate.KindFail})
 		hub.emit(map[string]any{"type": "error", "message": s.redact(err.Error())})
 		return
 	}
+	s.applyState(sessionID, sessionstate.Event{Kind: sessionstate.KindStop, Stop: res.StopReason})
 	hub.emit(map[string]any{"type": "stop", "stopReason": res.StopReason})
 }
 

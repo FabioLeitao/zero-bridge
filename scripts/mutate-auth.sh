@@ -164,6 +164,72 @@ mutants = [
         "TestSessionMetaPaddedBody",
         [("internal/server/meta.go", "r.Body = http.MaxBytesReader(w, r.Body, 4<<10)", "r.Body = http.MaxBytesReader(w, r.Body, 4<<30)")],
     ),
+    (
+        "status-never-blocked",
+        "internal/sessionstate",
+        "TestTransitionTable/permission_during_prompt",
+        [("internal/sessionstate/state.go", "\tif m.pending > 0 {\n\t\treturn Blocked\n\t}", "\tif m.pending > 0 {\n\t\treturn Working\n\t}")],
+    ),
+    (
+        "status-priority-inverted",
+        "internal/sessionstate",
+        "TestTransitionTable/permission_during_prompt",
+        [("internal/sessionstate/state.go", "\tif m.pending > 0 {\n\t\treturn Blocked\n\t}\n\tif m.down || m.rest == Error {\n\t\treturn Error\n\t}\n\tif m.prompt {\n\t\treturn Working\n\t}", "\tif m.prompt {\n\t\treturn Working\n\t}\n\tif m.pending > 0 {\n\t\treturn Blocked\n\t}\n\tif m.down || m.rest == Error {\n\t\treturn Error\n\t}")],
+    ),
+    (
+        "status-generic-blocked",
+        "internal/server",
+        "TestSessionStatusByProfile/generic_never_blocked",
+        [("internal/server/session_state.go", "\tif s.cfg.Profile == \"generic\" {\n\t\treturn sessionstate.LevelBasic\n\t}", "\tif s.cfg.Profile == \"generic\" {\n\t\treturn sessionstate.LevelFull\n\t}")],
+    ),
+    (
+        "status-leaks-title",
+        "internal/server",
+        "TestSessionStateFromTraffic/pending_permission_stays_blocked",
+        [("internal/server/list.go", "obj[\"state\"] = s.stateOf(view.ID)", "obj[\"state\"] = view.Title")],
+    ),
+    (
+        "socket-mode-0666",
+        "internal/server",
+        "TestUnixSocketModeAndShutdown",
+        [("internal/server/unix_linux.go", "chmodOwnSocket(path, 0600)", "chmodOwnSocket(path, 0666)")],
+    ),
+    (
+        "socket-owner-unchecked",
+        "internal/server",
+        "TestOwnerAndModePredicates",
+        [("internal/server/unix_linux.go", "\tif uid != uint32(currentUID()) {\n\t\treturn errors.New(\"listen path owner does not match\")\n\t}", "\tif false && uid != uint32(currentUID()) {\n\t\treturn errors.New(\"listen path owner does not match\")\n\t}")],
+    ),
+    (
+        "socket-regular-file-removed",
+        "internal/server",
+        "TestUnixRefusesRegularFile",
+        [("internal/server/unix_linux.go", "\tif fi.Mode()&os.ModeSocket == 0 {\n\t\treturn errors.New(\"listen path is not a stale socket\")\n\t}\n\tsys, ok := fi.Sys().(*syscall.Stat_t)", "\tif fi.Mode()&os.ModeSocket == 0 {\n\t\treturn nil\n\t}\n\tsys, ok := fi.Sys().(*syscall.Stat_t)")],
+    ),
+    (
+        "socket-peer-cred-ignored",
+        "internal/server",
+        "TestUnixRefusesForeignPeer",
+        [("internal/server/unix_linux.go", "\t\tuid, err := readPeerUID(c)\n\t\tif err != nil || !peerAllowed(uid) {\n\t\t\tc.Close()\n\t\t\tcontinue\n\t\t}", "\t\tif _, err := readPeerUID(c); err != nil {\n\t\t\tc.Close()\n\t\t\tcontinue\n\t\t}")],
+    ),
+    (
+        "socket-peercred-error-ignored",
+        "internal/server",
+        "TestUnixRefusesPeerCredError",
+        [("internal/server/unix_linux.go", "if err != nil || !peerAllowed(uid) {", "if err == nil && !peerAllowed(uid) {")],
+    ),
+    (
+        "dir-group-bits-unchecked",
+        "internal/server",
+        "TestUnixRefusesGroupBits",
+        [("internal/server/unix_linux.go", "if perm&0077 != 0 {", "if perm&0007 != 0 {")],
+    ),
+    (
+        "dir-owner-unchecked",
+        "internal/server",
+        "TestUnixRefusesSwappedOwner",
+        [("internal/server/unix_linux.go", "\t\treturn errors.New(\"listen directory owner does not match\")\n\t}\n\treturn ownerMatches(sys.Uid)", "\t\treturn errors.New(\"listen directory owner does not match\")\n\t}\n\t_ = sys\n\treturn nil")],
+    ),
 ]
 
 for name, pkg, run, edits in mutants:

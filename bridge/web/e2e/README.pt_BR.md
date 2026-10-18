@@ -8,6 +8,8 @@ ZB_FAKE_SCENARIO=rich ZB_FAKE_PERMISSION=1 \
 node bridge/web/e2e/check.mjs http://127.0.0.1:8769/
 ```
 
+Enquanto uma permissão está pendente, o título da aba e a região de estado da barra lateral leem `(1) precisa de voce` como texto. Depois do turno o título volta a `zero-bridge`. Um título hostil de sessão continua texto na lista.
+
 A página guarda só duas preferências não sensíveis no localStorage: `zb-session-filter` (`workspace` ou `all`) e `zb-show-archived` (`1` ou vazio). Nunca guarda o token. O script abre a página, envia três prompts e confere que o payload hostil continua texto, o cartão de permissão, Permitir/Recusar, a expiração, o plano e o diff. Depois lista sessões (filtro "todos"), confere que um título hostil continua texto, carrega um replay, retoma sem replay e mostra "sessão somente leitura" na sessão só de leitura. Com token, também confere a lista de sessões do acesso, os estados vazio e de erro, "Sair de todos os dispositivos", e que a página não estoura em 320px. Imprime JSON e sai 1 se algo falhar. `--permission-timeout` precisa ser curto o bastante para a checagem de expiração, que espera 20s.
 
 English: [README.md](README.md).

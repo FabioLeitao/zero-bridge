@@ -12,8 +12,9 @@ O agente edita a árvore. O auditor revisa o commit. O operador decide escopo, p
 
 - O módulo do core `bridge/` fica na biblioteca padrão do Go. Nenhuma dependência nova em `bridge/go.mod`. A única exceção planejada é o submódulo `bridge/obs`, que pode importar o SDK de OpenTelemetry e ainda não está construído.
 - A UI web insere texto só com `textContent` e `createTextNode`.
-- O processo escuta em loopback. Ele não termina TLS.
+- O processo escuta em TCP de loopback, ou num socket Unix em `unix:<caminho absoluto>` (pai `0700`, socket `0600`). Ele não termina TLS. Named pipe do Windows não está implementado. No socket, um Origin só é aceito com `--public-origin`.
 - Log, telemetria, URL, query string e eventos enviados pelo servidor não carregam segredo, prompt, `rawInput`, id de sessão nem caminho de diretório pessoal.
+- O rótulo de uma sessão é `working`, `blocked`, `done`, `error` ou `idle`, derivado do tráfego ACP que a ponte já vê. O rótulo não carrega prompt, argumento de ferramenta nem título. O perfil `generic` informa só `working` e `idle`.
 - Não mate processo por padrão no nome. Encerre um processo que você mesmo subiu pelo pid registrado, depois de ler a linha de comando.
 - Não pule um gancho do git. Testes que criam arquivos rodam com umask `022`.
 - Ferramentas externas rodam como `go run pkg@version` pinado. Nada é instalado globalmente para o gate.

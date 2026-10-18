@@ -72,6 +72,9 @@ body {
   border: 1px solid var(--line);
 }
 
+#attention:empty { display: none; }
+#attention { margin: 0.4rem 0; font-weight: 600; }
+.session-state { font-size: 0.75rem; }
 #session-list { list-style: none; margin: 0.5rem 0; padding: 0; flex: 1; min-height: 0; overflow: auto; }
 #session-list li { padding: 0.4rem 0; border-bottom: 1px solid var(--line); }
 #session-list li.active { outline: 2px solid var(--focus); }

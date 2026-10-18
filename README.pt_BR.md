@@ -17,7 +17,7 @@ Abra http://127.0.0.1:8765/. Flags:
 
 | Flag | Padrão | Papel |
 | --- | --- | --- |
-| `--listen` | `127.0.0.1:8765` | Endereço de loopback. Qualquer outro host sai com código **2**. |
+| `--listen` | `127.0.0.1:8765` | TCP em loopback, ou `unix:<caminho absoluto>`. Outro host TCP, caminho relativo e `npipe:` saem com código **2**. |
 | `--workspace` | um diretório temporário novo | Diretório absoluto da sessão nova quando o cliente não manda um. |
 | `--workspace-root` | o diretório de `--workspace` | Diretório absoluto repetível que o navegador pode escolher numa sessão nova. |
 | `--state-dir` | `$XDG_STATE_HOME/zero-bridge` ou `~/.local/state/zero-bridge` | Diretório de `sessions-meta.json`. Modo `0700`, arquivo `0600`. Se não abrir, o processo sobe e as rotas de meta devolvem 503. |
@@ -39,12 +39,16 @@ Use um modelo local ou uma variante `:free`. O perfil `zero` define `ZERO_PROVID
 
 A ponte anuncia `fs` e `terminal` do cliente desligados. Um agente que exija um dos dois não é suportado. `GET /v1/capabilities` informa o perfil e as capacidades que o agente declarou. Lista, carregar, retomar e `session/set_mode` devolvem **501** `not supported by agent` antes de qualquer chamada ACP quando o agente não as declarou. Se a sessão anunciou `availableModes`, o id do modo tem de ser um desses ids. O perfil `zero` cai em `auto`, `ask` e `plan` só quando o agente não anunciou modos. O perfil `generic` devolve **501** nesse caso.
 
+`GET /v1/capabilities` também informa `sessionStatus`. O perfil `zero` é `full`: cada sessão é `working`, `blocked`, `done`, `error` ou `idle`, e uma permissão pendente é `blocked` mesmo com um prompt em voo. O perfil `generic` é `basic` e informa só `working` ou `idle`. O campo da lista e o evento `session_state` carregam esse rótulo e nada mais. A barra mostra um selo em texto, e o título da aba é `(N) precisa de voce` enquanto alguma sessão está blocked.
+
 O nome e a versão do agente, e os nomes e as descrições dos modos, vêm do agente. A página os insere só com `textContent` e `createTextNode`, inclusive o rótulo e a descrição ARIA. A lista de sessões, carregar, retomar e o seletor de modo ficam ocultos até `/v1/capabilities` dizer que o agente os suporta.
 
 ## Segurança
 
-- `--listen` tem de ser loopback (`127.0.0.1`, `localhost` ou `::1`). Outro host sai com código **2**.
-- `Host` tem de ser `127.0.0.1:<porta>` ou `localhost:<porta>`. Se houver `Origin`, tem de ser o mesmo host e a mesma porta. Caso contrário a resposta é **403**.
+- `--listen` é um endereço TCP de loopback (`127.0.0.1`, `localhost` ou `::1`) ou `unix:<caminho absoluto>`. Outro host TCP sai com código **2**. `npipe:` sai **2**. Named pipe do Windows não está implementado.
+- `unix:<caminho absoluto>` cria o diretório pai ausente em `0700` e o socket em `0600` com `os.Chmod` depois do bind. O pai já é privado deste usuário, então esse intervalo não fica aberto a mais ninguém. Um pai existente mais aberto, de outro dono ou symlink é recusado. Um caminho que existe e não é um socket velho deste usuário permanece. O desligamento remove só o socket que este processo criou.
+- Nesse socket, `Host` é ignorado. Um `Origin` só é aceito quando `--public-origin` o nomeia. Um pedido sem `Origin` exige Bearer. O CSRF do cookie continua valendo em POST e DELETE. No Linux, `SO_PEERCRED` descarta outro uid. `GET /v1/info` informa `"listen":"unix"` e não inclui o caminho.
+- No TCP, `Host` tem de ser `127.0.0.1:<porta>` ou `localhost:<porta>`. Se houver `Origin`, tem de ser o mesmo host e a mesma porta. Caso contrário a resposta é **403**.
 - Corpos JSON exigem `Content-Type: application/json` (`415` se não for).
 - As respostas mandam `Content-Security-Policy: default-src 'self'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` e `Cache-Control: no-store`.
 - As respostas não mandam `Access-Control-Allow-Origin`.
@@ -52,9 +56,17 @@ O nome e a versão do agente, e os nomes e as descrições dos modos, vêm do ag
 - A página insere texto do modelo e das tools só com `textContent` e `createTextNode`.
 - Sem token, o uso em loopback continua aberto a qualquer processo do mesmo usuário que alcance a porta. `--token-file` (ou `ZERO_BRIDGE_TOKEN`) protege `/v1/*`. Acesso externo é um proxy reverso mais esse token. A ponte continua recusando `--listen` fora de loopback. Guia: [docs/deploy/CADDY.pt_BR.md](docs/deploy/CADDY.pt_BR.md).
 
+```bash
+curl --unix-socket "${XDG_RUNTIME_DIR}/zero-bridge/bridge.sock" \
+  -H "Authorization: Bearer $(cat token)" \
+  http://localhost/v1/info
+```
+
+A ponte cria `zero-bridge` em `0700` quando esse pai não existe. O campo JSON `listen` é `unix`. O caminho não vai no corpo.
+
 ## Estado
 
-S2–S6, S14, S14b e S17 estão na main. S14 e S17 entraram na [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). A S14b entrou na [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18) e a [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) está fechada. A S19 está implementada em `epic/s19-harness-agnostic` e não foi mergeada. A ordem que resta é S16, S18, S6b, S7. A S11 está feita no upstream, na [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). A S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
+S2–S6, S14, S14b e S17 estão na main. S14 e S17 entraram na [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). A S14b entrou na [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18) e a [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) está fechada. A S19 está implementada em `epic/s19-harness-agnostic` e não foi mergeada. A S6b está na main ([PR #35](https://github.com/FabioLeitao/zero-bridge/pull/35)). A S28 está construída em `epic/s28-session-status` e não foi mergeada. A ordem que resta é S16, S18, S7. A S11 está feita no upstream, na [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). A S13 acompanha [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detalhe: [docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md](docs/plans/PLAN_ZERO_BRIDGE.pt_BR.md).
 
 | Fatia | Estado |
 | --- | --- |
@@ -64,7 +76,9 @@ S2–S6, S14, S14b e S17 estão na main. S14 e S17 entraram na [PR #16](https://
 | S17 gate local | na main ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13), [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16)) |
 | S14b endurecimento de auth II | na main ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11) fechada, [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18)) |
 | S19 ponte sem amarra de harness | implementada em `epic/s19-harness-agnostic`; não mergeada ([#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [spike](docs/plans/evidence/S19-spike-transcript.txt)) |
-| S16, S18, S6b, S7 | desenhadas, nessa ordem ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S16, S18, S7 | desenhadas, nessa ordem ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S28 estado da sessão | feita em `epic/s28-session-status`; não mergeada ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) |
+| S21 socket Unix | feita em `epic/s21-unix-socket`; não mergeada ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)). Named pipe não construído. |
 | S8–S10, S12, S15 | desenhadas ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
 | S11 restaurar modo | feita no upstream ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134)) |
 | S13 limites de frame | acompanhando ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), [PR #944](https://github.com/Twigpine/zero/pull/944) aberta) |

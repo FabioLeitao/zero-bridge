@@ -318,4 +318,111 @@ refuse_ttl 0
 refuse_ttl -1
 refuse_ttl 720h1m
 echo "e2e: ok (startup refuses session-ttl 0, -1, 720h1m)"
+
+# Unix socket: login, Bearer session, SSE, and the cookie-without-Origin refusal.
+# The browser check stays on TCP. A named pipe is not part of this script.
+run_unix() {
+	local sock="$tmp/run/bridge.sock" token code sid
+	umask 077
+	openssl rand -hex 32 >"$tmp/token"
+	chmod 600 "$tmp/token"
+	token=$(cat "$tmp/token")
+	mkdir -p "$tmp/ws"
+	ZB_FAKE_SCENARIO=rich \
+		"$tmp/zero-bridge" --listen "unix:${sock}" --zero-bin "$tmp/acpfake" \
+		--token-file "$tmp/token" --permission-timeout 3s --state-dir "$tmp/state-unix" \
+		--workspace "$tmp/ws" --workspace-root "$tmp/ws" \
+		>"$tmp/server.log" 2>&1 &
+	pid=$!
+	printf '%s\n' "$pid" >"$tmp/pid"
+	local i
+	for i in $(seq 1 50); do
+		if curl -sf --unix-socket "$sock" "http://localhost/health" >/dev/null; then
+			break
+		fi
+		if [[ "$i" -eq 50 ]]; then
+			echo "e2e: unix /health did not answer" >&2
+			tail -n 40 "$tmp/server.log" >&2 || true
+			exit 1
+		fi
+		sleep 0.2
+	done
+	python3 - "$tmp/run" "$sock" <<'PY'
+import os, stat, sys
+parent, sock = sys.argv[1], sys.argv[2]
+for path, want in ((parent, 0o700), (sock, 0o600)):
+    mode = stat.S_IMODE(os.lstat(path).st_mode)
+    if mode != want or os.lstat(path).st_uid != os.getuid():
+        sys.stderr.write("e2e: unix path mode or owner\n")
+        sys.exit(1)
+    if stat.S_ISLNK(os.lstat(path).st_mode):
+        sys.stderr.write("e2e: unix path is a symlink\n")
+        sys.exit(1)
+PY
+	code=$(status_of --unix-socket "$sock" "http://localhost/v1/info")
+	if [[ "$code" != 401 ]]; then
+		echo "e2e: unix info without bearer status ${code}" >&2
+		exit 1
+	fi
+	printf '{"token":"%s"}\n' "$token" >"$tmp/login.json"
+	code=$(status_of --unix-socket "$sock" -c "$tmp/ucj" -H 'Content-Type: application/json' --data-binary @"$tmp/login.json" "http://localhost/v1/login")
+	if [[ "$code" != 200 ]]; then
+		echo "e2e: unix login status ${code}" >&2
+		exit 1
+	fi
+	code=$(status_of --unix-socket "$sock" -b "$tmp/ucj" "http://localhost/v1/info")
+	if [[ "$code" != 401 ]]; then
+		echo "e2e: unix cookie without origin status ${code}" >&2
+		exit 1
+	fi
+	code=$(status_of --unix-socket "$sock" -b "$tmp/ucj" -X POST "http://localhost/v1/logout")
+	if [[ "$code" != 403 ]]; then
+		echo "e2e: unix cookie csrf status ${code}" >&2
+		exit 1
+	fi
+	code=$(status_of --unix-socket "$sock" -H "Authorization: Bearer ${token}" -H 'Origin: http://127.0.0.1:9' "http://localhost/v1/info")
+	if [[ "$code" != 403 ]]; then
+		echo "e2e: unix loopback origin status ${code}" >&2
+		exit 1
+	fi
+	code=$(curl -sS -o "$tmp/uinfo" -w '%{http_code}' --unix-socket "$sock" -H "Authorization: Bearer ${token}" "http://localhost/v1/info")
+	if [[ "$code" != 200 ]]; then
+		echo "e2e: unix bearer info status ${code}" >&2
+		exit 1
+	fi
+	python3 - "$tmp/uinfo" "$sock" <<'PY'
+import json, sys
+body = open(sys.argv[1], encoding="utf-8").read()
+sock = sys.argv[2]
+doc = json.loads(body)
+if doc.get("listen") != "unix" or sock in body or "bridge.sock" in body:
+    sys.stderr.write("e2e: unix listen field or path leak\n")
+    sys.exit(1)
+PY
+	code=$(curl -sS -o "$tmp/usess" -w '%{http_code}' --unix-socket "$sock" -X POST -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' --data '{}' "http://localhost/v1/sessions")
+	if [[ "$code" != 200 ]]; then
+		echo "e2e: unix session status ${code}" >&2
+		exit 1
+	fi
+	sid=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sessionId"])' "$tmp/usess")
+	code=$(status_of --unix-socket "$sock" -X POST -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' --data '{"text":"ping"}' "http://localhost/v1/sessions/${sid}/prompt")
+	if [[ "$code" != 202 ]]; then
+		echo "e2e: unix prompt status ${code}" >&2
+		exit 1
+	fi
+	curl -s -N --max-time 3 --unix-socket "$sock" -H "Authorization: Bearer ${token}" \
+		"http://localhost/v1/sessions/${sid}/events" >"$tmp/sse" || true
+	if ! grep -q '^data: ' "$tmp/sse"; then
+		echo "e2e: unix sse had no event" >&2
+		exit 1
+	fi
+	stop_bridge
+	if [[ -e "$sock" || -L "$sock" ]]; then
+		echo "e2e: unix socket left after shutdown" >&2
+		exit 1
+	fi
+	echo "e2e: ok (unix socket, curl --unix-socket)"
+}
+
+run_unix
 echo "e2e: ok"

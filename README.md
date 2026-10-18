@@ -17,7 +17,7 @@ Open http://127.0.0.1:8765/. Flags:
 
 | Flag | Default | Role |
 | --- | --- | --- |
-| `--listen` | `127.0.0.1:8765` | Loopback address. Anything else exits **2**. |
+| `--listen` | `127.0.0.1:8765` | Loopback TCP, or `unix:<absolute path>`. Any other TCP host, a relative path, and `npipe:` exit **2**. |
 | `--workspace` | a fresh temp directory | Absolute directory the new session uses when the client omits one. |
 | `--workspace-root` | the `--workspace` directory | Repeatable absolute directory the browser may choose for a new session. |
 | `--state-dir` | `$XDG_STATE_HOME/zero-bridge` or `~/.local/state/zero-bridge` | Directory for `sessions-meta.json`. Mode `0700`, file `0600`. If it cannot be opened, the process still starts and meta routes return 503. |
@@ -39,12 +39,16 @@ Use a local model or a `:free` variant. Profile `zero` sets `ZERO_PROVIDER=grani
 
 The bridge advertises client `fs` and `terminal` as off. An agent that requires either one is unsupported. `GET /v1/capabilities` reports the profile and the capabilities the agent declared. List, load, resume, and `session/set_mode` return **501** `not supported by agent` before any ACP call when the agent did not declare them. When a session announced `availableModes`, the mode id has to be one of those ids. Profile `zero` falls back to `auto`, `ask`, and `plan` only when the agent announced no modes. Profile `generic` returns **501** in that case.
 
+`GET /v1/capabilities` also reports `sessionStatus`. Profile `zero` is `full`: each session is `working`, `blocked`, `done`, `error`, or `idle`, and a pending permission is `blocked` even while a prompt is in flight. Profile `generic` is `basic` and reports only `working` or `idle`. The list field and the `session_state` event carry that label and nothing else. The sidebar shows a text badge, and the tab title is `(N) precisa de voce` while any session is blocked.
+
 The agent name, version, and mode names and descriptions come from the agent. The page inserts them with `textContent` and `createTextNode` only, including the ARIA label and description. The session list, load, resume, and the mode selector stay hidden unless `/v1/capabilities` says the agent supports them.
 
 ## Security
 
-- `--listen` must be loopback (`127.0.0.1`, `localhost`, or `::1`). Any other host exits **2**.
-- `Host` must be `127.0.0.1:<port>` or `localhost:<port>`. If `Origin` is present, it must match that host and port. Otherwise the response is **403**.
+- `--listen` is a loopback TCP address (`127.0.0.1`, `localhost`, or `::1`) or `unix:<absolute path>`. Any other TCP host exits **2**. `npipe:` exits **2**. A Windows named pipe is not implemented.
+- `unix:<absolute path>` creates a missing parent at `0700` and the socket at `0600` with `os.Chmod` after bind. The parent is already private to this user, so that interval is not open to anyone else. An existing parent that is more open, owned by someone else, or a symlink is refused. A path that exists and is not a stale socket of this user is left in place. Shutdown removes only the socket this process created.
+- On that socket, `Host` is ignored. An `Origin` is accepted only when `--public-origin` names it. A request with no `Origin` is Bearer only. Cookie CSRF still applies to POST and DELETE. Linux reads `SO_PEERCRED` and drops another uid. `GET /v1/info` reports `"listen":"unix"` and does not include the path.
+- On TCP, `Host` must be `127.0.0.1:<port>` or `localhost:<port>`. If `Origin` is present, it must match that host and port. Otherwise the response is **403**.
 - JSON bodies need `Content-Type: application/json` (`415` otherwise).
 - Responses send `Content-Security-Policy: default-src 'self'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and `Cache-Control: no-store`.
 - Responses do not send `Access-Control-Allow-Origin`.
@@ -52,9 +56,17 @@ The agent name, version, and mode names and descriptions come from the agent. Th
 - The page inserts model and tool text with `textContent` and `createTextNode` only.
 - Without a token, loopback use stays open to any process of the same user that can open the port. `--token-file` (or `ZERO_BRIDGE_TOKEN`) guards `/v1/*`. External access is a reverse proxy plus that token. The bridge still refuses a non-loopback `--listen`. Guide: [docs/deploy/CADDY.md](docs/deploy/CADDY.md).
 
+```bash
+curl --unix-socket "${XDG_RUNTIME_DIR}/zero-bridge/bridge.sock" \
+  -H "Authorization: Bearer $(cat token)" \
+  http://localhost/v1/info
+```
+
+The bridge creates `zero-bridge` at `0700` when that parent is missing. The JSON field `listen` is `unix`. The path is not in the body.
+
 ## Status
 
-S2–S6, S14, S14b, and S17 are on main. S14 and S17 landed in [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). S14b landed in [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18) and [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) is closed. S19 is implemented on `epic/s19-harness-agnostic` and is not merged. The remaining order is S16, S18, S6b, S7. S11 is done upstream in [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). S13 follows [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detail: [docs/plans/PLAN_ZERO_BRIDGE.md](docs/plans/PLAN_ZERO_BRIDGE.md).
+S2–S6, S14, S14b, and S17 are on main. S14 and S17 landed in [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16). S14b landed in [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18) and [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) is closed. S19 is implemented on `epic/s19-harness-agnostic` and is not merged. S6b is on main ([PR #35](https://github.com/FabioLeitao/zero-bridge/pull/35)). S28 is built on `epic/s28-session-status` and is not merged. The remaining order is S16, S18, S7. S11 is done upstream in [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). S13 follows [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). Detail: [docs/plans/PLAN_ZERO_BRIDGE.md](docs/plans/PLAN_ZERO_BRIDGE.md).
 
 | Slice | State |
 | --- | --- |
@@ -64,7 +76,9 @@ S2–S6, S14, S14b, and S17 are on main. S14 and S17 landed in [PR #16](https://
 | S17 local gate | on main ([#13](https://github.com/FabioLeitao/zero-bridge/issues/13), [PR #16](https://github.com/FabioLeitao/zero-bridge/pull/16)) |
 | S14b auth hardening II | on main ([#11](https://github.com/FabioLeitao/zero-bridge/issues/11) closed, [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18)) |
 | S19 harness-agnostic bridge | implemented on `epic/s19-harness-agnostic`; not merged ([#15](https://github.com/FabioLeitao/zero-bridge/issues/15), [spike](docs/plans/evidence/S19-spike-transcript.txt)) |
-| S16, S18, S6b, S7 | designed, in that order ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#2](https://github.com/FabioLeitao/zero-bridge/issues/2), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S16, S18, S7 | designed, in that order ([#12](https://github.com/FabioLeitao/zero-bridge/issues/12), [#14](https://github.com/FabioLeitao/zero-bridge/issues/14), [#3](https://github.com/FabioLeitao/zero-bridge/issues/3)) |
+| S28 session status | done on `epic/s28-session-status`; not merged ([#32](https://github.com/FabioLeitao/zero-bridge/issues/32)) |
+| S21 Unix socket | done on `epic/s21-unix-socket`; not merged ([#21](https://github.com/FabioLeitao/zero-bridge/issues/21)). Named pipe not built. |
 | S8–S10, S12, S15 | designed ([#4](https://github.com/FabioLeitao/zero-bridge/issues/4), [#5](https://github.com/FabioLeitao/zero-bridge/issues/5), [#6](https://github.com/FabioLeitao/zero-bridge/issues/6), [#8](https://github.com/FabioLeitao/zero-bridge/issues/8), [#10](https://github.com/FabioLeitao/zero-bridge/issues/10)) |
 | S11 mode restore | done upstream ([#7](https://github.com/FabioLeitao/zero-bridge/issues/7), [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134)) |
 | S13 frame limits | following ([#9](https://github.com/FabioLeitao/zero-bridge/issues/9), open [PR #944](https://github.com/Twigpine/zero/pull/944)) |

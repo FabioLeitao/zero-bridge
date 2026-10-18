@@ -9,6 +9,18 @@ import (
 	"testing"
 )
 
+func TestListenRejectsNonLoopbackAndNamedPipe(t *testing.T) {
+	if code := runArgs([]string{"--listen", "0.0.0.0:8765"}, &bytes.Buffer{}); code != 2 {
+		t.Fatalf("tcp %d", code)
+	}
+	if code := runArgs([]string{"--listen", "unix:relative"}, &bytes.Buffer{}); code != 2 {
+		t.Fatalf("unix %d", code)
+	}
+	if code := runArgs([]string{"--listen", `npipe:\\.\pipe\zero-bridge`}, &bytes.Buffer{}); code != 2 {
+		t.Fatalf("npipe %d", code)
+	}
+}
+
 func TestZeroBinAlias(t *testing.T) {
 	var stderr bytes.Buffer
 	cfg, err := parseCLI([]string{"--zero-bin", "/bin/true"}, &stderr)

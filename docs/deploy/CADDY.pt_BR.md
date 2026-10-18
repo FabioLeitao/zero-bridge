@@ -2,7 +2,7 @@
 
 Português. Canônico em inglês: [CADDY.md](CADDY.md).
 
-O processo da ponte escuta só em loopback. `--listen` com qualquer outro host sai **2**. TLS e o nome público ficam no proxy reverso. Acesso externo é esse proxy mais um token, o mesmo padrão de Grafana e CouchDB no T14 do operador.
+O processo da ponte escuta em TCP de loopback, ou num socket Unix. `--listen` com qualquer outro host TCP sai **2**. `npipe:` sai **2**. Named pipe do Windows não está implementado. TLS e o nome público ficam no proxy reverso. Acesso externo é esse proxy mais um token, o mesmo padrão de Grafana e CouchDB no T14 do operador.
 
 ## Token
 
@@ -89,6 +89,22 @@ go run ./cmd/zero-bridge \
 ```
 
 Use `--allowed-host bridge.example:443` quando o `Host` do proxy inclui `:443`.
+
+## Socket Unix
+
+`--listen unix:<caminho absoluto>` não abre porta TCP. O diretório pai é `0700` e pertence ao usuário. O socket fica `0600` com `os.Chmod` depois do bind. O desligamento remove esse socket.
+
+Não há `Host` útil nesse transporte. Um `Origin` de cliente só é aceito com `--public-origin` explícito. O `curl` e o processo principal do Electron não mandam `Origin`, então autenticam com Bearer. O CSRF do cookie em POST e DELETE permanece. No Linux, um peer de outro uid é descartado (`SO_PEERCRED`).
+
+`GET /v1/info` informa `"listen":"unix"` e não inclui o caminho:
+
+```bash
+curl --unix-socket "${XDG_RUNTIME_DIR}/zero-bridge/bridge.sock" \
+  -H "Authorization: Bearer $(cat "$HOME/.config/zero-bridge/token")" \
+  http://localhost/v1/info
+```
+
+Navegadores remotos continuam no proxy reverso acima. O socket não o substitui.
 
 ## Checklist
 
