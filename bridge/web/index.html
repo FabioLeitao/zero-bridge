@@ -65,10 +65,14 @@
     <div id="plan" hidden aria-label="Plano"></div>
     <div id="permissions" aria-label="Permissões"></div>
     <div id="log" role="log" aria-live="off" aria-label="Conversa"></div>
+    <div id="suggestions" hidden aria-label="Sugestões"></div>
     <form id="composer">
       <label for="text">Mensagem</label>
       <textarea id="text" name="text" rows="3" required></textarea>
-      <button id="send" type="submit">Enviar</button>
+      <div id="composer-footer">
+        <span id="mode-chip" hidden aria-live="polite" aria-atomic="true"></span>
+        <button id="send" type="submit">Enviar</button>
+      </div>
     </form>
   </main>
   </div>

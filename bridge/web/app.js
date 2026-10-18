@@ -86,7 +86,11 @@ const ui = {
   sessionOptions: "Opções",
   newWorkspace: "Diretório da nova sessão",
   addDirs: "Diretórios adicionais",
-  createHere: "Criar neste diretório"
+  createHere: "Criar neste diretório",
+  suggestExplore: "Explorar o código",
+  suggestReview: "Revisar o projeto",
+  suggestDebug: "Depurar um problema",
+  suggestTest: "Escrever testes"
 };
 
 const loginEl = document.getElementById("login");
@@ -127,6 +131,8 @@ const sidebarToggleEl = document.getElementById("sidebar-toggle");
 const statusEl = document.getElementById("status");
 const planEl = document.getElementById("plan");
 const permEl = document.getElementById("permissions");
+const suggestionsEl = document.getElementById("suggestions");
+const modeChipEl = document.getElementById("mode-chip");
 
 function applyChrome() {
   sidebarToggleEl.textContent = ui.sessions;
@@ -448,6 +454,43 @@ function showLogHint() {
   p.className = "log-hint";
   p.textContent = ui.emptyLog;
   logEl.appendChild(p);
+  renderSuggestions();
+}
+
+function renderSuggestions() {
+  if (suggestionsEl && !suggestionsEl.querySelector(".suggestion-card")) {
+    const cards = [
+      ui.suggestExplore,
+      ui.suggestReview,
+      ui.suggestDebug,
+      ui.suggestTest
+    ];
+    suggestionsEl.hidden = false;
+    while (suggestionsEl.firstChild) {
+      suggestionsEl.removeChild(suggestionsEl.firstChild);
+    }
+    cards.forEach(function (text) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "suggestion-card";
+      card.textContent = text;
+      card.addEventListener("click", function () {
+        textEl.value = text;
+        textEl.focus();
+        hideSuggestions();
+      });
+      suggestionsEl.appendChild(card);
+    });
+  }
+}
+
+function hideSuggestions() {
+  if (suggestionsEl) {
+    while (suggestionsEl.firstChild) {
+      suggestionsEl.removeChild(suggestionsEl.firstChild);
+    }
+    suggestionsEl.hidden = true;
+  }
 }
 
 function note(value) {
@@ -522,6 +565,7 @@ function clearView() {
   while (permEl.firstChild) {
     permEl.removeChild(permEl.firstChild);
   }
+  hideSuggestions();
   tools.clear();
   permState.clear();
   permQueue.length = 0;
@@ -620,6 +664,37 @@ function applyMode(data) {
   }
   setModeEnabled(true);
   markActiveSession();
+  updateModeChip(data);
+}
+
+function updateModeChip(data) {
+  if (!modeChipEl) {
+    return;
+  }
+  if (!data || !data.modes || !Array.isArray(data.modes)) {
+    modeChipEl.hidden = true;
+    modeChipEl.textContent = "";
+    return;
+  }
+  const currentMode = modeEl.value;
+  let description = "";
+  for (const mode of data.modes) {
+    if (String(mode.id || "") === currentMode) {
+      description = String(mode.description || "");
+      break;
+    }
+  }
+  if (!description && data.modes.length > 0) {
+    // Fallback to first mode's description
+    description = String(data.modes[0].description || "");
+  }
+  if (description) {
+    modeChipEl.textContent = description;
+    modeChipEl.hidden = false;
+  } else {
+    modeChipEl.textContent = "";
+    modeChipEl.hidden = true;
+  }
 }
 
 function baseName(cwd) {
@@ -1151,6 +1226,8 @@ function render(msg) {
     }
     sendBtn.disabled = false;
     setModeEnabled(true);
+    // Return focus to composer on error
+    textEl.focus();
     return;
   }
   if (msg.type === "permission_request") {
@@ -1168,6 +1245,8 @@ function render(msg) {
     thoughtBody = null;
     sendBtn.disabled = false;
     setModeEnabled(true);
+    // Return focus to composer after turn
+    textEl.focus();
     return;
   }
   if (msg.type !== "session/update" || !msg.params || !msg.params.update) {
@@ -1214,6 +1293,19 @@ function render(msg) {
   }
   if (kind === "current_mode_update" && modeEl) {
     selectMode(update.currentModeId);
+    // Update mode chip with the new mode's description
+    if (caps.modes && Array.isArray(caps.modes)) {
+      for (const mode of caps.modes) {
+        if (String(mode.id || "") === update.currentModeId) {
+          const desc = String(mode.description || "");
+          if (desc && modeChipEl) {
+            modeChipEl.textContent = desc;
+            modeChipEl.hidden = false;
+          }
+          break;
+        }
+      }
+    }
     return;
   }
   addLine("event", "event: " + kind);
