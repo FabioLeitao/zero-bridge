@@ -28,7 +28,7 @@ Relacionado: [README.pt_BR.md](../README.pt_BR.md), [Caddy](deploy/CADDY.pt_BR.m
 3. **Agente ACP.** Processo filho. O argv padrão é `zero` `acp`. `--agent-cmd` e `--agent-arg` trocam esse argv sem shell.
 4. **Ingress A2A.** As duas rotas acima, no mesmo listener da UI.
 5. **Saída A2A.** As tools `a2a_discover`, `a2a_call` e `a2a_list` em `plugin/a2a`. Rodam como tools do agente, não dentro de `bridge/`.
-6. **Ingress compatível com OpenAI (planejado).** S29, issue 34. Não está nesta árvore. Não há `/v1/models` nem `/v1/chat/completions`.
+6. **Ingress compatível com OpenAI.** S29, issue 34. O contrato está abaixo. As rotas são `GET /v1/models` e `POST /v1/chat/completions`.
 7. **Socket Unix e named pipe.** `unix:<caminho absoluto>` existe no Linux. `npipe:` é recusado. Named pipe do Windows não está implementado.
 8. **Proxy reverso.** O Caddy, ou outro proxy, termina TLS e encaminha para o loopback. A ponte não termina TLS.
 9. **Container.** O `Dockerfile` gera uma imagem com usuário sem root. O confinamento de runtime não está na imagem.
@@ -44,7 +44,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 | Agente ACP | O filho é o que `--agent-cmd` nomear | A ponte não faz sandbox do filho | Logs do agente ficam fora da auditoria da ponte | O prompt vai para o stdin do filho | Frames ACP grandes são problema do filho (S13) | `fs` e `terminal` do cliente ficam desligados |
 | Ingress A2A | A mesma credencial de `/v1/*` quando há token | O método JSON-RPC tem de ser `message/send` | Não achei linha de auditoria só de A2A | O Agent Card expõe nome e versão do agente | `A2AMaxBodyBytes` padrão 1 MiB, teto 16 MiB | Um send vira `session/prompt` no mesmo agente |
 | Saída A2A | A URL do peer vem da config do plugin, não só do modelo | `allowed: false` recusa o peer | O processo do plugin tem o próprio stdout | Respostas de discover e call voltam ao agente | Os timeouts do cliente HTTP do plugin não foram medidos aqui | Uma URL ruim é chamada de saída do usuário da tool |
-| Ingress OpenAI (planejado) | Não construído | Não construído | Não construído | Não construído | Não construído | A issue 34 diz política padrão deny, nunca auto-approve |
+| Ingress OpenAI | Origin ou Host estrangeiro | Tipo JSON estrito; campos sem suporte são 400 | Erros não levam id de sessão | O prompt fica fora de logs, nomes de SSE e OTLP; `usage` é omitido | Tetos de histórico, mensagens, bytes e chamadas em voo | Texto `system` não muda modo, raízes nem política; deny padrão |
 | Socket Unix / named pipe | O uid do peer tem de coincidir; `npipe:` recusado | Socket symlink e diretório aberto são recusados | A mesma auditoria HTTP do TCP | `/v1/info` não pode conter o caminho do socket | Os mesmos limites HTTP | Uid estrangeiro é recusado |
 | Proxy / Caddy | O nome público é `--allowed-host` e `--public-origin` | O proxy só define `X-Forwarded-*` se `--trust-proxy` estiver ligado | Logs do proxy ficam fora deste repo | TLS é trabalho do proxy | `read_timeout` e teto de corpo estão no guia do Caddy | Proxy comprometido é acesso total ao loopback |
 | Container | A imagem roda como uid 10001 | A imagem ainda tem shell via Alpine | Não há trilha de auditoria da imagem | `acpfake` é copiado para a imagem final | O healthcheck mira uma porta fixa | Comentários falam em root somente leitura; a imagem não liga isso |
@@ -59,7 +59,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 - **Caminho fora do workspace.** `internal/workroot` checa o workspace e os diretórios extras. Verificado por `root_test.go` e pelos testes de sessão que recusam workspace relativo.
 - **Send A2A sem papel user, ou parte que não é texto.** O handler recusa. **Lacuna:** nenhum teste em `bridge/` chama o handler.
 - **Peer de plugin fora da allowlist.** Os testes de `a2a_discover` e `a2a_call` recusam host não configurado e `allowed: false`. Verificado em `plugin/a2a`.
-- **Cliente OpenAI apontado para a ponte.** Nada nesta árvore fala esse protocolo. **Lacuna**, acompanhada como S29.
+- **Cliente OpenAI apontado para a ponte.** O contrato é a seção seguinte. Um POST simples de outra origem, sem token, tem de ser 403 e não pode chegar ao agente. Mensagem `system` ou `developer` é texto da conversa.
 - **Named pipe no Windows.** Recusado. Verificado pelos testes em `listen_test.go` e `cmd/zero-bridge/main_test.go`.
 
 ## Mitigações que já estão na árvore
@@ -92,9 +92,26 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 | Export de observabilidade | `internal/observability/export.go` | HTTPS por padrão. Texto puro exige `OTEL_EXPORTER_OTLP_INSECURE=true`. O payload é rota, método, status, método ACP e um flag de erro. Prompt, caminho, token e id de sessão são descartados. `bridge/obs` usa o mesmo opt-in |
 | O confinamento da imagem está no Compose, não na imagem | `docker-compose.yml` | `read_only`, `cap_drop: ALL` e `no-new-privileges` estão lá. `acpfake` não é copiado. Veja [CONTAINER.pt_BR.md](deploy/CONTAINER.pt_BR.md) |
 | Named pipe | `npipe:` sai 2 em `listen.go` | Não está implementado. O título da issue 21 nomeia um named pipe; a árvore recusa |
-| Ingress OpenAI | ausente | Issue 34. Tratar como fronteira futura, não como controle presente |
+| Ingress OpenAI | contrato nesta nota | Issue 34. Os handlers seguem este contrato. Este commit é o contrato, não o handler |
 | Teto de frame ACP no upstream | PR 944 do Twigpine/zero ainda aberta em 2026-10-19 | Issue 9. A ponte não limita os frames do filho |
 | Data de status do plano | bloco de status de `docs/plans/PLAN_ZERO_BRIDGE.md` em 2026-10-19 | S7 a S10, S16, S18, S21 e S24 a S28 batem com as issues fechadas. S29 continua ausente |
+
+## Contrato do ingress OpenAI
+
+S29, issue 34. Data de revisão 2026-10-20. Estas linhas são o contrato das rotas. Um POST de navegador de outra origem é o modo de falha de um Origin estrangeiro num listener local: TCP sem token ainda aceita quem é da mesma origem, então as rotas novas acrescentam checagem própria de Content-Type, Origin e Host.
+
+| Regra | Contrato |
+| --- | --- |
+| Rotas | `GET /v1/models` e `POST /v1/chat/completions`, com stream e sem. Fora de `isPublic`. A mesma credencial de `/v1` quando há token |
+| Token vazio | Continua aceito para quem é local e da mesma origem. O aviso de subida no TCP também cita `POST /v1/chat/completions` |
+| Content-Type | O POST exige `application/json`. `text/plain`, `application/x-www-form-urlencoded`, `multipart/form-data` e tipo ausente são recusados |
+| Origin e Host | O Origin tem de ser este listener ou um origin público configurado. O Host tem de ser loopback ou um host permitido. Um POST simples de outra origem, sem token, é 403 e nenhum prompt chega ao agente |
+| Campos sem suporte | `tools`, `tool_choice`, `functions`, `function_call`, `n` maior que 1, `logprobs`, `response_format` e `audio` devolvem 400 no objeto de erro OpenAI |
+| `system` e `developer` | Texto da conversa. Não mudam modo, permissões, raízes nem a política da ponte |
+| Stream e tetos | A desconexão do cliente cancela o prompt ACP e libera a sessão. Tetos limitam chamadas em voo por credencial e por processo, número de mensagens, bytes de cada mensagem, bytes do histórico e prompts numa sessão ACP |
+| Erros e `usage` | Objeto de erro OpenAI. Sem caminho, stderr do agente, token ou id de sessão. `usage` é omitido. Campo ausente continua ausente. Sem contagem inventada |
+| Permissões | Deny de entrada (`reject_once`). O broker que já existe só entra onde já entra. Timeout nega. O corpo não aprova tool |
+| Modelo e vazamento | Modelo desconhecido é 400. O prompt não aparece em logs, no nome de um evento SSE nem no payload OTLP. A URL do stream não tem id de sessão |
 
 ## O que esta passada não fez
 
