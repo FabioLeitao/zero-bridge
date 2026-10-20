@@ -54,6 +54,18 @@ def version_info(binary: Path) -> dict:
     return info
 
 
+def obs_module(obs: Path, module: str) -> dict | None:
+    text = subprocess.check_output(
+        ["go", "list", "-m", "-f", "{{.Path}} {{.Version}}", module],
+        cwd=obs,
+        text=True,
+    ).strip()
+    parts = text.split()
+    if len(parts) != 2:
+        return None
+    return {"name": parts[0], "version": parts[1]}
+
+
 def document(info: dict) -> dict:
     version = info["revision"] or info["version"] or "devel"
     if info["modified"] == "true":
@@ -93,6 +105,18 @@ def main() -> int:
     binary = work / "zero-bridge"
     build(bridge, binary)
     doc = document(version_info(binary))
+    grpc = obs_module(bridge / "obs", "google.golang.org/grpc")
+    if grpc is None:
+        print("sbom missing obs grpc module", file=sys.stderr)
+        return 1
+    doc["components"].append(
+        {
+            "type": "library",
+            "name": grpc["name"],
+            "version": grpc["version"],
+            "properties": [{"name": "zero-bridge.module", "value": "bridge/obs"}],
+        }
+    )
     raw = json.dumps(doc, indent=2) + "\n"
     if "/home/" in raw:
         print("sbom contained a home path", file=sys.stderr)
