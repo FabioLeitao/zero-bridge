@@ -51,7 +51,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 
 ## Casos de abuso
 
-- **Outro usuário local abre a porta TCP.** Sem token, `authorized` devolve verdadeiro para todo caminho. Verificado em `bridge/internal/server/server.go` (`currentToken() == ""`). No Linux, TCP de loopback não é por usuário. **Lacuna.** O socket Unix recusa uid estrangeiro (`TestUnixRefusesForeignPeer`).
+- **Outro usuário local abre a porta TCP.** Sem token, `authorized` devolve verdadeiro para todo caminho, inclusive `POST /a2a/message/send`. Verificado em `bridge/internal/server/server.go` (`currentToken() == ""`) e em `TestA2AMessageSendWithoutTokenStaysAllowed`. No Linux, TCP de loopback não é por usuário. A subida imprime um aviso e não muda essa regra (`TestTCPWithoutTokenWarns`). O socket Unix não imprime o aviso. O socket Unix recusa uid estrangeiro (`TestUnixRefusesForeignPeer`).
 - **Bearer ou cookie roubado.** O bearer vale até o arquivo de token mudar. Logout-all derruba os cookies e deixa o bearer. Verificado em [CADDY.pt_BR.md](deploy/CADDY.pt_BR.md) e nos handlers de autenticação. **Suposição:** esta passada não reexecutou logout-all contra um bearer vivo.
 - **POST cruzado com cookie.** Pedido com cookie em POST e DELETE exige Origin permitido. Pedido no socket sem Origin é só bearer. Verificado em `credentialOK` e `TestUnixAuthOriginAndBearer`.
 - **Prompt ou segredo numa linha de log.** `Redact` tira bearer, cabeçalho authorization e o formato de chave de provedor, e depois o token configurado. Verificado por `TestRedact` e `TestRedactJSONValues`. **Lacuna:** outros formatos de segredo ficam de fora.
@@ -86,7 +86,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 
 | Lacuna | Evidência | Notas |
 | --- | --- | --- |
-| Sem token no TCP de loopback | `authorized` em `server.go` | Qualquer processo local, inclusive outro uid, pode chamar `message/send` e `/v1/*` |
+| Sem token no TCP de loopback | `authorized` em `server.go` | Qualquer usuário local que abra a porta pode chamar `message/send` e `/v1/*`. A subida avisa. O pedido continua aceito |
 | Ingress A2A sem teste no bridge | `go test ./... -cover` mostra `bridge/a2a` em 0,0% | Os handlers existem; a issue 3 da S7 está fechada |
 | Sem alvos de fuzz | `func Fuzz` ausente em `bridge/` | Listen, JSON-RPC, prompt, limites, redação |
 | Export de observabilidade | `cmd/zero-bridge/main.go` liga `NoopObserver` | `bridge/obs/main.go` usa OTLP `WithInsecure`. A issue 12 está fechada |

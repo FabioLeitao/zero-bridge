@@ -114,9 +114,13 @@ func runArgs(args []string, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "zero-bridge: %v\n", err)
 		return 2
 	}
-	if _, err := server.ResolveListen(cfg.listen); err != nil {
+	listen, err := server.ResolveListen(cfg.listen)
+	if err != nil {
 		fmt.Fprintf(stderr, "zero-bridge: %v\n", err)
 		return 2
+	}
+	if listen.Network == "tcp" && token == "" {
+		fmt.Fprintf(stderr, "zero-bridge: warning: no token on TCP %s; any local user who can open this port can call the API, including POST /a2a/message/send\n", listen.Addr)
 	}
 	logger := log.New(stderr, "", log.LstdFlags)
 	// Observability (S16): set env for bridge/obs module.

@@ -51,7 +51,7 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 
 ## Abuse cases
 
-- **Another local user opens the TCP port.** With no token, `authorized` returns true for every path. Verified in `bridge/internal/server/server.go` (`currentToken() == ""`). On Linux, loopback TCP is not per-user. **Gap.** The Unix socket path refuses a foreign uid (`TestUnixRefusesForeignPeer`).
+- **Another local user opens the TCP port.** With no token, `authorized` returns true for every path, including `POST /a2a/message/send`. Verified in `bridge/internal/server/server.go` (`currentToken() == ""`) and `TestA2AMessageSendWithoutTokenStaysAllowed`. On Linux, loopback TCP is not per-user. Startup prints a warning and does not change that rule (`TestTCPWithoutTokenWarns`). A Unix socket does not print it. The Unix socket path refuses a foreign uid (`TestUnixRefusesForeignPeer`).
 - **Stolen bearer or cookie.** The bearer stays valid until the token file changes. Logout-all drops cookies and leaves the bearer. Verified in [CADDY.md](deploy/CADDY.md) and the auth handlers. **Assumption:** no test in this pass re-checked logout-all against a live bearer.
 - **Cross-site POST with a cookie.** Cookie requests on POST and DELETE need an allowed Origin. A Unix request with no Origin is bearer-only. Verified in `credentialOK` and `TestUnixAuthOriginAndBearer`.
 - **Prompt or secret in a log line.** `Redact` strips a bearer, an authorization header, and a provider-key shape, then the configured token. Verified by `TestRedact` and `TestRedactJSONValues`. **Gap:** other secret shapes are not covered.
@@ -86,7 +86,7 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 
 | Gap | Evidence | Notes |
 | --- | --- | --- |
-| No token on loopback TCP | `authorized` in `server.go` | Any local process, including another uid, can call `message/send` and `/v1/*` |
+| No token on loopback TCP | `authorized` in `server.go` | Any local user who can open the port can call `message/send` and `/v1/*`. Startup warns. The request is still allowed |
 | A2A ingress has no bridge test | `go test ./... -cover` shows `bridge/a2a` at 0.0% | Handlers exist; S7 issue 3 is closed |
 | No fuzz targets | `func Fuzz` absent under `bridge/` | Listen, JSON-RPC, prompt, limits, redact |
 | Observability export | `cmd/zero-bridge/main.go` sets `NoopObserver` | `bridge/obs/main.go` uses `WithInsecure` OTLP. Issue 12 is closed |
