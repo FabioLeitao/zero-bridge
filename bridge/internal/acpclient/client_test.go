@@ -220,6 +220,18 @@ func TestFSRejected(t *testing.T) {
 	}
 }
 
+func TestUnknownInboundMethod(t *testing.T) {
+	h := DefaultInboundHandler{}
+	_, err := h.HandleRequest("terminal/create", json.RawMessage(`{}`))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	re, ok := err.(*rpcError)
+	if !ok || re.Code != codeMethodNotFound || !strings.Contains(re.Error(), "method not supported") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestCallTimeout(t *testing.T) {
 	pr, pw := io.Pipe()
 	c := AttachPipes(pr, pw, exec.Command("sleep", "60"))
