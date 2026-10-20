@@ -401,6 +401,44 @@ func openaiHistoryTooBig() int {
 	return 16<<10 + 1
 }
 
+func TestOpenAIStreamErrorStaysInTheEventStream(t *testing.T) {
+	_, base, stop := startConfigured(t, Config{ExtraEnv: []string{"ZB_FAKE_TURN_ERROR=1"}})
+	defer stop()
+	req, err := http.NewRequest(http.MethodPost, base+"/v1/chat/completions", strings.NewReader(`{"model":"zero","stream":true,"messages":[{"role":"user","content":"hi"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("status %d type %q body %s", res.StatusCode, res.Header.Get("Content-Type"), raw)
+	}
+	sawError := false
+	sawDone := false
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			t.Fatalf("bare line %q in %s", line, raw)
+		}
+		if strings.Contains(line, `"request failed"`) {
+			sawError = true
+		}
+		if line == "data: [DONE]" {
+			sawDone = true
+		}
+	}
+	if !sawError || !sawDone {
+		t.Fatalf("stream %s", raw)
+	}
+}
+
 func TestOpenAIAnonRequestsDoNotShareSession(t *testing.T) {
 	capture := filepath.Join(t.TempDir(), "prompt")
 	srv, base, stop := startConfigured(t, Config{ExtraEnv: []string{"ZB_FAKE_CAPTURE_PROMPT=" + capture}})

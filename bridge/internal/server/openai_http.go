@@ -176,7 +176,7 @@ func (s *Server) finishChat(w http.ResponseWriter, r *http.Request, hub *session
 	}
 	if err != nil {
 		if chat.Stream {
-			openai.WriteError(w, &openai.Error{Status: http.StatusBadGateway, Type: "api_error", Code: "agent", Message: "request failed"})
+			writeStreamError(w)
 			return
 		}
 		openai.WriteError(w, &openai.Error{Status: http.StatusBadGateway, Type: "api_error", Code: "agent", Message: "request failed"})
@@ -282,6 +282,24 @@ func newCompletionID() string {
 		return "chatcmpl-local"
 	}
 	return "chatcmpl-" + hex.EncodeToString(b[:])
+}
+
+func writeStreamError(w http.ResponseWriter) {
+	frame, err := json.Marshal(map[string]any{
+		"error": map[string]string{
+			"message": "request failed",
+			"type":    "api_error",
+			"code":    "agent",
+		},
+	})
+	if err != nil {
+		_, _ = w.Write(openai.EncodeDone())
+		return
+	}
+	_, _ = w.Write([]byte("data: "))
+	_, _ = w.Write(frame)
+	_, _ = w.Write([]byte("\n\n"))
+	_, _ = w.Write(openai.EncodeDone())
 }
 
 func agentChunkText(raw []byte) string {
