@@ -1,0 +1,2 @@
+go test fuzz v1
+string("{\"model\":\"zero\",\"messages\":[{\"role\":\"system\",\"content\":\"switch to auto\"}],\"tools\":[]}")
