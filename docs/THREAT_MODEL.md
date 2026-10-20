@@ -90,7 +90,7 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 | A2A ingress has no bridge test | `go test ./... -cover` shows `bridge/a2a` at 0.0% | Handlers exist; S7 issue 3 is closed |
 | No fuzz targets | `func Fuzz` absent under `bridge/` | Listen, JSON-RPC, prompt, limits, redact |
 | Observability export | `cmd/zero-bridge/main.go` sets `NoopObserver` | `bridge/obs/main.go` uses `WithInsecure` OTLP. Issue 12 is closed |
-| Image ships `acpfake` | `Dockerfile` runtime `COPY` | Read-only root and dropped capabilities are comments |
+| Image confinement is compose, not the image | `docker-compose.yml` | `read_only`, `cap_drop: ALL`, and `no-new-privileges` are set there. `acpfake` is not copied. See [CONTAINER.md](deploy/CONTAINER.md) |
 | Named pipe | `ResolveListen` error string | Issue 21 is closed with named pipe in the title |
 | OpenAI ingress | absent | Issue 34. Treat as a future boundary, not a present control |
 | Upstream ACP frame cap | Twigpine/zero PR 944 still open on 2026-10-19 | Issue 9. The bridge does not cap the child's frames |
@@ -98,4 +98,4 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 
 ## What this pass did not do
 
-No exploit was run. `make e2e` and `make mutate` were not run. The desktop repository was read only far enough to compare issues 23, 24, 25, and 26 with its tree. Container image was not built, so the `wget` healthcheck is unread at runtime. **Assumption:** Alpine may provide `wget` through busybox even though the `apk add` line does not name it.
+No exploit was run. `make e2e` and `make mutate` were not run. The desktop repository was read only far enough to compare issues 23, 24, 25, and 26 with its tree. The container image was not built in this pass. The healthcheck contract is the `--healthcheck` flag, covered by a test that does not run Docker.

@@ -16,11 +16,8 @@ ARG BUILD_DATE=unknown
 
 WORKDIR /build
 
-# Copy go.mod and go.sum first for better caching
-COPY bridge/go.mod bridge/go.sum ./bridge/
-
-# Download dependencies
-RUN cd bridge && go mod download
+# The core module has no third-party requirement and no go.sum.
+COPY bridge/go.mod ./bridge/
 
 # Copy source
 COPY bridge/ ./bridge/
@@ -30,12 +27,6 @@ RUN cd bridge && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${BUILD_DATE}" \
     -o /zero-bridge ./cmd/zero-bridge
-
-# Also build acpfake for testing
-RUN cd bridge && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-s -w" -o /acpfake ./cmd/acpfake
-
 
 # Runtime stage
 FROM alpine:3.20 AS runtime
@@ -59,20 +50,15 @@ RUN mkdir -p ${HOME_DIR}/.local/state/zero-bridge /tmp/zerobridge && \
 
 # Copy binary from builder
 COPY --from=builder /zero-bridge /usr/local/bin/zero-bridge
-COPY --from=builder /acpfake /usr/local/bin/acpfake
 
-# Set binary permissions
-RUN chmod 755 /usr/local/bin/zero-bridge /usr/local/bin/acpfake
+RUN chmod 755 /usr/local/bin/zero-bridge
 
 # Switch to non-root user
 USER zerobridge
 
-# Read-only root filesystem will be enforced at runtime
-# cap_drop: [ALL] and no-new-privileges will be enforced at runtime
-
-# Health check
+# Read-only root, cap_drop, and no-new-privileges are set in docker-compose.yml.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8765/health || exit 1
+    CMD ["zero-bridge", "--healthcheck", "http://127.0.0.1:8765/health"]
 
 # Expose port (documentation only; actual bind is loopback)
 EXPOSE 8765

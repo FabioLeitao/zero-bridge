@@ -84,6 +84,13 @@ type cliConfig struct {
 }
 
 func runArgs(args []string, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "--healthcheck" {
+		if len(args) != 2 {
+			fmt.Fprintf(stderr, "zero-bridge: --healthcheck needs one URL\n")
+			return 2
+		}
+		return healthcheck(args[1], stderr)
+	}
 	cfg, err := parseCLI(args, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "zero-bridge: %v\n", err)

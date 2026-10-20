@@ -90,7 +90,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 | Ingress A2A sem teste no bridge | `go test ./... -cover` mostra `bridge/a2a` em 0,0% | Os handlers existem; a issue 3 da S7 está fechada |
 | Sem alvos de fuzz | `func Fuzz` ausente em `bridge/` | Listen, JSON-RPC, prompt, limites, redação |
 | Export de observabilidade | `cmd/zero-bridge/main.go` liga `NoopObserver` | `bridge/obs/main.go` usa OTLP `WithInsecure`. A issue 12 está fechada |
-| A imagem leva `acpfake` | `COPY` de runtime no `Dockerfile` | Root somente leitura e capabilities removidas são comentários |
+| O confinamento da imagem está no Compose, não na imagem | `docker-compose.yml` | `read_only`, `cap_drop: ALL` e `no-new-privileges` estão lá. `acpfake` não é copiado. Veja [CONTAINER.pt_BR.md](deploy/CONTAINER.pt_BR.md) |
 | Named pipe | string de erro de `ResolveListen` | A issue 21 está fechada com named pipe no título |
 | Ingress OpenAI | ausente | Issue 34. Tratar como fronteira futura, não como controle presente |
 | Teto de frame ACP no upstream | PR 944 do Twigpine/zero ainda aberta em 2026-10-19 | Issue 9. A ponte não limita os frames do filho |
@@ -98,4 +98,4 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 
 ## O que esta passada não fez
 
-Nenhum exploit foi executado. `make e2e` e `make mutate` não rodaram. O repositório desktop foi lido só o bastante para comparar as issues 23, 24, 25 e 26 com a árvore dele. A imagem de container não foi construída, então o healthcheck com `wget` não foi lido em runtime. **Suposição:** o Alpine pode oferecer `wget` pelo busybox mesmo sem esse nome na linha `apk add`.
+Nenhum exploit foi executado. `make e2e` e `make mutate` não rodaram. O repositório desktop foi lido só o bastante para comparar as issues 23, 24, 25 e 26 com a árvore dele. A imagem de container não foi construída nesta passada. O contrato do healthcheck é a flag `--healthcheck`, coberta por um teste que não roda Docker.

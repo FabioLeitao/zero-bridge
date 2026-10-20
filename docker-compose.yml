@@ -27,7 +27,7 @@ services:
     image: zero-bridge:dev
     container_name: zero-bridge
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile
       args:
         VERSION: "dev"
