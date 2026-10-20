@@ -93,3 +93,21 @@ func TestStateDirFromEnvAndFreshMeta(t *testing.T) {
 		t.Fatal("empty dir opened")
 	}
 }
+
+func TestPlaintextTelemetryStaysOff(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "")
+	var stderr bytes.Buffer
+	code := runArgs([]string{"--agent-cmd", "/bin/true", "--otlp-endpoint", "http://127.0.0.1:9"}, &stderr)
+	if code == 0 {
+		t.Fatal("server stayed up")
+	}
+	if !strings.Contains(stderr.String(), "telemetry disabled") || !strings.Contains(stderr.String(), "plaintext") {
+		t.Fatalf("stderr %q", stderr.String())
+	}
+	t.Setenv("OTLP_ENDPOINT", "http://127.0.0.1:9")
+	stderr.Reset()
+	code = runArgs([]string{"--agent-cmd", "/bin/true"}, &stderr)
+	if code == 0 || !strings.Contains(stderr.String(), "telemetry disabled") {
+		t.Fatalf("env endpoint %d %q", code, stderr.String())
+	}
+}

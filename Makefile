@@ -40,12 +40,14 @@ fmt-check:
 
 vet:
 	cd $(BRIDGE) && go vet ./...
+	cd $(BRIDGE)/obs && go vet ./...
 
 build:
 	cd $(BRIDGE) && go build ./...
 
 test:
 	umask 022 && cd $(BRIDGE) && go test ./... -race -count=1 -timeout 200s
+	umask 022 && cd $(BRIDGE)/obs && go test ./... -count=1 -timeout 60s
 
 test-quick:
 	cd $(BRIDGE) && go test ./... -count=1
@@ -58,10 +60,12 @@ deadcode:
 
 vulncheck:
 	cd $(BRIDGE) && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+	cd $(BRIDGE)/obs && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 # Go 1.23+: -diff exits non-zero when tidy would edit, and it does not write.
 tidy-check:
 	cd $(BRIDGE) && go mod tidy -diff
+	cd $(BRIDGE)/obs && go mod tidy -diff
 
 diff-check:
 	git -C $(ROOT) diff HEAD --check

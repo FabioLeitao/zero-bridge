@@ -89,7 +89,7 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 | No token on loopback TCP | `authorized` in `server.go` | Any local user who can open the port can call `message/send` and `/v1/*`. Startup warns. The request is still allowed |
 | A2A ingress has no bridge test | `go test ./... -cover` shows `bridge/a2a` at 0.0% | Handlers exist; S7 issue 3 is closed |
 | No fuzz targets | `func Fuzz` absent under `bridge/` | Listen, JSON-RPC, prompt, limits, redact |
-| Observability export | `cmd/zero-bridge/main.go` sets `NoopObserver` | `bridge/obs/main.go` uses `WithInsecure` OTLP. Issue 12 is closed |
+| Observability export | `internal/observability/export.go` | HTTPS by default. Plaintext needs `OTEL_EXPORTER_OTLP_INSECURE=true`. The payload is route, method, status, ACP method, and an error flag. A prompt, a path, a token, and a session id are dropped. `bridge/obs` uses the same opt-in |
 | Image confinement is compose, not the image | `docker-compose.yml` | `read_only`, `cap_drop: ALL`, and `no-new-privileges` are set there. `acpfake` is not copied. See [CONTAINER.md](deploy/CONTAINER.md) |
 | Named pipe | `ResolveListen` error string | Issue 21 is closed with named pipe in the title |
 | OpenAI ingress | absent | Issue 34. Treat as a future boundary, not a present control |

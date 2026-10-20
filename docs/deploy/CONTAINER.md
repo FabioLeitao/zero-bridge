@@ -33,3 +33,7 @@ The Dockerfile does not apply them. Compose does. A tmpfs is mounted at `/tmp` b
 ## Token
 
 Mount the token file read-only. Do not bake the token into the image. The file mode on the host is `0600`.
+
+## Telemetry
+
+Export is off until `--otlp-endpoint` or `OTLP_ENDPOINT` is set. An `https` endpoint sends only the route, the method, the status, the ACP method, and an error flag. An `http` endpoint exports only when `OTEL_EXPORTER_OTLP_INSECURE=true`. The example Compose sets that variable because the local collector speaks HTTP.

@@ -33,3 +33,7 @@ O Dockerfile não aplica isso. O Compose aplica. Um tmpfs fica em `/tmp` porque 
 ## Token
 
 Monte o arquivo de token somente leitura. Não grave o token na imagem. O modo do arquivo no host é `0600`.
+
+## Telemetria
+
+O export sai desligado. Com `--otlp-endpoint` ou `OTLP_ENDPOINT` em `https`, a ponte envia só rota, método, status, método ACP e um flag de erro. Um endpoint `http` só exporta quando `OTEL_EXPORTER_OTLP_INSECURE=true`. O Compose de exemplo liga essa variável porque o collector local fala HTTP.

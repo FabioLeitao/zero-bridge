@@ -89,7 +89,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 | Sem token no TCP de loopback | `authorized` em `server.go` | Qualquer usuário local que abra a porta pode chamar `message/send` e `/v1/*`. A subida avisa. O pedido continua aceito |
 | Ingress A2A sem teste no bridge | `go test ./... -cover` mostra `bridge/a2a` em 0,0% | Os handlers existem; a issue 3 da S7 está fechada |
 | Sem alvos de fuzz | `func Fuzz` ausente em `bridge/` | Listen, JSON-RPC, prompt, limites, redação |
-| Export de observabilidade | `cmd/zero-bridge/main.go` liga `NoopObserver` | `bridge/obs/main.go` usa OTLP `WithInsecure`. A issue 12 está fechada |
+| Export de observabilidade | `internal/observability/export.go` | HTTPS por padrão. Texto puro exige `OTEL_EXPORTER_OTLP_INSECURE=true`. O payload é rota, método, status, método ACP e um flag de erro. Prompt, caminho, token e id de sessão são descartados. `bridge/obs` usa o mesmo opt-in |
 | O confinamento da imagem está no Compose, não na imagem | `docker-compose.yml` | `read_only`, `cap_drop: ALL` e `no-new-privileges` estão lá. `acpfake` não é copiado. Veja [CONTAINER.pt_BR.md](deploy/CONTAINER.pt_BR.md) |
 | Named pipe | string de erro de `ResolveListen` | A issue 21 está fechada com named pipe no título |
 | Ingress OpenAI | ausente | Issue 34. Tratar como fronteira futura, não como controle presente |

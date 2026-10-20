@@ -123,22 +123,23 @@ func runArgs(args []string, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "zero-bridge: warning: no token on TCP %s; any local user who can open this port can call the API, including POST /a2a/message/send\n", listen.Addr)
 	}
 	logger := log.New(stderr, "", log.LstdFlags)
-	// Observability (S16): set env for bridge/obs module.
+	if cfg.otlpEndpoint == "" {
+		cfg.otlpEndpoint = os.Getenv("OTLP_ENDPOINT")
+	}
 	if cfg.otlpEndpoint != "" {
-		if err := os.Setenv("OTLP_ENDPOINT", cfg.otlpEndpoint); err != nil {
-			return 2
-		}
-		if cfg.otelService != "" {
-			if err := os.Setenv("OTEL_SERVICE_NAME", cfg.otelService); err != nil {
+		if err := observability.UseEndpoint(cfg.otlpEndpoint); err != nil {
+			fmt.Fprintf(stderr, "zero-bridge: warning: telemetry disabled: %v\n", err)
+			observability.SetGlobal(observability.NoopObserver{})
+		} else {
+			if err := os.Setenv("OTLP_ENDPOINT", cfg.otlpEndpoint); err != nil {
 				return 2
 			}
+			if cfg.otelService != "" {
+				if err := os.Setenv("OTEL_SERVICE_NAME", cfg.otelService); err != nil {
+					return 2
+				}
+			}
 		}
-		// The sample ratio (cfg.otelSample) is not passed to the obs module through the environment here.
-		// Start the OTel collector as a subprocess?
-		// The obs module is a separate binary. We'll just set env.
-		// The actual OTel initialization happens in bridge/obs/main if run separately.
-		// For now, we set the global observer to noop since the sidecar is separate.
-		observability.SetGlobal(observability.NoopObserver{})
 	} else {
 		observability.SetGlobal(observability.NoopObserver{})
 	}
