@@ -401,6 +401,55 @@ func openaiHistoryTooBig() int {
 	return 16<<10 + 1
 }
 
+func TestOpenAIModelsForeignOriginAndPreflight(t *testing.T) {
+	_, base, stop := startConfigured(t, Config{})
+	defer stop()
+	req, err := http.NewRequest(http.MethodGet, base+"/v1/models", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Origin", "http://evil.example")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusForbidden || !strings.Contains(string(raw), `"permission_error"`) {
+		t.Fatalf("models status %d %s", res.StatusCode, raw)
+	}
+	assertNoPermissiveCORS(t, res.Header)
+	for _, path := range []string{"/v1/models", "/v1/chat/completions"} {
+		pre, err := http.NewRequest(http.MethodOptions, base+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pre.Header.Set("Origin", "http://evil.example")
+		pre.Header.Set("Access-Control-Request-Method", "POST")
+		pre.Header.Set("Access-Control-Request-Headers", "content-type")
+		res, err = http.DefaultClient.Do(pre)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		assertNoPermissiveCORS(t, res.Header)
+	}
+}
+
+func assertNoPermissiveCORS(t *testing.T, h http.Header) {
+	t.Helper()
+	for _, key := range []string{
+		"Access-Control-Allow-Origin",
+		"Access-Control-Allow-Methods",
+		"Access-Control-Allow-Headers",
+		"Access-Control-Allow-Credentials",
+	} {
+		if h.Get(key) != "" {
+			t.Fatalf("%s=%q", key, h.Get(key))
+		}
+	}
+}
+
 func TestOpenAIStreamErrorStaysInTheEventStream(t *testing.T) {
 	_, base, stop := startConfigured(t, Config{ExtraEnv: []string{"ZB_FAKE_TURN_ERROR=1"}})
 	defer stop()
