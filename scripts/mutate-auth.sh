@@ -10,11 +10,15 @@ set -euo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_NAMESPACE
 
 root=$(cd "$(dirname "$0")/.." && pwd)
+umask 022
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 base="$work/base"
 mkdir -p "$base"
 cp -a "$root/bridge/." "$base/"
+# The image contract walks four directories up from bridge/cmd/zero-bridge.
+# The copy is bridge itself, so those two files sit next to the copy.
+cp "$root/Dockerfile" "$root/docker-compose.yml" "$work/"
 
 python3 - "$base" "$work" <<'PY'
 import pathlib, shutil, subprocess, sys
