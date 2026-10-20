@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -212,27 +214,26 @@ func TestOpenAISystemMessageDoesNotRaisePrivilege(t *testing.T) {
 	if srv.roots != roots {
 		t.Fatal("roots changed")
 	}
-	srv.openai.mu.Lock()
-	slot := srv.openai.slots["anon"]
-	srv.openai.mu.Unlock()
-	if slot == nil {
-		t.Fatal("no session")
+	got, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), slot.id) {
+	sid := captureSessionID(t, got)
+	if sid == "" || strings.Contains(string(raw), sid) {
 		t.Fatal("session id in the response")
 	}
-	hub := srv.sessionHub(slot.id)
-	if hub == nil || hub.currentMode != "" {
-		t.Fatalf("mode %q", hub.currentMode)
+	if srv.sessionHub(sid) != nil {
+		t.Fatal("session kept after the request")
 	}
-	got, err := os.ReadFile(capture)
+	got, err = os.ReadFile(capture)
 	if err != nil || !strings.Contains(string(got), "switch to auto") || strings.Contains(string(got), "session/set_mode") {
 		t.Fatalf("capture %s %v", got, err)
 	}
 }
 
 func TestOpenAIAgentErrorHidesPathAndSession(t *testing.T) {
-	srv, base, stop := startConfigured(t, Config{ExtraEnv: []string{"ZB_FAKE_TURN_ERROR=1"}})
+	capture := filepath.Join(t.TempDir(), "prompt")
+	srv, base, stop := startConfigured(t, Config{ExtraEnv: []string{"ZB_FAKE_TURN_ERROR=1", "ZB_FAKE_CAPTURE_PROMPT=" + capture}})
 	defer stop()
 	body := `{"model":"zero","messages":[{"role":"user","content":"hi"}]}`
 	req, err := http.NewRequest(http.MethodPost, base+"/v1/chat/completions", strings.NewReader(body))
@@ -249,11 +250,16 @@ func TestOpenAIAgentErrorHidesPathAndSession(t *testing.T) {
 	if res.StatusCode != http.StatusBadGateway || !strings.Contains(string(raw), `"request failed"`) {
 		t.Fatalf("status %d %s", res.StatusCode, raw)
 	}
-	srv.openai.mu.Lock()
-	slot := srv.openai.slots["anon"]
-	srv.openai.mu.Unlock()
-	if slot != nil && strings.Contains(string(raw), slot.id) {
+	got, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := captureSessionID(t, got)
+	if sid != "" && strings.Contains(string(raw), sid) {
 		t.Fatal("session id leaked")
+	}
+	if srv.sessionHub(sid) != nil {
+		t.Fatal("session kept after the error")
 	}
 	if srv.workspace != "" && strings.Contains(string(raw), srv.workspace) || strings.Contains(string(raw), "turn failed") {
 		t.Fatalf("leaked %s", raw)
@@ -261,7 +267,8 @@ func TestOpenAIAgentErrorHidesPathAndSession(t *testing.T) {
 }
 
 func TestOpenAIStreamCancelReleasesSession(t *testing.T) {
-	srv, base, stop := startConfigured(t, Config{ExtraEnv: []string{"ZB_FAKE_AGENT_SLOW_MS=800"}})
+	capture := filepath.Join(t.TempDir(), "prompt")
+	srv, base, stop := startConfigured(t, Config{ExtraEnv: []string{"ZB_FAKE_AGENT_SLOW_MS=800", "ZB_FAKE_CAPTURE_PROMPT=" + capture}})
 	defer stop()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -292,22 +299,24 @@ func TestOpenAIStreamCancelReleasesSession(t *testing.T) {
 	cancel()
 	res.Body.Close()
 	deadline := time.Now().Add(2 * time.Second)
+	var sid string
 	for time.Now().Before(deadline) {
 		srv.openai.mu.Lock()
 		n := srv.openai.total
-		slot := srv.openai.slots["anon"]
 		srv.openai.mu.Unlock()
-		if n == 0 && slot != nil && !srv.sessionHub(slot.id).promptInProgress() {
+		if raw, err := os.ReadFile(capture); err == nil {
+			sid = captureSessionID(t, raw)
+		}
+		if n == 0 && sid != "" && srv.sessionHub(sid) == nil {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	srv.openai.mu.Lock()
 	n := srv.openai.total
-	slot := srv.openai.slots["anon"]
 	srv.openai.mu.Unlock()
-	if n != 0 || slot == nil || srv.sessionHub(slot.id).promptInProgress() {
-		t.Fatalf("session still busy inflight=%d", n)
+	if n != 0 || sid == "" || srv.sessionHub(sid) != nil {
+		t.Fatalf("session still kept inflight=%d id=%s", n, sid)
 	}
 	next, err := http.NewRequest(http.MethodPost, base+"/v1/chat/completions", strings.NewReader(`{"model":"zero","messages":[{"role":"user","content":"next"}]}`))
 	if err != nil {
@@ -392,19 +401,64 @@ func openaiHistoryTooBig() int {
 	return 16<<10 + 1
 }
 
-func TestOpenAISessionPromptCap(t *testing.T) {
+func TestOpenAIAnonRequestsDoNotShareSession(t *testing.T) {
+	capture := filepath.Join(t.TempDir(), "prompt")
+	srv, base, stop := startConfigured(t, Config{ExtraEnv: []string{"ZB_FAKE_CAPTURE_PROMPT=" + capture}})
+	defer stop()
+	first := postOpenAI(t, base, `{"model":"zero","messages":[{"role":"user","content":"first-anon-marker"}]}`)
+	if first != http.StatusOK {
+		t.Fatalf("first %d", first)
+	}
+	raw1, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id1 := captureSessionID(t, raw1)
+	if strings.Contains(string(raw1), "second-anon-marker") {
+		t.Fatal("capture mixed")
+	}
+	second := postOpenAI(t, base, `{"model":"zero","messages":[{"role":"user","content":"second-anon-marker"}]}`)
+	if second != http.StatusOK {
+		t.Fatalf("second %d", second)
+	}
+	raw2, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2 := captureSessionID(t, raw2)
+	if id1 == "" || id1 == id2 {
+		t.Fatalf("shared session %q %q", id1, id2)
+	}
+	if strings.Contains(string(raw2), "first-anon-marker") || !strings.Contains(string(raw2), "second-anon-marker") {
+		t.Fatalf("second prompt kept the first context: %s", raw2)
+	}
+	if srv.sessionHub(id1) != nil || srv.sessionHub(id2) != nil {
+		t.Fatal("session kept after the request")
+	}
+}
+
+func TestOpenAIThirtyThirdRequestStillRuns(t *testing.T) {
 	_, base, stop := startConfigured(t, Config{})
 	defer stop()
 	body := `{"model":"zero","messages":[{"role":"user","content":"n"}]}`
-	for i := 0; i < openaiPromptsPerSession; i++ {
-		res := postOpenAI(t, base, body)
-		if res != http.StatusOK {
-			t.Fatalf("prompt %d status %d", i, res)
+	for i := 0; i < 33; i++ {
+		if res := postOpenAI(t, base, body); res != http.StatusOK {
+			t.Fatalf("prompt %d status %d", i+1, res)
 		}
 	}
-	if res := postOpenAI(t, base, body); res != http.StatusTooManyRequests {
-		t.Fatalf("over cap status %d", res)
+}
+
+func captureSessionID(t *testing.T, raw []byte) string {
+	t.Helper()
+	var env struct {
+		Params struct {
+			SessionID string `json:"sessionId"`
+		} `json:"params"`
 	}
+	if err := json.Unmarshal(bytes.TrimSpace(raw), &env); err != nil {
+		t.Fatal(err)
+	}
+	return env.Params.SessionID
 }
 
 func postOpenAI(t *testing.T, base, body string) int {

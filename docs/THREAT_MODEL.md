@@ -92,7 +92,7 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 | Observability export | `internal/observability/export.go` | HTTPS by default. Plaintext needs `OTEL_EXPORTER_OTLP_INSECURE=true`. The payload is route, method, status, ACP method, and an error flag. A prompt, a path, a token, and a session id are dropped. `bridge/obs` uses the same opt-in |
 | Image confinement is compose, not the image | `docker-compose.yml` | `read_only`, `cap_drop: ALL`, and `no-new-privileges` are set there. `acpfake` is not copied. See [CONTAINER.md](deploy/CONTAINER.md) |
 | Named pipe | `npipe:` exits 2 in `listen.go` | Not implemented. Issue 21's title names a named pipe; the tree refuses it |
-| OpenAI ingress | `bridge/internal/openai`, `bridge/internal/server/openai_http.go` | Issue 34. Content-Type, Origin, Host, field rejection, caps, and the prompt cap are covered by `openai_test.go` |
+| OpenAI ingress | `bridge/internal/openai`, `bridge/internal/server/openai_http.go` | Issue 34. Each request opens an ACP session and discards it. Content-Type, Origin, Host, field rejection, and the in-flight caps are covered by `openai_test.go` |
 | Upstream ACP frame cap | Twigpine/zero PR 944 still open on 2026-10-19 | Issue 9. The bridge does not cap the child's frames |
 | Plan status date | `docs/plans/PLAN_ZERO_BRIDGE.md` status block is 2026-10-19 | S7 through S10, S16, S18, S21, and S24 through S28 match the closed issues. S29 is still absent |
 
@@ -108,7 +108,7 @@ S29, issue 34. Review date 2026-10-20. These rows are the contract for the route
 | Origin and Host | Origin must be this listener or a configured public origin. Host must be loopback or an allowed host. A simple cross-origin POST without a token is 403 and no prompt reaches the agent |
 | Unimplemented fields | `tools`, `tool_choice`, `functions`, `function_call`, `n` greater than 1, `logprobs`, `response_format`, and `audio` return 400 in the OpenAI error object |
 | `system` and `developer` | Conversation text. They do not change mode, permissions, roots, or bridge policy |
-| Stream and caps | Client disconnect cancels the ACP prompt and releases the session. Caps bound in-flight calls per credential and per process, message count, message bytes, history bytes, and prompts on one ACP session |
+| Stream and caps | Client disconnect cancels the ACP prompt and discards that request's session. Caps bound in-flight calls per credential and per process, message count, message bytes, and history bytes. Callers do not share an ACP session |
 | Errors and `usage` | OpenAI error object. No path, agent stderr, token, or session id. `usage` is omitted. Absent fields stay absent. No invented counts |
 | Permissions | Default inbound deny (`reject_once`). The existing broker is used only where it already is. Timeout denies. The body cannot approve a tool |
 | Model and leakage | Unknown model is 400. The prompt does not appear in logs, in an SSE event name, or in the OTLP payload. The stream URL has no session id |

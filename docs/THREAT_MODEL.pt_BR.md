@@ -92,7 +92,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 | Export de observabilidade | `internal/observability/export.go` | HTTPS por padrão. Texto puro exige `OTEL_EXPORTER_OTLP_INSECURE=true`. O payload é rota, método, status, método ACP e um flag de erro. Prompt, caminho, token e id de sessão são descartados. `bridge/obs` usa o mesmo opt-in |
 | O confinamento da imagem está no Compose, não na imagem | `docker-compose.yml` | `read_only`, `cap_drop: ALL` e `no-new-privileges` estão lá. `acpfake` não é copiado. Veja [CONTAINER.pt_BR.md](deploy/CONTAINER.pt_BR.md) |
 | Named pipe | `npipe:` sai 2 em `listen.go` | Não está implementado. O título da issue 21 nomeia um named pipe; a árvore recusa |
-| Ingress OpenAI | `bridge/internal/openai`, `bridge/internal/server/openai_http.go` | Issue 34. Content-Type, Origin, Host, recusa de campo, tetos e o teto de prompts estão em `openai_test.go` |
+| Ingress OpenAI | `bridge/internal/openai`, `bridge/internal/server/openai_http.go` | Issue 34. Cada pedido abre uma sessão ACP e a descarta. Content-Type, Origin, Host, recusa de campo e os tetos em voo estão em `openai_test.go` |
 | Teto de frame ACP no upstream | PR 944 do Twigpine/zero ainda aberta em 2026-10-19 | Issue 9. A ponte não limita os frames do filho |
 | Data de status do plano | bloco de status de `docs/plans/PLAN_ZERO_BRIDGE.md` em 2026-10-19 | S7 a S10, S16, S18, S21 e S24 a S28 batem com as issues fechadas. S29 continua ausente |
 
@@ -108,7 +108,7 @@ S29, issue 34. Data de revisão 2026-10-20. Estas linhas são o contrato das rot
 | Origin e Host | O Origin tem de ser este listener ou um origin público configurado. O Host tem de ser loopback ou um host permitido. Um POST simples de outra origem, sem token, é 403 e nenhum prompt chega ao agente |
 | Campos sem suporte | `tools`, `tool_choice`, `functions`, `function_call`, `n` maior que 1, `logprobs`, `response_format` e `audio` devolvem 400 no objeto de erro OpenAI |
 | `system` e `developer` | Texto da conversa. Não mudam modo, permissões, raízes nem a política da ponte |
-| Stream e tetos | A desconexão do cliente cancela o prompt ACP e libera a sessão. Tetos limitam chamadas em voo por credencial e por processo, número de mensagens, bytes de cada mensagem, bytes do histórico e prompts numa sessão ACP |
+| Stream e tetos | A desconexão do cliente cancela o prompt ACP e descarta a sessão daquele pedido. Tetos limitam chamadas em voo por credencial e por processo, número de mensagens, bytes de cada mensagem e bytes do histórico. Chamadores não compartilham sessão ACP |
 | Erros e `usage` | Objeto de erro OpenAI. Sem caminho, stderr do agente, token ou id de sessão. `usage` é omitido. Campo ausente continua ausente. Sem contagem inventada |
 | Permissões | Deny de entrada (`reject_once`). O broker que já existe só entra onde já entra. Timeout nega. O corpo não aprova tool |
 | Modelo e vazamento | Modelo desconhecido é 400. O prompt não aparece em logs, no nome de um evento SSE nem no payload OTLP. A URL do stream não tem id de sessão |

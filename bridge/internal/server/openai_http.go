@@ -16,23 +16,16 @@ import (
 )
 
 const (
-	openaiInflightPerCred   = 1
-	openaiInflightProcess   = 4
-	openaiPromptsPerSession = 32
+	openaiInflightPerCred = 1
+	openaiInflightProcess = 4
 )
 
-// openaiGate bounds OpenAI calls. One ACP session per credential, with a
-// prompt cap, so the session cannot grow without a limit.
+// openaiGate bounds how many OpenAI calls run at once. Each call opens its
+// own ACP session and discards it, so callers do not share agent memory.
 type openaiGate struct {
 	mu       sync.Mutex
 	inflight map[string]int
 	total    int
-	slots    map[string]*openaiSlot
-}
-
-type openaiSlot struct {
-	id      string
-	prompts int
 }
 
 func openaiRoute(path string) bool {
@@ -99,15 +92,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.openai.release(key)
-	sessionID, err := s.openaiSession(r.Context(), key)
+	sessionID, err := s.openOpenAISession(r.Context())
 	if err != nil || sessionID == "" {
 		openai.WriteError(w, &openai.Error{Status: http.StatusBadGateway, Type: "api_error", Code: "agent", Message: "request failed"})
 		return
 	}
-	if !s.openai.takePrompt(key) {
-		openai.WriteError(w, &openai.Error{Status: http.StatusTooManyRequests, Type: "rate_limit_error", Code: "rate_limit", Message: "too many requests"})
-		return
-	}
+	defer s.discardOpenAISession(sessionID)
 	hub := s.sessionHub(sessionID)
 	if hub == nil || !hub.tryStartPrompt() {
 		openai.WriteError(w, &openai.Error{Status: http.StatusTooManyRequests, Type: "rate_limit_error", Code: "rate_limit", Message: "too many requests"})
@@ -209,14 +199,7 @@ func (s *Server) finishChat(w http.ResponseWriter, r *http.Request, hub *session
 	_, _ = w.Write(raw)
 }
 
-func (s *Server) openaiSession(ctx context.Context, key string) (string, error) {
-	s.openai.mu.Lock()
-	if slot := s.openai.slots[key]; slot != nil {
-		id := slot.id
-		s.openai.mu.Unlock()
-		return id, nil
-	}
-	s.openai.mu.Unlock()
+func (s *Server) openOpenAISession(ctx context.Context) (string, error) {
 	var res struct {
 		SessionID string `json:"sessionId"`
 	}
@@ -239,16 +222,19 @@ func (s *Server) openaiSession(ctx context.Context, key string) (string, error) 
 	s.mu.Lock()
 	s.sessions[res.SessionID] = hub
 	s.mu.Unlock()
-	s.openai.mu.Lock()
-	defer s.openai.mu.Unlock()
-	if s.openai.slots == nil {
-		s.openai.slots = map[string]*openaiSlot{}
-	}
-	if slot := s.openai.slots[key]; slot != nil {
-		return slot.id, nil
-	}
-	s.openai.slots[key] = &openaiSlot{id: res.SessionID}
 	return res.SessionID, nil
+}
+
+func (s *Server) discardOpenAISession(id string) {
+	if id == "" {
+		return
+	}
+	s.mu.Lock()
+	delete(s.sessions, id)
+	s.mu.Unlock()
+	s.stateMu.Lock()
+	delete(s.states, id)
+	s.stateMu.Unlock()
 }
 
 func (g *openaiGate) acquire(key string) bool {
@@ -272,17 +258,6 @@ func (g *openaiGate) release(key string) {
 		g.inflight[key]--
 		g.total--
 	}
-}
-
-func (g *openaiGate) takePrompt(key string) bool {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	slot := g.slots[key]
-	if slot == nil || slot.prompts >= openaiPromptsPerSession {
-		return false
-	}
-	slot.prompts++
-	return true
 }
 
 func openaiCredKey(r *http.Request) string {

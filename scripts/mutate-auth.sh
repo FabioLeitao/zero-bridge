@@ -91,12 +91,6 @@ mutants = [
         [("internal/server/openai_http.go", "\tif !requireJSONContentType(r) {\n", "\tif false && !requireJSONContentType(r) {\n")],
     ),
     (
-        "openai-prompt-cap-removed",
-        "internal/server",
-        "TestOpenAISessionPromptCap",
-        [("internal/server/openai_http.go", "if slot == nil || slot.prompts >= openaiPromptsPerSession {", "if slot == nil || false && slot.prompts >= openaiPromptsPerSession {")],
-    ),
-    (
         "short-token-accepted",
         "internal/auth",
         "TestLoadFile",
