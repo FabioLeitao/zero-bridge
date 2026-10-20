@@ -367,7 +367,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/auth/sessions/{handle}", s.handleRevokeAuthSession)
 	mux.HandleFunc("GET /v1/info", s.handleInfo)
 	mux.HandleFunc("GET /v1/capabilities", s.handleCapabilities)
-	// A2A ingress (S7) - Agent Card is public, message/send requires auth
+	// A2A ingress (S7). With a token set, both routes use the same credential check as /v1.
 	mux.HandleFunc("GET /.well-known/agent-card.json", s.handleAgentCard)
 	mux.HandleFunc("POST /a2a/message/send", s.handleA2AMessageSend)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)

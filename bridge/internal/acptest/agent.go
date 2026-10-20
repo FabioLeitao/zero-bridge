@@ -162,6 +162,9 @@ func runAgent(r io.Reader, w io.Writer) {
 			if json.Unmarshal(line, &req) == nil && req.Params.SessionID != "" {
 				sid = req.Params.SessionID
 			}
+			if path := os.Getenv("ZB_FAKE_CAPTURE_PROMPT"); path != "" {
+				_ = os.WriteFile(path, append(line, '\n'), 0o600)
+			}
 			if sess, ok := findPersisted(sid); ok && sess.viewOnly {
 				msg := "session is view-only"
 				if os.Getenv("ZB_FAKE_VIEWONLY_SECRET") == "1" {
