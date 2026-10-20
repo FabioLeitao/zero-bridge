@@ -65,6 +65,7 @@ type cliConfig struct {
 	listen         string
 	workspace      string
 	permTimeout    time.Duration
+	initTimeout    time.Duration
 	tokenFile      string
 	auditLog       string
 	configPath     string
@@ -164,6 +165,7 @@ func runArgs(args []string, stderr io.Writer) int {
 		Profile:           cfg.profile,
 		Workspace:         cfg.workspace,
 		PermissionTimeout: cfg.permTimeout,
+		InitTimeout:       cfg.initTimeout,
 		Logger:            logger,
 		Audit:             auditSink,
 		Token:             token,
@@ -293,6 +295,16 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 				return cfg, fmt.Errorf("permission timeout: %v", err)
 			}
 			cfg.permTimeout = d
+		case "--init-timeout":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("missing value for --init-timeout")
+			}
+			i++
+			d, err := time.ParseDuration(args[i])
+			if err != nil || d <= 0 {
+				return cfg, fmt.Errorf("init timeout must be greater than zero")
+			}
+			cfg.initTimeout = d
 		case "--trust-proxy":
 			cfg.trustProxy = true
 		case "--allowed-host":
@@ -387,6 +399,9 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 	case "zero", "generic":
 	default:
 		return cfg, fmt.Errorf("unknown profile %q", cfg.profile)
+	}
+	if cfg.initTimeout == 0 {
+		cfg.initTimeout = 30 * time.Second
 	}
 	if zeroBinSet && (agentCmdSet || agentArgSet) {
 		return cfg, fmt.Errorf("--zero-bin cannot be combined with --agent-cmd or --agent-arg")

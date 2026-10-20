@@ -22,6 +22,13 @@ var nextSessionID atomic.Int64
 var nextPermID atomic.Int64
 
 func runAgent(r io.Reader, w io.Writer) {
+	if os.Getenv("ZB_FAKE_SILENT_INIT") == "1" {
+		if path := os.Getenv("ZB_FAKE_PID_FILE"); path != "" {
+			_ = os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600)
+		}
+		_, _ = io.Copy(io.Discard, r)
+		return
+	}
 	lines := make(chan []byte)
 	go readLines(r, lines)
 	src := &lineSrc{ch: lines}
