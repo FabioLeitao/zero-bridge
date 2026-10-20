@@ -249,7 +249,13 @@ func (s *Server) childExtra() []string {
 	return []string{}
 }
 
+// acpProtocolVersion is the only initialize protocolVersion this process accepts.
+const acpProtocolVersion = 1
+
 // Boot starts the agent child and performs initialize.
+// A successful initialize whose protocolVersion is not acpProtocolVersion, or
+// whose field is absent or not a whole number, is a mismatch. The error names
+// the sent and received versions and nothing else.
 func (s *Server) Boot(ctx context.Context) error {
 	extra := s.childExtra()
 	client, err := acpclient.Start(ctx, acpclient.Options{
@@ -268,7 +274,7 @@ func (s *Server) Boot(ctx context.Context) error {
 	s.acp = client
 	s.acpMu.Unlock()
 	initParams := map[string]any{
-		"protocolVersion": 1,
+		"protocolVersion": acpProtocolVersion,
 		"clientCapabilities": map[string]any{
 			"fs": map[string]bool{
 				"readTextFile":  false,
@@ -283,12 +289,43 @@ func (s *Server) Boot(ctx context.Context) error {
 		_ = client.Close()
 		return fmt.Errorf("initialize: %w", err)
 	}
+	if err := protocolVersionError(initRes, acpProtocolVersion); err != nil {
+		_ = client.Close()
+		return err
+	}
 	go func() {
 		<-client.Done()
 		s.perms.Stop()
 		s.markAgentDown()
 	}()
 	return nil
+}
+
+// protocolVersionError rejects an initialize result that is not sent.
+// A missing field, null, or a value that is not a whole number is "none".
+// A whole number other than sent is printed as that integer. The text never
+// copies a string from the peer.
+func protocolVersionError(res map[string]any, sent int) error {
+	raw, ok := res["protocolVersion"]
+	if !ok || raw == nil {
+		return fmt.Errorf("protocol mismatch: sent %d, received none", sent)
+	}
+	got, ok := protocolNumber(raw)
+	if !ok {
+		return fmt.Errorf("protocol mismatch: sent %d, received none", sent)
+	}
+	if got != sent {
+		return fmt.Errorf("protocol mismatch: sent %d, received %d", sent, got)
+	}
+	return nil
+}
+
+func protocolNumber(v any) (int, bool) {
+	n, ok := v.(float64)
+	if !ok || n != float64(int(n)) || n < -1<<20 || n > 1<<20 {
+		return 0, false
+	}
+	return int(n), true
 }
 
 func (s *Server) acpClient() (*acpclient.Client, error) {

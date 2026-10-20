@@ -40,14 +40,7 @@ func runAgent(r io.Reader, w io.Writer) {
 		}
 		switch env.Method {
 		case "initialize":
-			writeResp(w, env.ID, map[string]any{
-				"protocolVersion":   1,
-				"agentCapabilities": fakeCapabilities(),
-				"agentInfo": map[string]string{
-					"name":    fakeAgentName(),
-					"version": fakeAgentVersion(),
-				},
-			})
+			writeResp(w, env.ID, fakeInitializeResult())
 			if os.Getenv("ZB_FAKE_AGENT_EXIT") == "1" {
 				os.Exit(0)
 			}
@@ -343,6 +336,32 @@ func listPage(cwd, cursor string) ([]map[string]any, string) {
 		next = filtered[end-1].id
 	}
 	return out, next
+}
+
+// fakeInitializeResult answers initialize. ZB_FAKE_PROTOCOL empty or "1"
+// sends protocolVersion 1. "omit" drops the field. Any other integer is sent
+// as that version. A non-integer value falls back to 1.
+func fakeInitializeResult() map[string]any {
+	body := map[string]any{
+		"agentCapabilities": fakeCapabilities(),
+		"agentInfo": map[string]string{
+			"name":    fakeAgentName(),
+			"version": fakeAgentVersion(),
+		},
+	}
+	switch os.Getenv("ZB_FAKE_PROTOCOL") {
+	case "", "1":
+		body["protocolVersion"] = 1
+	case "omit":
+	default:
+		n, err := strconv.Atoi(os.Getenv("ZB_FAKE_PROTOCOL"))
+		if err != nil {
+			body["protocolVersion"] = 1
+		} else {
+			body["protocolVersion"] = n
+		}
+	}
+	return body
 }
 
 func fakeAgentName() string {
