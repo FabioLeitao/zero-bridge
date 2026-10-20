@@ -87,14 +87,14 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 | Gap | Evidence | Notes |
 | --- | --- | --- |
 | No token on loopback TCP | `authorized` in `server.go` | Any local user who can open the port can call `message/send` and `/v1/*`. Startup warns. The request is still allowed |
-| A2A ingress has no bridge test | `go test ./... -cover` shows `bridge/a2a` at 0.0% | Handlers exist; S7 issue 3 is closed |
-| No fuzz targets | `func Fuzz` absent under `bridge/` | Listen, JSON-RPC, prompt, limits, redact |
+| A2A ingress | `bridge/internal/server/a2a_test.go` | Agent card, token, role, text parts, body cap, and the prompt reaching the fake agent |
+| Fuzz | `func Fuzz` under `bridge/` | Listen, login, prompt body, A2A, limit file, redact, workspace, ACP frames. Seeds are versioned. Not part of `make check` |
 | Observability export | `internal/observability/export.go` | HTTPS by default. Plaintext needs `OTEL_EXPORTER_OTLP_INSECURE=true`. The payload is route, method, status, ACP method, and an error flag. A prompt, a path, a token, and a session id are dropped. `bridge/obs` uses the same opt-in |
 | Image confinement is compose, not the image | `docker-compose.yml` | `read_only`, `cap_drop: ALL`, and `no-new-privileges` are set there. `acpfake` is not copied. See [CONTAINER.md](deploy/CONTAINER.md) |
 | Named pipe | `npipe:` exits 2 in `listen.go` | Not implemented. Issue 21's title names a named pipe; the tree refuses it |
 | OpenAI ingress | absent | Issue 34. Treat as a future boundary, not a present control |
 | Upstream ACP frame cap | Twigpine/zero PR 944 still open on 2026-10-19 | Issue 9. The bridge does not cap the child's frames |
-| Plan status date | `docs/plans/PLAN_ZERO_BRIDGE.md` says 2026-10-15 and "S7 not built" | S7 through S10, S21, and S28 are on this tree. The plan table is stale |
+| Plan status date | `docs/plans/PLAN_ZERO_BRIDGE.md` status block is 2026-10-19 | S7 through S10, S16, S18, S21, and S24 through S28 match the closed issues. S29 is still absent |
 
 ## What this pass did not do
 

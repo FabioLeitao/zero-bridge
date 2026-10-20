@@ -2,7 +2,7 @@
 
 Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRIDGE.md).
 
-**Estado** (2026-10-15). Valores: feita, feita no upstream, em andamento, desenhada, bloqueada-externa, acompanhando.
+**Estado** (2026-10-19). Valores: feita, feita no upstream, em andamento, desenhada, bloqueada-externa, acompanhando.
 
 | ID | Estado | Evidência |
 | --- | --- | --- |
@@ -14,31 +14,31 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S5b | feita | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
 | S6 | feita | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
 | S6b | feita | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Mergeada na [PR #35](https://github.com/FabioLeitao/zero-bridge/pull/35). |
-| S7 | desenhada | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3). Decisão de proxy abaixo. Não construída. |
-| S8 | desenhada | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Não construída. |
-| S9 | desenhada | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Não construída. |
-| S10 | desenhada | [#6](https://github.com/FabioLeitao/zero-bridge/issues/6). Não construída. |
-| S11 | feita no upstream | [#7](https://github.com/FabioLeitao/zero-bridge/issues/7). Upstream [#1125](https://github.com/Twigpine/zero/issues/1125) fechada pela [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134) mergeada. |
-| S12 | desenhada | [#8](https://github.com/FabioLeitao/zero-bridge/issues/8). Não construída. |
-| S13 | acompanhando | [#9](https://github.com/FabioLeitao/zero-bridge/issues/9). [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). |
+| S7 | feita | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3) fechada. `GET /.well-known/agent-card.json` e `POST /a2a/message/send` estão em `bridge/internal/server`. |
+| S8 | feita | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4) fechada. Em `origin/main`. |
+| S9 | feita | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5) fechada. Em `origin/main`. |
+| S10 | feita | [#6](https://github.com/FabioLeitao/zero-bridge/issues/6) fechada. Em `origin/main`. |
+| S11 | feita no upstream | [#7](https://github.com/FabioLeitao/zero-bridge/issues/7) ainda aberta. Upstream [#1125](https://github.com/Twigpine/zero/issues/1125) fechada pela [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134) mergeada. |
+| S12 | desenhada | [#8](https://github.com/FabioLeitao/zero-bridge/issues/8) ainda aberta. Não construída. |
+| S13 | acompanhando | [#9](https://github.com/FabioLeitao/zero-bridge/issues/9). [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944) ainda aberta. |
 | S14 | feita | [#1](https://github.com/FabioLeitao/zero-bridge/issues/1). [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt). Mergeada na PR #16. |
 | S14b | feita | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) fechada. Mergeada na [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18). [evidence/S14b-auth-transcript.txt](evidence/S14b-auth-transcript.txt). `fb24d4b` `085110b` `daefb32` `4940aad` `d49cf81` `d63bd0d`. |
-| S15 | desenhada | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10). Depende da S17. Não construída. |
-| S16 | desenhada | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Não construída. |
+| S15 | desenhada | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10) ainda aberta. O repositório já é público, licença MIT. |
+| S16 | feita no exportador | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12) fechada. Esta árvore exporta campos permitidos sobre TLS. A stack Grafana do texto da fatia não é o que o processo roda. |
 | S17 | feita | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` é a definição de pronto. Mergeada na PR #16. |
-| S18 | desenhada | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Não construída. |
+| S18 | feita | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14) fechada. Em `origin/main`. |
 | S19 | feita | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Mergeada na PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` exercitado. Hermes e `dsh --profile acp`: não executados. |
 | S20 | feita | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Mergeada na [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Tempos do gate neste host. |
 | S21 | feita no socket Unix | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). O socket Unix está nesta árvore. Named pipe do Windows é recusado (`npipe:` sai 2) e não está implementado. |
 | S22 | desenhada | [#22](https://github.com/FabioLeitao/zero-bridge/issues/22). Não construída. PWA opcional. |
-| S23a | desenhada | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24). Não construída. Esqueleto do shell em `zero-bridge-desktop`. |
-| S23b | desenhada | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25). Não construída. Bandeja, notificações e seletor de pasta. |
-| S23c | desenhada | [#26](https://github.com/FabioLeitao/zero-bridge/issues/26). Não construída. e2e do desktop e pacotes Linux. |
-| S24 | desenhada | [#27](https://github.com/FabioLeitao/zero-bridge/issues/27). Não construída. Seletor de modelo. |
-| S25 | desenhada | [#28](https://github.com/FabioLeitao/zero-bridge/issues/28). Não construída. Anexo de imagem. |
-| S26 | desenhada | [#29](https://github.com/FabioLeitao/zero-bridge/issues/29). Não construída. Cartões de sugestão e chip de modo. |
-| S27 | desenhada | [#31](https://github.com/FabioLeitao/zero-bridge/issues/31). Não construída. Roteamento de modo só para baixo. |
-| S28 | feita | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32). Construída em `epic/s28-session-status`. Não mergeada. Estado da sessão a partir do tráfego ACP. |
+| S23a | em andamento no repo do desktop | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24) ainda aberta. Esqueleto lido no desktop `0dec4f3`. Este repo não rodou o gate do desktop. |
+| S23b | em andamento no repo do desktop | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) ainda aberta. Bandeja, notificações e seletor de pasta estão naquela árvore. Gate do desktop não rodou aqui. |
+| S23c | feita na issue do desktop | [#26](https://github.com/FabioLeitao/zero-bridge/issues/26) fechada. O passo de pacote não foi revalidado a partir deste repo. |
+| S24 | feita | [#27](https://github.com/FabioLeitao/zero-bridge/issues/27) fechada. Em `origin/main`. |
+| S25 | feita | [#28](https://github.com/FabioLeitao/zero-bridge/issues/28) fechada. Em `origin/main`. |
+| S26 | feita | [#29](https://github.com/FabioLeitao/zero-bridge/issues/29) fechada. Em `origin/main`. |
+| S27 | feita | [#31](https://github.com/FabioLeitao/zero-bridge/issues/31) fechada. Em `origin/main`. |
+| S28 | feita | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32) fechada. O estado da sessão a partir do tráfego ACP está em `origin/main`. |
 
 **Nome.** O repositório continua `zero-bridge`. A expansão pode mudar neste doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Outras leituras: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. O Zero do Gitlawb é o harness recomendado e de referência, não uma dependência do desenho. Este projeto não é afiliado nem endossado por Gitlawb ou Twigpine.
 
