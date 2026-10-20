@@ -26,6 +26,7 @@ Abra http://127.0.0.1:8765/. Flags:
 | `--profile` | `zero` | `zero` ou `generic`. O perfil `zero` pode definir `ZERO_PROVIDER`, manter `_meta` na lista de sessões e traduzir as linhas de aviso do Zero. O perfil `generic` não faz nada disso. |
 | `--zero-bin` | obsoleta | Alias de `--agent-cmd <bin> --agent-arg acp`. O stderr nomeia a substituição. Não combina com `--agent-cmd` nem com `--agent-arg`. |
 | `--permission-timeout` | `60s` | Quanto uma permissão já exposta espera antes de a ponte negar. |
+| `--init-timeout` | `30s` | Quanto o `initialize` pode ficar em silêncio. `0`, duração negativa ou valor que não é duração sai com código **2**. Um peer que nunca responde sai com **1** e `initialize timed out`. |
 | `--token-file` | nenhum | Arquivo de token, modo `0600`. Não combine com `ZERO_BRIDGE_TOKEN`. `SIGHUP` relê só esse arquivo. |
 | `--audit-log` | nenhum | Arquivo extra de auditoria, modo `0600`, só append. Um arquivo existente mais aberto é recusado. |
 | `--config` | nenhum | Arquivo de limites. A flag ganha, depois o ambiente, depois esse arquivo, depois o padrão. |

@@ -8,6 +8,8 @@ Review date: 2026-10-20. The rows are the methods this tree sends or handles. A 
 
 `Boot` sends `protocolVersion` 1 (`bridge/internal/server/server.go`). A successful `initialize` whose `protocolVersion` is not 1, or whose field is absent or not a whole number, stops the process before it listens. The message is `protocol mismatch: sent 1, received N` or `protocol mismatch: sent 1, received none`. It does not name the agent or a path, and it does not carry a secret, a prompt, or a session id. `TestProtocolMismatchExits` sets `ZB_FAKE_PROTOCOL` to `2` and to `omit`, requires exit 1, and fails if boot is still running after 2s. An `initialize` JSON-RPC error still returns `initialize: ...` and exits 1.
 
+`Boot` waits at most `--init-timeout` for the `initialize` answer. The default is 30s. `0`, a negative duration, or a value that is not a duration exits 2 with `init timeout must be greater than zero`. A peer that accepts stdio and never writes a response exits 1 with `initialize timed out`. That line does not name the agent or a path, and it does not carry a secret, a prompt, or a session id. The child is closed. `TestInitializeSilenceExits` sets `ZB_FAKE_SILENT_INIT=1` and `--init-timeout 1s`, requires that line, and fails if boot is still running after 3s or the child is still alive. A peer that answers `protocolVersion` 1 still boots inside the bound.
+
 `TestFramingAndCall` sends 1 and checks that the in-package fake answers 1.
 
 The hermetic suite uses `cmd/acpfake` (`bridge/internal/acptest`). With `ZB_FAKE_PROTOCOL` unset that fake answers `protocolVersion` 1 and `agentInfo` name `acptest`, version `0`. `omit` drops the field. Another integer is sent as that version.
@@ -18,7 +20,7 @@ The hermetic suite uses `cmd/acpfake` (`bridge/internal/acptest`). With `ZB_FAKE
 
 | Method | Direction | Handled in | Test |
 | --- | --- | --- | --- |
-| `initialize` | bridge to agent | `server.go` `Boot` | `TestFramingAndCall` |
+| `initialize` | bridge to agent | `server.go` `Boot` | `TestFramingAndCall`, `TestInitializeSilenceExits` |
 | `session/new` | bridge to agent | `server.go`, `openai_http.go` | `TestNewSessionForwardsAdditionalDirectories`, `TestOpenAIChatReachesAgentWithoutUsage` |
 | `session/load` | bridge to agent | `server.go` | `TestLoadReplayAndResume` |
 | `session/resume` | bridge to agent | `server.go` | `TestLoadReplayAndResume` |
