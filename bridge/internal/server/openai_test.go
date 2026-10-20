@@ -29,6 +29,60 @@ func httptestNew(method, path string) *http.Request {
 	return req
 }
 
+func TestOpenAIInvalidBearerIs401WithoutTheToken(t *testing.T) {
+	const wrong = "not-the-token-not-the-token-not-the-token"
+	const marker = "openai-bearer-prompt-marker"
+	capture := filepath.Join(t.TempDir(), "prompt")
+	_, base, stop := startConfigured(t, Config{
+		Token:             bearerToken,
+		LoginFailureDelay: -1,
+		ExtraEnv:          []string{"ZB_FAKE_CAPTURE_PROMPT=" + capture},
+	})
+	defer stop()
+	missing, err := http.Get(base + "/v1/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingBody, _ := io.ReadAll(missing.Body)
+	missing.Body.Close()
+	if missing.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("missing %d %s", missing.StatusCode, missingBody)
+	}
+	cases := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodGet, "/v1/models", ""},
+		{http.MethodPost, "/v1/chat/completions", `{"model":"zero","messages":[{"role":"user","content":"` + marker + `"}]}`},
+	}
+	for _, tc := range cases {
+		req, err := http.NewRequest(tc.method, base+tc.path, strings.NewReader(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+wrong)
+		if tc.body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != http.StatusUnauthorized || res.Header.Get("WWW-Authenticate") != "Bearer" {
+			t.Fatalf("%s %s %d %s", tc.method, tc.path, res.StatusCode, raw)
+		}
+		if string(raw) != string(missingBody) || strings.Contains(string(raw), wrong) || strings.Contains(string(raw), marker) {
+			t.Fatalf("body %s", raw)
+		}
+	}
+	if raw, err := os.ReadFile(capture); err == nil && strings.Contains(string(raw), marker) {
+		t.Fatal("prompt reached the agent")
+	}
+}
+
 func TestOpenAIRequiresTheV1Credential(t *testing.T) {
 	_, base, stop := startConfigured(t, Config{Token: bearerToken})
 	defer stop()
