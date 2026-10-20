@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -82,6 +83,46 @@ func TestOpenAIInvalidBearerIs401WithoutTheToken(t *testing.T) {
 	}
 	if raw, err := os.ReadFile(capture); err == nil && strings.Contains(string(raw), marker) {
 		t.Fatal("prompt reached the agent")
+	}
+}
+
+func TestOpenAIPromptStaysOutOfLogAndError(t *testing.T) {
+	const marker = "openai-log-prompt-marker"
+	var logs bytes.Buffer
+	_, base, stop := startConfigured(t, Config{
+		Logger:   log.New(&logs, "", 0),
+		ExtraEnv: []string{"ZB_FAKE_TURN_ERROR=1"},
+	})
+	stopped := false
+	end := func() {
+		if !stopped {
+			stopped = true
+			stop()
+		}
+	}
+	defer end()
+	for _, body := range []string{
+		`{"model":"zero","messages":[{"role":"user","content":"` + marker + `"}]}`,
+		`{"model":"zero","stream":true,"messages":[{"role":"user","content":"` + marker + `"}]}`,
+	} {
+		req, err := http.NewRequest(http.MethodPost, base+"/v1/chat/completions", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if strings.Contains(string(raw), marker) || !strings.Contains(string(raw), `"request failed"`) {
+			t.Fatalf("status %d %s", res.StatusCode, raw)
+		}
+	}
+	end()
+	if strings.Contains(logs.String(), marker) {
+		t.Fatalf("prompt in log %s", logs.String())
 	}
 }
 
