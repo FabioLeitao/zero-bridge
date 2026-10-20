@@ -29,7 +29,7 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S18 | designed | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Not built. |
 | S19 | done | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Merged in PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` spiked. Hermes and `dsh --profile acp`: not executed. |
 | S20 | done | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Merged in [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Gate timings on this host. |
-| S21 | done | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Built on `epic/s21-unix-socket`. Not merged. Unix socket. Named pipe not built. |
+| S21 | done for the Unix socket | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). The Unix socket is on this tree. A Windows named pipe is refused (`npipe:` exits 2) and is not implemented. |
 | S22 | designed | [#22](https://github.com/FabioLeitao/zero-bridge/issues/22). Not built. Optional PWA. |
 | S23a | designed | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24). Not built. Shell scaffold in `zero-bridge-desktop`. |
 | S23b | designed | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25). Not built. Tray, notifications, folder picker. |
@@ -571,7 +571,7 @@ The operator order (2026-10-14) is the sequence in the global rules: S20, merged
 - The parent directory is `0700` and owned by the user. The socket is `0600` with `os.Chmod` after bind. That parent is already private, so the interval before chmod is not open to another user. The process refuses a path that exists and is not a stale socket owned by the same user, removes only its own socket on shutdown, and does not follow a symlink.
 - On TCP, Host, Origin, token, and cookie rules stay. On the socket, `Host` is ignored. An Origin is accepted only from `--public-origin`. A request with no Origin is Bearer only. Linux refuses another uid with `SO_PEERCRED`. `GET /v1/info` reports `listen` as `unix` and omits the path.
 
-**Stop:** Do not bind a non-loopback address. Remote access stays on the S14 reverse proxy. Do not add a named pipe in this slice.
+**Stop:** Do not bind a non-loopback address. Remote access stays on the S14 reverse proxy. Do not add a named pipe in this slice. The issue title names a named pipe; the tree does not provide one.
 
 **Unlocks:** S23a can use the socket when it exists. S23a does not wait on it.
 

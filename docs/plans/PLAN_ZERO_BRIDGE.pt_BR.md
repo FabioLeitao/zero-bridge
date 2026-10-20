@@ -29,7 +29,7 @@ Português (espelho). Canônico em inglês: [PLAN_ZERO_BRIDGE.md](PLAN_ZERO_BRID
 | S18 | desenhada | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Não construída. |
 | S19 | feita | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Mergeada na PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` exercitado. Hermes e `dsh --profile acp`: não executados. |
 | S20 | feita | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Mergeada na [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Tempos do gate neste host. |
-| S21 | feita | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Construída em `epic/s21-unix-socket`. Não mergeada. Socket Unix. Named pipe não construído. |
+| S21 | feita no socket Unix | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). O socket Unix está nesta árvore. Named pipe do Windows é recusado (`npipe:` sai 2) e não está implementado. |
 | S22 | desenhada | [#22](https://github.com/FabioLeitao/zero-bridge/issues/22). Não construída. PWA opcional. |
 | S23a | desenhada | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24). Não construída. Esqueleto do shell em `zero-bridge-desktop`. |
 | S23b | desenhada | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25). Não construída. Bandeja, notificações e seletor de pasta. |
@@ -556,7 +556,7 @@ A ordem do operador (2026-10-14) é a sequência das regras globais: S20, mergea
 - O diretório pai é `0700` e pertence ao usuário. O socket fica `0600` com `os.Chmod` depois do bind. Esse pai já é privado, então o intervalo antes do chmod não fica aberto a outro usuário. O processo recusa um caminho que existe e não é um socket velho do mesmo usuário, remove no desligamento só o socket que ele criou e não segue um symlink.
 - No TCP, as regras de Host, Origin, token e cookie ficam. No socket, `Host` é ignorado. Um Origin só é aceito com `--public-origin`. Um pedido sem Origin exige Bearer. No Linux, outro uid é recusado com `SO_PEERCRED`. `GET /v1/info` informa `listen` como `unix` e omite o caminho.
 
-**Parada:** não escutar fora de loopback. O acesso remoto continua no proxy reverso da S14. Não acrescentar named pipe nesta fatia.
+**Parada:** não escutar fora de loopback. O acesso remoto continua no proxy reverso da S14. Não acrescentar named pipe nesta fatia. O título da issue nomeia um named pipe; a árvore não entrega um.
 
 **Destrava:** a S23a pode usar o socket quando ele existir. A S23a não espera por ele.
 

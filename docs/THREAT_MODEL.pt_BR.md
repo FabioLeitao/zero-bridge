@@ -91,7 +91,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 | Sem alvos de fuzz | `func Fuzz` ausente em `bridge/` | Listen, JSON-RPC, prompt, limites, redação |
 | Export de observabilidade | `internal/observability/export.go` | HTTPS por padrão. Texto puro exige `OTEL_EXPORTER_OTLP_INSECURE=true`. O payload é rota, método, status, método ACP e um flag de erro. Prompt, caminho, token e id de sessão são descartados. `bridge/obs` usa o mesmo opt-in |
 | O confinamento da imagem está no Compose, não na imagem | `docker-compose.yml` | `read_only`, `cap_drop: ALL` e `no-new-privileges` estão lá. `acpfake` não é copiado. Veja [CONTAINER.pt_BR.md](deploy/CONTAINER.pt_BR.md) |
-| Named pipe | string de erro de `ResolveListen` | A issue 21 está fechada com named pipe no título |
+| Named pipe | `npipe:` sai 2 em `listen.go` | Não está implementado. O título da issue 21 nomeia um named pipe; a árvore recusa |
 | Ingress OpenAI | ausente | Issue 34. Tratar como fronteira futura, não como controle presente |
 | Teto de frame ACP no upstream | PR 944 do Twigpine/zero ainda aberta em 2026-10-19 | Issue 9. A ponte não limita os frames do filho |
 | Data de status do plano | `docs/plans/PLAN_ZERO_BRIDGE.md` diz 2026-10-15 e "S7 not built" | S7 a S10, S21 e S28 estão nesta árvore. A tabela do plano está velha |

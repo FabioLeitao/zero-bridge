@@ -91,7 +91,7 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 | No fuzz targets | `func Fuzz` absent under `bridge/` | Listen, JSON-RPC, prompt, limits, redact |
 | Observability export | `internal/observability/export.go` | HTTPS by default. Plaintext needs `OTEL_EXPORTER_OTLP_INSECURE=true`. The payload is route, method, status, ACP method, and an error flag. A prompt, a path, a token, and a session id are dropped. `bridge/obs` uses the same opt-in |
 | Image confinement is compose, not the image | `docker-compose.yml` | `read_only`, `cap_drop: ALL`, and `no-new-privileges` are set there. `acpfake` is not copied. See [CONTAINER.md](deploy/CONTAINER.md) |
-| Named pipe | `ResolveListen` error string | Issue 21 is closed with named pipe in the title |
+| Named pipe | `npipe:` exits 2 in `listen.go` | Not implemented. Issue 21's title names a named pipe; the tree refuses it |
 | OpenAI ingress | absent | Issue 34. Treat as a future boundary, not a present control |
 | Upstream ACP frame cap | Twigpine/zero PR 944 still open on 2026-10-19 | Issue 9. The bridge does not cap the child's frames |
 | Plan status date | `docs/plans/PLAN_ZERO_BRIDGE.md` says 2026-10-15 and "S7 not built" | S7 through S10, S21, and S28 are on this tree. The plan table is stale |
