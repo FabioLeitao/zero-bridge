@@ -20,6 +20,7 @@ func Main() {
 
 var nextSessionID atomic.Int64
 var nextPermID atomic.Int64
+var promptHoldDone atomic.Bool
 
 func runAgent(r io.Reader, w io.Writer) {
 	if os.Getenv("ZB_FAKE_SILENT_INIT") == "1" {
@@ -178,6 +179,12 @@ func runAgent(r io.Reader, w io.Writer) {
 			}
 			if os.Getenv("ZB_FAKE_TURN_ERROR") == "1" {
 				writeErr(w, env.ID, -32603, "turn failed")
+				continue
+			}
+			if os.Getenv("ZB_FAKE_HOLD_PROMPT") == "1" && !promptHoldDone.Load() {
+				if holdPrompt(src, w, sid, env.ID) {
+					promptHoldDone.Store(true)
+				}
 				continue
 			}
 			if os.Getenv("ZB_FAKE_HOLD_PERMISSION") == "1" {
@@ -519,6 +526,35 @@ func richPrompt(r nlReader, w io.Writer, sid string, id json.RawMessage) {
 		},
 	})
 	writeResp(w, id, map[string]any{"stopReason": "end_turn"})
+}
+
+// holdPrompt answers session/prompt only after a session/cancel notification
+// for the same session. The next prompt in this process is a normal turn.
+func holdPrompt(r *lineSrc, w io.Writer, sessionID string, id json.RawMessage) bool {
+	if path := os.Getenv("ZB_FAKE_HOLD_READY"); path != "" {
+		_ = os.WriteFile(path, []byte("1\n"), 0o600)
+	}
+	for {
+		line, err := r.ReadBytes('\n')
+		if err != nil {
+			return false
+		}
+		var msg struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Params struct {
+				SessionID string `json:"sessionId"`
+			} `json:"params"`
+		}
+		if json.Unmarshal(line, &msg) != nil || msg.Method != "session/cancel" || len(msg.ID) != 0 {
+			continue
+		}
+		if msg.Params.SessionID != sessionID {
+			continue
+		}
+		writeResp(w, id, map[string]any{"stopReason": "cancelled"})
+		return true
+	}
 }
 
 func holdPermission(w io.Writer, sessionID string) {

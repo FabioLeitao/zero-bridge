@@ -343,6 +343,17 @@ func protocolNumber(v any) (int, bool) {
 	return int(n), true
 }
 
+// cancelPrompt tells the agent to stop the running turn. The prompt call
+// stays open until the agent answers it. OpenAI disconnect only cancels the
+// HTTP request context; it does not send this notification.
+func (s *Server) cancelPrompt(sessionID string) error {
+	c, err := s.acpClient()
+	if err != nil {
+		return err
+	}
+	return c.Notify("session/cancel", map[string]string{"sessionId": sessionID})
+}
+
 func (s *Server) acpClient() (*acpclient.Client, error) {
 	s.acpMu.RLock()
 	c := s.acp
