@@ -44,6 +44,8 @@ type Config struct {
 	SubQueueDepth     int
 	Keepalive         time.Duration
 	PermissionTimeout time.Duration
+	// InitTimeout bounds the initialize call. Zero uses defaultInitTimeout.
+	InitTimeout       time.Duration
 	Logger            *log.Logger
 	Audit             auth.Sink
 	Token             string
@@ -124,6 +126,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.Keepalive <= 0 {
 		cfg.Keepalive = 15 * time.Second
+	}
+	if cfg.InitTimeout <= 0 {
+		cfg.InitTimeout = defaultInitTimeout
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = log.New(io.Discard, "", 0)
@@ -252,6 +257,10 @@ func (s *Server) childExtra() []string {
 // acpProtocolVersion is the only initialize protocolVersion this process accepts.
 const acpProtocolVersion = 1
 
+// defaultInitTimeout is how long Boot waits for initialize when the
+// caller did not set InitTimeout. A silent peer fails inside this bound.
+const defaultInitTimeout = 30 * time.Second
+
 // Boot starts the agent child and performs initialize.
 // A successful initialize whose protocolVersion is not acpProtocolVersion, or
 // whose field is absent or not a whole number, is a mismatch. The error names
@@ -285,8 +294,14 @@ func (s *Server) Boot(ctx context.Context) error {
 		"clientInfo": map[string]string{"name": "zero-bridge", "version": "0"},
 	}
 	var initRes map[string]any
-	if err := s.acpCall(ctx, "initialize", initParams, &initRes); err != nil {
+	initCtx, initCancel := context.WithTimeout(ctx, s.cfg.InitTimeout)
+	err = s.acpCall(initCtx, "initialize", initParams, &initRes)
+	initCancel()
+	if err != nil {
 		_ = client.Close()
+		if errors.Is(err, context.DeadlineExceeded) {
+			return errors.New("initialize timed out")
+		}
 		return fmt.Errorf("initialize: %w", err)
 	}
 	if err := protocolVersionError(initRes, acpProtocolVersion); err != nil {

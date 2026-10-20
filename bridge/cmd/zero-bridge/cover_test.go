@@ -13,7 +13,7 @@ import (
 func TestParseCLIMissingValuesAndBadNumbers(t *testing.T) {
 	flags := []string{
 		"--listen", "--workspace-root", "--state-dir", "--workspace",
-		"--permission-timeout", "--allowed-host", "--public-origin",
+		"--permission-timeout", "--init-timeout", "--allowed-host", "--public-origin",
 		"--token-file", "--audit-log", "--config", "--otlp-endpoint",
 		"--otel-service", "--otel-sample", "--session-ttl", "--agent-cmd",
 		"--agent-arg", "--profile", "--zero-bin",
@@ -41,8 +41,12 @@ func TestParseCLIMissingValuesAndBadNumbers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.permTimeout.String() != "2s" || cfg.otelSample != 0.25 || !cfg.trustProxy {
+	if cfg.permTimeout.String() != "2s" || cfg.otelSample != 0.25 || !cfg.trustProxy || cfg.initTimeout.String() != "30s" {
 		t.Fatalf("cfg %+v", cfg)
+	}
+	short, err := parseCLI([]string{"--agent-cmd", "/bin/true", "--init-timeout", "1s"}, &bytes.Buffer{})
+	if err != nil || short.initTimeout.String() != "1s" {
+		t.Fatalf("init timeout %+v %v", short.initTimeout, err)
 	}
 	if _, err := parseCLI([]string{"--zero-bin", "/bin/true", "--agent-cmd", "/bin/true"}, &bytes.Buffer{}); err == nil {
 		t.Fatal("combined launchers accepted")
