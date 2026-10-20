@@ -54,7 +54,18 @@ O nome e a versão do agente, e os nomes e as descrições dos modos, vêm do ag
 - As respostas não mandam `Access-Control-Allow-Origin`.
 - Uma permissão só é allow quando o agente ofereceu `allow_once` com option id `allow`. Qualquer outro allow vira deny efetivo. Timeout, abort e stop negam. Não viram allow.
 - A página insere texto do modelo e das tools só com `textContent` e `createTextNode`.
-- Sem token, o uso em loopback continua aberto a qualquer processo do mesmo usuário que alcance a porta. `--token-file` (ou `ZERO_BRIDGE_TOKEN`) protege `/v1/*`. Acesso externo é um proxy reverso mais esse token. A ponte continua recusando `--listen` fora de loopback. Guia: [docs/deploy/CADDY.pt_BR.md](docs/deploy/CADDY.pt_BR.md).
+- Sem token, o TCP em loopback continua aberto a qualquer usuário local que alcance a porta, inclusive `POST /a2a/message/send` e `POST /v1/chat/completions`. A subida imprime esse aviso. A autorização não muda: token vazio ainda aceita o pedido. O socket Unix continua descartando outro uid e não imprime o aviso de TCP. `--token-file` (ou `ZERO_BRIDGE_TOKEN`) protege `/v1/*` e as rotas A2A. Acesso externo é um proxy reverso mais esse token. A ponte continua recusando `--listen` fora de loopback. Guia: [docs/deploy/CADDY.pt_BR.md](docs/deploy/CADDY.pt_BR.md).
+- `GET /v1/models` e `POST /v1/chat/completions` usam essa mesma credencial quando há token. Cada pedido de chat abre uma sessão ACP nova e a descarta, inclusive em erro e desconexão. Uma falha de stream depois dos headers é um frame SSE de erro e `data: [DONE]`. Origin estrangeiro em `GET /v1/models` é **403**. OPTIONS não manda cabeçalho CORS permissivo.
+
+| Issue | Commit | Mudança |
+| --- | --- | --- |
+| 50 | `edd9df7` | Testes do ingress A2A |
+| 51 | `b7f59bf`, `61e0a6a` | Alvos de fuzz, inclusive o corpo OpenAI e o encoder SSE |
+| 52 | `912c355` | Export OTLP sobre TLS, com prompts fora do payload |
+| 53 | `83e57ba` | A imagem deixa de copiar acpfake e checa a saúde sem wget |
+| 54 | `193149a` | O named pipe é recusado, não entregue |
+| 55 | `4799ea2` | TCP sem token avisa e ainda aceita o pedido |
+| 56 | `49d0711` | SBOM CycloneDX do binário da ponte |
 
 ```bash
 curl --unix-socket "${XDG_RUNTIME_DIR}/zero-bridge/bridge.sock" \

@@ -42,7 +42,9 @@ If the proxy forwards the port in `Host` (`bridge.example:443`), the allowlist e
 
 ## What the token guards
 
-With a token set, `/v1/*` and the UI actions need `Authorization: Bearer <token>` or a login cookie. `GET /health` stays public and its body is only `{"ok":true}`. `GET /`, `/app.js`, and `/style.css` stay public. `POST /v1/login` and `GET /v1/auth/status` are the other exceptions.
+With no token, TCP loopback stays open to any local user who can open the port, including `POST /a2a/message/send` and `POST /v1/chat/completions`. The process prints that warning at startup and still accepts the request. A Unix socket does not print the TCP warning.
+
+With a token set, `/v1/*`, the A2A routes, and the UI actions need `Authorization: Bearer <token>` or a login cookie. `GET /health` stays public and its body is only `{"ok":true}`. `GET /`, `/app.js`, and `/style.css` stay public. `POST /v1/login` and `GET /v1/auth/status` are the other exceptions.
 
 `POST /v1/login` with `{"token":"<secret>"}` sets `zb_session` (`HttpOnly; SameSite=Strict; Path=/`). `Max-Age` matches `--session-ttl` (12h, so 43200, unless that flag changes). `Secure` is set only when `--trust-proxy` is on and `X-Forwarded-Proto` is `https`. Sessions live in memory; a restart drops them. `POST /v1/logout` clears the current cookie. `POST /v1/logout-all` clears every cookie and leaves the bearer token valid. `GET /v1/auth/sessions` lists a public handle, created time, last use, and expiry. `DELETE /v1/auth/sessions/{handle}` revokes one session. The handle is not the cookie and is not a prefix of it. A cookie-authenticated POST or DELETE needs an `Origin` that is present and allowed. A Bearer request does not.
 

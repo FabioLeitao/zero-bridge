@@ -41,6 +41,9 @@ if ((${#go_files[@]})); then
 		bridge/*.go)
 			rel=${f#bridge/}
 			dir=$(dirname "$rel")
+			if [[ -f "$root/bridge/$dir/go.mod" ]]; then
+				continue
+			fi
 			if [[ "$dir" == "." ]]; then
 				pkgs+=("./")
 			else

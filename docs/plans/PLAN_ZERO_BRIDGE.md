@@ -2,7 +2,7 @@
 
 English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BRIDGE.pt_BR.md).
 
-**Status** (2026-10-15). States: done, done upstream, in progress, designed, blocked-external, following.
+**Status** (2026-10-19). States: done, done upstream, in progress, designed, blocked-external, following.
 
 | ID | State | Evidence |
 | --- | --- | --- |
@@ -14,31 +14,31 @@ English (canonical). Portuguese mirror: [PLAN_ZERO_BRIDGE.pt_BR.md](PLAN_ZERO_BR
 | S5b | done | [evidence/S5b-e2e-transcript.txt](evidence/S5b-e2e-transcript.txt) `fd15ee0` |
 | S6 | done | [evidence/S6-sessions-transcript.txt](evidence/S6-sessions-transcript.txt) `de548a1` |
 | S6b | done | [#2](https://github.com/FabioLeitao/zero-bridge/issues/2). Merged in [PR #35](https://github.com/FabioLeitao/zero-bridge/pull/35). |
-| S7 | designed | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3). Proxy decision below. Not built. |
-| S8 | designed | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4). Not built. |
-| S9 | designed | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5). Not built. |
-| S10 | designed | [#6](https://github.com/FabioLeitao/zero-bridge/issues/6). Not built. |
-| S11 | done upstream | [#7](https://github.com/FabioLeitao/zero-bridge/issues/7). Upstream [#1125](https://github.com/Twigpine/zero/issues/1125) is closed by merged [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). |
-| S12 | designed | [#8](https://github.com/FabioLeitao/zero-bridge/issues/8). Not built. |
-| S13 | following | [#9](https://github.com/FabioLeitao/zero-bridge/issues/9). [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944). |
+| S7 | done | [#3](https://github.com/FabioLeitao/zero-bridge/issues/3) closed. `GET /.well-known/agent-card.json` and `POST /a2a/message/send` are in `bridge/internal/server`. |
+| S8 | done | [#4](https://github.com/FabioLeitao/zero-bridge/issues/4) closed. On `origin/main`. |
+| S9 | done | [#5](https://github.com/FabioLeitao/zero-bridge/issues/5) closed. On `origin/main`. |
+| S10 | done | [#6](https://github.com/FabioLeitao/zero-bridge/issues/6) closed. On `origin/main`. |
+| S11 | done upstream | [#7](https://github.com/FabioLeitao/zero-bridge/issues/7) still open. Upstream [#1125](https://github.com/Twigpine/zero/issues/1125) is closed by merged [Twigpine/zero#1134](https://github.com/Twigpine/zero/pull/1134). |
+| S12 | designed | [#8](https://github.com/FabioLeitao/zero-bridge/issues/8) still open. Not built. |
+| S13 | following | [#9](https://github.com/FabioLeitao/zero-bridge/issues/9). [Twigpine/zero#944](https://github.com/Twigpine/zero/pull/944) still open. |
 | S14 | done | [#1](https://github.com/FabioLeitao/zero-bridge/issues/1). [evidence/S14-proxy-transcript.txt](evidence/S14-proxy-transcript.txt). Merged in PR #16. |
 | S14b | done | [#11](https://github.com/FabioLeitao/zero-bridge/issues/11) closed. Merged in [PR #18](https://github.com/FabioLeitao/zero-bridge/pull/18). [evidence/S14b-auth-transcript.txt](evidence/S14b-auth-transcript.txt). `fb24d4b` `085110b` `daefb32` `4940aad` `d49cf81` `d63bd0d`. |
-| S15 | designed | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10). Not built. |
-| S16 | designed | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12). Not built. |
+| S15 | designed | [#10](https://github.com/FabioLeitao/zero-bridge/issues/10) still open. The repository is already public under MIT. |
+| S16 | done for the exporter | [#12](https://github.com/FabioLeitao/zero-bridge/issues/12) closed. This tree exports allowlisted fields over TLS. The Grafana stack in the slice text is not what the process runs. |
 | S17 | done | [#13](https://github.com/FabioLeitao/zero-bridge/issues/13). `make check` is the definition of done. Merged in PR #16. |
-| S18 | designed | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14). Not built. |
+| S18 | done | [#14](https://github.com/FabioLeitao/zero-bridge/issues/14) closed. On `origin/main`. |
 | S19 | done | [#15](https://github.com/FabioLeitao/zero-bridge/issues/15). Merged in PR #20. [evidence/S19-spike-transcript.txt](evidence/S19-spike-transcript.txt). `zero acp` spiked. Hermes and `dsh --profile acp`: not executed. |
 | S20 | done | [#19](https://github.com/FabioLeitao/zero-bridge/issues/19). Merged in [PR #33](https://github.com/FabioLeitao/zero-bridge/pull/33). [evidence/S20-gate-speed.txt](evidence/S20-gate-speed.txt). Gate timings on this host. |
-| S21 | done | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). Built on `epic/s21-unix-socket`. Not merged. Unix socket. Named pipe not built. |
+| S21 | done for the Unix socket | [#21](https://github.com/FabioLeitao/zero-bridge/issues/21). The Unix socket is on this tree. A Windows named pipe is refused (`npipe:` exits 2) and is not implemented. |
 | S22 | designed | [#22](https://github.com/FabioLeitao/zero-bridge/issues/22). Not built. Optional PWA. |
-| S23a | designed | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24). Not built. Shell scaffold in `zero-bridge-desktop`. |
-| S23b | designed | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25). Not built. Tray, notifications, folder picker. |
-| S23c | designed | [#26](https://github.com/FabioLeitao/zero-bridge/issues/26). Not built. Desktop e2e and Linux packages. |
-| S24 | designed | [#27](https://github.com/FabioLeitao/zero-bridge/issues/27). Not built. Model picker. |
-| S25 | designed | [#28](https://github.com/FabioLeitao/zero-bridge/issues/28). Not built. Image attachment. |
-| S26 | designed | [#29](https://github.com/FabioLeitao/zero-bridge/issues/29). Not built. Suggestion cards and mode chip. |
-| S27 | designed | [#31](https://github.com/FabioLeitao/zero-bridge/issues/31). Not built. Reduce-only mode routing. |
-| S28 | done | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32). Built on `epic/s28-session-status`. Not merged. Session status from ACP traffic. |
+| S23a | in progress in the desktop repo | [#24](https://github.com/FabioLeitao/zero-bridge/issues/24) still open. Scaffold read at desktop `0dec4f3`. This repo did not run the desktop gate. |
+| S23b | in progress in the desktop repo | [#25](https://github.com/FabioLeitao/zero-bridge/issues/25) still open. Tray, notifications, and the folder picker are in that tree. Desktop gate not run here. |
+| S23c | done in the desktop issue | [#26](https://github.com/FabioLeitao/zero-bridge/issues/26) closed. The package step was not re-gated from this repo. |
+| S24 | done | [#27](https://github.com/FabioLeitao/zero-bridge/issues/27) closed. On `origin/main`. |
+| S25 | done | [#28](https://github.com/FabioLeitao/zero-bridge/issues/28) closed. On `origin/main`. |
+| S26 | done | [#29](https://github.com/FabioLeitao/zero-bridge/issues/29) closed. On `origin/main`. |
+| S27 | done | [#31](https://github.com/FabioLeitao/zero-bridge/issues/31) closed. On `origin/main`. |
+| S28 | done | [#32](https://github.com/FabioLeitao/zero-bridge/issues/32) closed. Session status from ACP traffic is on `origin/main`. |
 
 **Name.** The repository stays `zero-bridge`. The expansion may change in this doc: **Z.E.R.O. = Zero-lock-in Edge for Remote Operation**. Other readings: Zero-lock-in Endpoint, Relay & Origin-checks; Zero-exposure Edge, Relay & Observe. Gitlawb's Zero is the recommended reference harness, not a dependency of the design. This project is not affiliated with or endorsed by Gitlawb or Twigpine.
 
@@ -571,7 +571,7 @@ The operator order (2026-10-14) is the sequence in the global rules: S20, merged
 - The parent directory is `0700` and owned by the user. The socket is `0600` with `os.Chmod` after bind. That parent is already private, so the interval before chmod is not open to another user. The process refuses a path that exists and is not a stale socket owned by the same user, removes only its own socket on shutdown, and does not follow a symlink.
 - On TCP, Host, Origin, token, and cookie rules stay. On the socket, `Host` is ignored. An Origin is accepted only from `--public-origin`. A request with no Origin is Bearer only. Linux refuses another uid with `SO_PEERCRED`. `GET /v1/info` reports `listen` as `unix` and omits the path.
 
-**Stop:** Do not bind a non-loopback address. Remote access stays on the S14 reverse proxy. Do not add a named pipe in this slice.
+**Stop:** Do not bind a non-loopback address. Remote access stays on the S14 reverse proxy. Do not add a named pipe in this slice. The issue title names a named pipe; the tree does not provide one.
 
 **Unlocks:** S23a can use the socket when it exists. S23a does not wait on it.
 

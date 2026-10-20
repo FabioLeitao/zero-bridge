@@ -27,7 +27,7 @@ services:
     image: zero-bridge:dev
     container_name: zero-bridge
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile
       args:
         VERSION: "dev"
@@ -48,8 +48,9 @@ services:
       - ${EXTRA_PATH:-/HOST_PATH_TO_EXTRA}:/extra:ro
     environment:
       - ZERO_BRIDGE_TOKEN_FILE=/var/lib/zerobridge/.local/state/zero-bridge/token.txt
-      # Telemetry (S16) - optional
+      # Telemetry. The collector in this file speaks HTTP, so plaintext export is explicit.
       - OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_INSECURE=true
       - OTEL_SERVICE_NAME=zero-bridge
       - OTEL_SAMPLE=0.1
     security_opt:

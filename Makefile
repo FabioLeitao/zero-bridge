@@ -19,14 +19,14 @@ TOOL_GO_TOOLCHAIN := go1.26.9
 GO_FILES := $(shell git -C $(ROOT) ls-files 'bridge/*.go' 'bridge/**/*.go')
 
 .DEFAULT_GOAL := help
-.PHONY: help fmt fmt-check vet build test test-quick lint-static deadcode vulncheck tidy-check diff-check hygiene hooks e2e mutate check check-advisory
+.PHONY: help fmt fmt-check vet build test test-quick lint-static deadcode vulncheck tidy-check diff-check hygiene hooks e2e mutate sbom check check-advisory
 
 lint-static deadcode vulncheck: export GOTOOLCHAIN = $(TOOL_GO_TOOLCHAIN)
 lint-static deadcode vulncheck: export GOWORK = off
 
 help:
 	@echo "Pinned: deadcode $(DEADCODE_VERSION), golangci-lint $(GOLANGCI_LINT_VERSION), govulncheck $(GOVULNCHECK_VERSION); analyzer toolchain $(TOOL_GO_TOOLCHAIN); go.mod language $(GO_VERSION)"
-	@echo "Targets: fmt, fmt-check, vet, build, test, test-quick, lint-static, deadcode, vulncheck, tidy-check, diff-check, hygiene, hooks, e2e, mutate, check, check-advisory"
+	@echo "Targets: fmt, fmt-check, vet, build, test, test-quick, lint-static, deadcode, vulncheck, tidy-check, diff-check, hygiene, hooks, e2e, mutate, sbom, check, check-advisory"
 	@echo "hooks installs .githooks for this clone. A fresh clone does not do that. Skipping the hooks is forbidden."
 	@echo "e2e starts its own bridge on a free port. mutate is the slow pre-PR layer, not pre-commit."
 	@echo "check-advisory is deadcode only. It is not part of check: -test=false reports test-only helpers."
@@ -40,12 +40,14 @@ fmt-check:
 
 vet:
 	cd $(BRIDGE) && go vet ./...
+	cd $(BRIDGE)/obs && go vet ./...
 
 build:
 	cd $(BRIDGE) && go build ./...
 
 test:
 	umask 022 && cd $(BRIDGE) && go test ./... -race -count=1 -timeout 200s
+	umask 022 && cd $(BRIDGE)/obs && go test ./... -count=1 -timeout 60s
 
 test-quick:
 	cd $(BRIDGE) && go test ./... -count=1
@@ -58,10 +60,12 @@ deadcode:
 
 vulncheck:
 	cd $(BRIDGE) && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+	cd $(BRIDGE)/obs && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 # Go 1.23+: -diff exits non-zero when tidy would edit, and it does not write.
 tidy-check:
 	cd $(BRIDGE) && go mod tidy -diff
+	cd $(BRIDGE)/obs && go mod tidy -diff
 
 diff-check:
 	git -C $(ROOT) diff HEAD --check
@@ -74,6 +78,10 @@ hygiene:
 # or E2E_OPTIONAL=1 to skip when those are missing.
 e2e:
 	bash $(ROOT)/scripts/e2e.sh
+
+# Not part of check. Writes bridge/zero-bridge.cdx.json.
+sbom:
+	python3 $(ROOT)/scripts/sbom.py --root $(ROOT) --out $(ROOT)/bridge/zero-bridge.cdx.json
 
 # Slow pre-PR layer. Not part of check or pre-commit.
 mutate:

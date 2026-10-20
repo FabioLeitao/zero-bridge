@@ -4,7 +4,10 @@ package observability
 // The concrete implementation lives in bridge/obs (separate go.mod with OTel SDK).
 // The core only depends on this interface; the zero implementation is a no-op.
 
-import "context"
+import (
+	"context"
+	"strconv"
+)
 
 type Observer interface {
 	// StartSpan starts a span for the given operation.
@@ -126,13 +129,13 @@ func RecordHTTPMetric(route, method string, status int, duration float64) {
 		WithMetricAttributes(map[string]string{
 			"http.route":  route,
 			"http.method": method,
-			"http.status": string(rune(status)),
+			"http.status": strconv.Itoa(status),
 		}))
 	Global.RecordMetric("http.request.count", 1,
 		WithMetricAttributes(map[string]string{
 			"http.route":  route,
 			"http.method": method,
-			"http.status": string(rune(status)),
+			"http.status": strconv.Itoa(status),
 		}))
 }
 

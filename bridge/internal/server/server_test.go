@@ -1627,7 +1627,14 @@ func TestBearerAuth(t *testing.T) {
 		},
 		Logger: log.New(&logs, "", 0),
 	})
-	defer cleanup()
+	stopped := false
+	stop := func() {
+		if !stopped {
+			stopped = true
+			cleanup()
+		}
+	}
+	defer stop()
 	res, err := http.Get(base + "/v1/info")
 	if err != nil {
 		t.Fatal(err)
@@ -1700,6 +1707,7 @@ func TestBearerAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	q.Body.Close()
+	stop()
 	if strings.Contains(logs.String(), bearerToken) {
 		t.Fatal("token appeared in the log")
 	}

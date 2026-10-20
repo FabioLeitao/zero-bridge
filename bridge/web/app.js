@@ -507,6 +507,16 @@ imageInputEl.addEventListener("change", function () {
   readImagesFromInput(imageInputEl);
 });
 
+async function loadCapabilities() {
+  const res = await api("/v1/capabilities");
+  if (!res.ok) {
+    note(ui.capsFailed);
+    return;
+  }
+  caps = await res.json();
+  applyCapabilities();
+}
+
 function clearSessionList() {
   listGen += 1;
   sessionCursor = "";
