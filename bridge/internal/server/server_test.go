@@ -1256,6 +1256,7 @@ func TestV1RoutesRequireCredential(t *testing.T) {
 		{http.MethodGet, "/v1/sessions"},
 		{http.MethodPost, "/v1/sessions"},
 		{http.MethodPost, "/v1/sessions/s1/prompt"},
+		{http.MethodPost, "/v1/sessions/s1/cancel"},
 		{http.MethodGet, "/v1/sessions/s1/events"},
 		{http.MethodGet, "/v1/sessions/s1/permissions/pending"},
 		{http.MethodPost, "/v1/sessions/s1/permissions/r1"},
