@@ -55,6 +55,17 @@ The agent name, version, and mode names and descriptions come from the agent. Th
 - A permission is allowed only when the agent offered `allow_once` with option id `allow`. Any other allow choice is an effective deny. Timeout, abort, and stop deny. They never become an allow.
 - The page inserts model and tool text with `textContent` and `createTextNode` only.
 - Without a token, TCP loopback stays open to any local user who can open the port, including `POST /a2a/message/send` and `POST /v1/chat/completions`. Startup prints that warning. Authorization does not change: an empty token still allows the request. A Unix socket still drops another uid and does not print the TCP warning. `--token-file` (or `ZERO_BRIDGE_TOKEN`) guards `/v1/*` and the A2A routes. External access is a reverse proxy plus that token. The bridge still refuses a non-loopback `--listen`. Guide: [docs/deploy/CADDY.md](docs/deploy/CADDY.md).
+- `GET /v1/models` and `POST /v1/chat/completions` use that same credential when a token is set. Each chat request opens a new ACP session and discards it, including on error and disconnect. A stream failure after the headers is an SSE error frame and `data: [DONE]`. A foreign Origin on `GET /v1/models` is **403**. OPTIONS does not send a permissive CORS header.
+
+| Issue | Commit | Change |
+| --- | --- | --- |
+| 50 | `edd9df7` | Tests for the A2A ingress |
+| 51 | `b7f59bf`, `61e0a6a` | Fuzz targets, including the OpenAI body and the SSE encoder |
+| 52 | `912c355` | OTLP export over TLS, with prompts kept out of the payload |
+| 53 | `83e57ba` | The image drops acpfake and checks health without wget |
+| 54 | `193149a` | The named pipe is refused, not delivered |
+| 55 | `4799ea2` | TCP without a token warns and still allows the request |
+| 56 | `49d0711` | CycloneDX SBOM for the bridge binary |
 
 ```bash
 curl --unix-socket "${XDG_RUNTIME_DIR}/zero-bridge/bridge.sock" \

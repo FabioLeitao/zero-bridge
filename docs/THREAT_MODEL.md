@@ -88,13 +88,13 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 | --- | --- | --- |
 | No token on loopback TCP | `authorized` in `server.go` | Any local user who can open the port can call `message/send` and `/v1/*`. Startup warns. The request is still allowed |
 | A2A ingress | `bridge/internal/server/a2a_test.go` | Agent card, token, role, text parts, body cap, and the prompt reaching the fake agent |
-| Fuzz | `func Fuzz` under `bridge/` | Listen, login, prompt body, A2A, limit file, redact, workspace, ACP frames. Seeds are versioned. Not part of `make check` |
+| Fuzz | `func Fuzz` under `bridge/` | Listen, login, prompt body, A2A, limit file, redact, workspace, ACP frames, the OpenAI body, and the SSE encoder. Seeds are versioned. Not part of `make check` |
 | Observability export | `internal/observability/export.go` | HTTPS by default. Plaintext needs `OTEL_EXPORTER_OTLP_INSECURE=true`. The payload is route, method, status, ACP method, and an error flag. A prompt, a path, a token, and a session id are dropped. `bridge/obs` uses the same opt-in |
 | Image confinement is compose, not the image | `docker-compose.yml` | `read_only`, `cap_drop: ALL`, and `no-new-privileges` are set there. `acpfake` is not copied. See [CONTAINER.md](deploy/CONTAINER.md) |
 | Named pipe | `npipe:` exits 2 in `listen.go` | Not implemented. Issue 21's title names a named pipe; the tree refuses it |
 | OpenAI ingress | `bridge/internal/openai`, `bridge/internal/server/openai_http.go` | Issue 34. Each request opens an ACP session and discards it. Content-Type, Origin, Host, field rejection, and the in-flight caps are covered by `openai_test.go` |
 | Upstream ACP frame cap | Twigpine/zero PR 944 still open on 2026-10-19 | Issue 9. The bridge does not cap the child's frames |
-| Plan status date | `docs/plans/PLAN_ZERO_BRIDGE.md` status block is 2026-10-19 | S7 through S10, S16, S18, S21, and S24 through S28 match the closed issues. S29 is still absent |
+| Plan status date | `docs/plans/PLAN_ZERO_BRIDGE.md` status block is 2026-10-19 | S7 through S10, S16, S18, S21, and S24 through S28 match the closed issues. S29 is on this branch, issue 34 |
 
 ## OpenAI ingress contract
 
@@ -105,14 +105,37 @@ S29, issue 34. Review date 2026-10-20. These rows are the contract for the route
 | Routes | `GET /v1/models` and `POST /v1/chat/completions`, stream and not. Not in `isPublic`. Same credential as `/v1` when a token is set |
 | Empty token | Still allowed for a same-origin local caller. Startup warning on TCP also names `POST /v1/chat/completions` |
 | Content-Type | POST requires `application/json`. `text/plain`, `application/x-www-form-urlencoded`, `multipart/form-data`, and a missing type are rejected |
-| Origin and Host | Origin must be this listener or a configured public origin. Host must be loopback or an allowed host. A simple cross-origin POST without a token is 403 and no prompt reaches the agent |
+| Origin and Host | Origin must be this listener or a configured public origin. Host must be loopback or an allowed host. A simple cross-origin POST without a token is 403 and no prompt reaches the agent. `GET /v1/models` with a foreign Origin is 403. OPTIONS sends no permissive CORS header |
 | Unimplemented fields | `tools`, `tool_choice`, `functions`, `function_call`, `n` greater than 1, `logprobs`, `response_format`, and `audio` return 400 in the OpenAI error object |
 | `system` and `developer` | Conversation text. They do not change mode, permissions, roots, or bridge policy |
 | Stream and caps | Client disconnect cancels the ACP prompt and discards that request's session. Caps bound in-flight calls per credential and per process, message count, message bytes, and history bytes. Callers do not share an ACP session |
-| Errors and `usage` | OpenAI error object. No path, agent stderr, token, or session id. `usage` is omitted. Absent fields stay absent. No invented counts |
+| Errors and `usage` | OpenAI error object. No path, agent stderr, token, or session id. `usage` is omitted. Absent fields stay absent. No invented counts. A stream failure after the headers is one SSE error frame and `data: [DONE]` |
 | Permissions | Default inbound deny (`reject_once`). The existing broker is used only where it already is. Timeout denies. The body cannot approve a tool |
 | Model and leakage | Unknown model is 400. The prompt does not appear in logs, in an SSE event name, or in the OTLP payload. The stream URL has no session id |
 
+## Closed findings
+
+Review date 2026-10-20. Each row is closed in this branch.
+
+| Finding | Commit | Result |
+| --- | --- | --- |
+| Anonymous callers shared one ACP session | `e4bdaa5` | Each chat request calls `session/new`, prompts, and discards the session, including on error and disconnect |
+| A credential stopped at 32 prompts and the slot map could grow | `e4bdaa5` | The prompt cap and the slot map are gone. The 33rd request still runs. In-flight caps stay at 1 per credential and 4 per process |
+| A stream error wrote a second status and bare JSON | `e79811e` | The handler writes one SSE error frame and `data: [DONE]` |
+| Models origin and preflight were not locked by a test | `c7b4dd6` | A foreign Origin on `GET /v1/models` is 403. OPTIONS does not send a permissive CORS header |
+
+## Follow-up issues
+
+| Issue | Commit | Change |
+| --- | --- | --- |
+| 50 | `edd9df7` | Tests for the A2A ingress |
+| 51 | `b7f59bf`, `61e0a6a` | Fuzz targets, including the OpenAI body and the SSE encoder |
+| 52 | `912c355` | OTLP export over TLS, with prompts kept out of the payload |
+| 53 | `83e57ba` | The image drops acpfake and checks health without wget |
+| 54 | `193149a` | The named pipe is refused, not delivered |
+| 55 | `4799ea2` | TCP without a token warns and still allows the request |
+| 56 | `49d0711` | CycloneDX SBOM for the bridge binary |
+
 ## What this pass did not do
 
-No exploit was run. `make e2e` and `make mutate` were not run. The desktop repository was read only far enough to compare issues 23, 24, 25, and 26 with its tree. The container image was not built in this pass. The healthcheck contract is the `--healthcheck` flag, covered by a test that does not run Docker.
+No exploit was run. `make e2e` was not run. `make mutate` was run on the final tree and every mutant was killed. The desktop repository was read only far enough to compare issues 23, 24, 25, and 26 with its tree. The container image was not built in this pass. The healthcheck contract is the `--healthcheck` flag, covered by a test that does not run Docker.
