@@ -267,6 +267,75 @@ try {
   result.title = await evalJs("document.title");
   if (!booted) fail("session", "sessionId was not set");
 
+  async function exerciseStop() {
+    const labels = await evalJs(`(function () {
+      const prev = document.documentElement.lang;
+      document.documentElement.lang = "en";
+      promptLive = false;
+      paintComposer();
+      const send = document.getElementById("send").textContent;
+      promptLive = true;
+      paintComposer();
+      const stop = document.getElementById("send").textContent;
+      const aria = document.getElementById("send").getAttribute("aria-label");
+      promptLive = false;
+      document.documentElement.lang = "pt-BR";
+      paintComposer();
+      const pt = document.getElementById("send").textContent;
+      document.documentElement.lang = prev;
+      paintComposer();
+      return { send: send, stop: stop, aria: aria, pt: pt };
+    })()`);
+    result.labels = labels;
+    if (!labels || labels.send !== "Send" || labels.stop !== "Stop" || labels.aria !== "Stop" || labels.pt !== "Enviar") {
+      fail("labels", JSON.stringify(labels));
+    }
+    await evalJs(`(function () {
+      document.documentElement.lang = "pt-BR";
+      promptLive = false;
+      paintComposer();
+      document.getElementById("text").value = "hold-please";
+      document.getElementById("composer").requestSubmit();
+      return true;
+    })()`);
+    const stopping = await waitFor("document.getElementById('send').textContent === 'Parar' && document.getElementById('send').getAttribute('aria-label') === 'Parar'", 8000);
+    result.stopLabel = Boolean(stopping);
+    if (!stopping) fail("stop-label", await evalJs("document.getElementById('send').textContent"));
+    await evalJs("document.getElementById('send').click()");
+    const stopped = await waitFor("document.getElementById('log').textContent.indexOf('stop cancelled') >= 0 && document.getElementById('send').textContent === 'Enviar'", 8000);
+    result.stopped = Boolean(stopped);
+    if (!stopped) fail("stopped", await evalJs("document.getElementById('log').textContent"));
+    await evalJs(`(function () {
+      const orig = window.fetch;
+      window.__nextPromptSettled = false;
+      window.fetch = function (url, opts) {
+        const path = String(url);
+        const method = opts && opts.method ? String(opts.method).toUpperCase() : "GET";
+        const pending = orig.apply(this, arguments);
+        if (method !== "POST" || path.indexOf("/prompt") < 0) {
+          return pending;
+        }
+        return pending.then(function (res) {
+          return new Promise(function (resolve) {
+            window.setTimeout(function () {
+              window.__nextPromptSettled = true;
+              resolve(res);
+            }, 400);
+          });
+        });
+      };
+      document.getElementById("text").value = "next-please";
+      document.getElementById("composer").requestSubmit();
+      return true;
+    })()`);
+    const next = await waitFor("window.__nextPromptSettled === true && document.getElementById('log').textContent.indexOf('stop end_turn') >= 0 && document.getElementById('send').textContent === 'Enviar'", 8000);
+    result.nextPrompt = Boolean(next);
+    if (!next) fail("next-prompt", await evalJs("document.getElementById('log').textContent"));
+  }
+
+  if (process.env.ZB_E2E_STOP === "1") {
+    await exerciseStop();
+  } else {
   const sendPrompt = async (text) => {
     const ok = await evalJs(`(function () {
       const el = document.getElementById('text');
@@ -499,6 +568,7 @@ try {
 
   if (!e2eToken) {
     await scaleSessions(evalJs, waitFor);
+  }
   }
 
   ws.close();
