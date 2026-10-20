@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"zero-bridge/bridge/internal/openai"
 )
 
 func TestOpenAIRoutesAreNotPublic(t *testing.T) {
@@ -80,6 +82,31 @@ func TestOpenAIInvalidBearerIs401WithoutTheToken(t *testing.T) {
 	}
 	if raw, err := os.ReadFile(capture); err == nil && strings.Contains(string(raw), marker) {
 		t.Fatal("prompt reached the agent")
+	}
+}
+
+func TestOpenAIBodyOverLimitIs413(t *testing.T) {
+	const marker = "openai-oversize-prompt-marker"
+	capture := filepath.Join(t.TempDir(), "prompt")
+	_, base, stop := startConfigured(t, Config{ExtraEnv: []string{"ZB_FAKE_CAPTURE_PROMPT=" + capture}})
+	defer stop()
+	body := marker + strings.Repeat("a", openai.MaxBodyBytes)
+	req, err := http.NewRequest(http.MethodPost, base+"/v1/chat/completions", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusRequestEntityTooLarge || strings.Contains(string(raw), marker) || !strings.Contains(string(raw), "body too large") {
+		t.Fatalf("status %d %s", res.StatusCode, raw)
+	}
+	if got, err := os.ReadFile(capture); err == nil && strings.Contains(string(got), marker) {
+		t.Fatal("oversize body reached the agent")
 	}
 }
 

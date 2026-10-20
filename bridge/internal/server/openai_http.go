@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -74,6 +75,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, openai.MaxBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			openai.WriteError(w, &openai.Error{Status: http.StatusRequestEntityTooLarge, Type: "invalid_request_error", Code: "body_too_large", Message: "body too large"})
+			return
+		}
 		openai.WriteError(w, &openai.Error{Status: http.StatusBadRequest, Type: "invalid_request_error", Code: "invalid_body", Message: "invalid json"})
 		return
 	}
