@@ -53,6 +53,46 @@ func TestCancelRouteEndsHeldPrompt(t *testing.T) {
 	}
 }
 
+func TestCancelAnswersPendingPermission(t *testing.T) {
+	ready := filepath.Join(t.TempDir(), "ready")
+	outcome := filepath.Join(t.TempDir(), "outcome")
+	_, base, cleanup := startTestServer(t, []string{
+		"ZB_FAKE_HOLD_PROMPT=1",
+		"ZB_FAKE_HOLD_READY=" + ready,
+		"ZB_FAKE_CANCEL_PERM=1",
+		"ZB_FAKE_PERM_OUTCOME=" + outcome,
+	})
+	defer cleanup()
+	sid := createSession(t, base, t.TempDir())
+	postPromptAsync(base, sid, "hold")
+	waitFile(t, ready)
+	if waitPending(t, base, sid) == "" {
+		t.Fatal("permission did not become pending")
+	}
+	got := postCancel(t, base, sid, "", "")
+	if got.status != http.StatusOK {
+		t.Fatalf("cancel %#v", got)
+	}
+	text := waitFileText(t, outcome)
+	if !strings.Contains(text, `"outcome":"cancelled"`) || strings.Contains(text, "selected") {
+		t.Fatalf("outcome %q", text)
+	}
+}
+
+func waitFileText(t *testing.T, path string) string {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		b, err := os.ReadFile(path)
+		if err == nil && len(b) > 0 {
+			return string(b)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("outcome was not recorded")
+	return ""
+}
+
 func TestCancelRouteAuthAndDefinedStatus(t *testing.T) {
 	_, base, cleanup := startConfigured(t, Config{
 		Token:             bearerToken,

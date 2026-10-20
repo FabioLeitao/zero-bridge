@@ -530,10 +530,19 @@ func richPrompt(r nlReader, w io.Writer, sid string, id json.RawMessage) {
 
 // holdPrompt answers session/prompt only after a session/cancel notification
 // for the same session. The next prompt in this process is a normal turn.
+// ZB_FAKE_CANCEL_PERM=1 asks for a permission first and records the reply in
+// ZB_FAKE_PERM_OUTCOME.
 func holdPrompt(r *lineSrc, w io.Writer, sessionID string, id json.RawMessage) bool {
+	var permID int64
+	if os.Getenv("ZB_FAKE_CANCEL_PERM") == "1" {
+		permID = nextPermID.Add(1)
+		writePermRequest(w, permID, sessionID)
+	}
 	if path := os.Getenv("ZB_FAKE_HOLD_READY"); path != "" {
 		_ = os.WriteFile(path, []byte("1\n"), 0o600)
 	}
+	cancelled := false
+	gotPerm := permID == 0
 	for {
 		line, err := r.ReadBytes('\n')
 		if err != nil {
@@ -545,16 +554,51 @@ func holdPrompt(r *lineSrc, w io.Writer, sessionID string, id json.RawMessage) b
 			Params struct {
 				SessionID string `json:"sessionId"`
 			} `json:"params"`
+			Result json.RawMessage `json:"result"`
 		}
-		if json.Unmarshal(line, &msg) != nil || msg.Method != "session/cancel" || len(msg.ID) != 0 {
+		if json.Unmarshal(line, &msg) != nil {
 			continue
 		}
-		if msg.Params.SessionID != sessionID {
-			continue
+		if permID != 0 && len(msg.Result) > 0 && len(msg.ID) > 0 {
+			var got float64
+			if json.Unmarshal(msg.ID, &got) == nil && int64(got) == permID {
+				gotPerm = true
+				if path := os.Getenv("ZB_FAKE_PERM_OUTCOME"); path != "" {
+					_ = os.WriteFile(path, append(msg.Result, '\n'), 0o600)
+				}
+			}
 		}
-		writeResp(w, id, map[string]any{"stopReason": "cancelled"})
-		return true
+		if msg.Method == "session/cancel" && len(msg.ID) == 0 && msg.Params.SessionID == sessionID {
+			cancelled = true
+		}
+		if cancelled && gotPerm {
+			writeResp(w, id, map[string]any{"stopReason": "cancelled"})
+			return true
+		}
 	}
+}
+
+func writePermRequest(w io.Writer, id int64, sessionID string) {
+	req := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"method":  "session/request_permission",
+		"params": map[string]any{
+			"sessionId": sessionID,
+			"toolCall": map[string]any{
+				"toolCallId": "tc-perm",
+				"title":      "write",
+				"kind":       "edit",
+				"status":     "pending",
+			},
+			"options": []map[string]string{
+				{"optionId": "allow", "name": "Allow", "kind": "allow_once"},
+				{"optionId": "deny", "name": "Deny", "kind": "reject_once"},
+			},
+		},
+	}
+	b, _ := json.Marshal(req)
+	_, _ = w.Write(append(b, '\n'))
 }
 
 func holdPermission(w io.Writer, sessionID string) {

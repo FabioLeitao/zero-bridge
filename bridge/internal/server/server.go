@@ -347,6 +347,9 @@ func protocolNumber(v any) (int, bool) {
 // stays open until the agent answers it. OpenAI disconnect only cancels the
 // HTTP request context; it does not send this notification.
 func (s *Server) cancelPrompt(sessionID string) error {
+	if s.perms != nil {
+		s.perms.CancelSession(sessionID)
+	}
 	c, err := s.acpClient()
 	if err != nil {
 		return err

@@ -197,8 +197,17 @@ func (b *Broker) Pending(sessionID string) Pending {
 	}
 }
 
+// CancelSession answers every open permission for the session with outcome cancelled.
+func (b *Broker) CancelSession(sessionID string) {
+	b.finishSession(sessionID, "cancelled")
+}
+
 // AbortSession denies every open permission for the session.
 func (b *Broker) AbortSession(sessionID string) {
+	b.finishSession(sessionID, "aborted")
+}
+
+func (b *Broker) finishSession(sessionID, decision string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	st := b.sessions[sessionID]
@@ -206,11 +215,11 @@ func (b *Broker) AbortSession(sessionID string) {
 		return
 	}
 	if st.exposed != nil {
-		b.finishLocked(st.exposed, "aborted")
+		b.finishLocked(st.exposed, decision)
 		st.exposed = nil
 	}
 	for _, it := range st.queue {
-		b.finishLocked(it, "aborted")
+		b.finishLocked(it, decision)
 	}
 	st.queue = nil
 }
