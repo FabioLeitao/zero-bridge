@@ -6,9 +6,11 @@ Data da revisão: 2026-10-20. As linhas são os métodos que esta árvore envia 
 
 ## Versão do protocolo
 
-O `Boot` envia `protocolVersion` 1 (`bridge/internal/server/server.go`). O `TestFramingAndCall` envia 1 e confere que o fake do pacote responde 1.
+O `Boot` envia `protocolVersion` 1 (`bridge/internal/server/server.go`). Um `initialize` bem-sucedido cuja `protocolVersion` não é 1, ou cujo campo está ausente ou não é um inteiro, encerra o processo antes de escutar. A mensagem é `protocol mismatch: sent 1, received N` ou `protocol mismatch: sent 1, received none`. Ela não cita o agente nem um caminho, e não traz segredo, prompt nem id de sessão. O `TestProtocolMismatchExits` define `ZB_FAKE_PROTOCOL` como `2` e como `omit`, exige saída 1, e falha se a partida ainda estiver rodando depois de 2s. Um erro JSON-RPC de `initialize` continua devolvendo `initialize: ...` e saindo com 1.
 
-A suíte hermética usa `cmd/acpfake` (`bridge/internal/acptest`). Esse fake responde `protocolVersion` 1 e `agentInfo` com nome `acptest`, versão `0`.
+O `TestFramingAndCall` envia 1 e confere que o fake do pacote responde 1.
+
+A suíte hermética usa `cmd/acpfake` (`bridge/internal/acptest`). Com `ZB_FAKE_PROTOCOL` indefinida esse fake responde `protocolVersion` 1 e `agentInfo` com nome `acptest`, versão `0`. `omit` omite o campo. Outro inteiro é enviado como essa versão.
 
 O `TestAdditionalDirectoriesSpike` envia `protocolVersion` 1 ao binário `zero` no `PATH`. Ele pula quando esse binário falta, então o `make check` não o exige. Esta passada rodou o teste e ele passou. Neste host `zero --version` imprimiu `zero 0.10.0+up.6.ce2fcffa.databoar.fdd2aac9.rmodel.sbxcompanion`. O teste não registra essa string.
 
