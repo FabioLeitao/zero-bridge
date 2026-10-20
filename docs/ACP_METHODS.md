@@ -25,6 +25,7 @@ The hermetic suite uses `cmd/acpfake` (`bridge/internal/acptest`). With `ZB_FAKE
 | `session/load` | bridge to agent | `server.go` | `TestLoadReplayAndResume` |
 | `session/resume` | bridge to agent | `server.go` | `TestLoadReplayAndResume` |
 | `session/prompt` | bridge to agent | `server.go`, `openai_http.go` | `TestDirectPromptCall`, `TestA2APromptReachesAgent` |
+| `session/cancel` | bridge to agent, notification | `server.go` `cancelPrompt`, `app.js` | `TestCancelEndsHeldPrompt`, `TestCancelRouteEndsHeldPrompt`, `TestCancelAnswersPendingPermission` |
 | `session/list` | bridge to agent | `server.go`, `list.go` | `TestListSessions`, `TestListSearchArchiveAndPin` |
 | `session/set_mode` | bridge to agent | `server.go` | `TestSessionMode` |
 | `session/set_config_option` | bridge to agent | `server.go` `handleConfigOption` | lacuna. No test sends this method. |
@@ -43,4 +44,4 @@ When the bridge calls a method the fake does not implement, `bridge/internal/acp
 
 ## Not in this tree
 
-`session/cancel` is not sent and not handled. Disconnect cancels the prompt context. It does not call an ACP cancel method.
+Disconnect of an OpenAI request cancels that request's context. It does not send `session/cancel`.
