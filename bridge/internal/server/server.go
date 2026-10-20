@@ -107,6 +107,7 @@ type Server struct {
 	token          string
 	prevToken      string
 	reloadDone     chan struct{}
+	openai         openaiGate
 }
 
 // New builds a Server; call Boot before serving.
@@ -370,6 +371,9 @@ func (s *Server) Handler() http.Handler {
 	// A2A ingress (S7). With a token set, both routes use the same credential check as /v1.
 	mux.HandleFunc("GET /.well-known/agent-card.json", s.handleAgentCard)
 	mux.HandleFunc("POST /a2a/message/send", s.handleA2AMessageSend)
+	// OpenAI ingress (S29). Not public. Same credential as /v1 when a token is set.
+	mux.HandleFunc("GET /v1/models", s.handleModels)
+	mux.HandleFunc("POST /v1/chat/completions", s.handleChatCompletions)
 	mux.HandleFunc("POST /v1/sessions", s.handleNewSession)
 	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
 	mux.HandleFunc("POST /v1/sessions/{id}/meta", s.handleSessionMeta)
@@ -508,24 +512,24 @@ func (s *Server) withMiddleware(next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		writeSecurityHeaders(rec)
 		if !s.requestAllowed(r) {
-			s.writeJSON(rec, http.StatusForbidden, map[string]any{"error": "forbidden"})
+			s.writeRouteError(rec, r, http.StatusForbidden, "forbidden")
 			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusForbidden, time.Since(start))
 			return
 		}
 		if !s.cookieCSRF(r) {
-			s.writeJSON(rec, http.StatusForbidden, map[string]any{"error": "forbidden"})
+			s.writeRouteError(rec, r, http.StatusForbidden, "forbidden")
 			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusForbidden, time.Since(start))
 			return
 		}
 		if blocked, retry := s.bearerGate(r); blocked {
 			rec.Header().Set("Retry-After", strconv.Itoa(retry))
-			s.writeJSON(rec, http.StatusTooManyRequests, map[string]any{"error": "too many requests"})
+			s.writeRouteError(rec, r, http.StatusTooManyRequests, "too many requests")
 			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusTooManyRequests, time.Since(start))
 			return
 		}
 		if !s.authorized(r) {
 			rec.Header().Set("WWW-Authenticate", "Bearer")
-			s.writeJSON(rec, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+			s.writeRouteError(rec, r, http.StatusUnauthorized, "unauthorized")
 			s.cfg.Logger.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusUnauthorized, time.Since(start))
 			return
 		}

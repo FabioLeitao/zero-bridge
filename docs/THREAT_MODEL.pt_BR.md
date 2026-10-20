@@ -59,7 +59,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 - **Caminho fora do workspace.** `internal/workroot` checa o workspace e os diretórios extras. Verificado por `root_test.go` e pelos testes de sessão que recusam workspace relativo.
 - **Send A2A sem papel user, ou parte que não é texto.** O handler recusa. **Lacuna:** nenhum teste em `bridge/` chama o handler.
 - **Peer de plugin fora da allowlist.** Os testes de `a2a_discover` e `a2a_call` recusam host não configurado e `allowed: false`. Verificado em `plugin/a2a`.
-- **Cliente OpenAI apontado para a ponte.** O contrato é a seção seguinte. Um POST simples de outra origem, sem token, tem de ser 403 e não pode chegar ao agente. Mensagem `system` ou `developer` é texto da conversa.
+- **Cliente OpenAI apontado para a ponte.** Um POST simples de outra origem, sem token, é 403 e não chega ao agente (`TestOpenAICrossOriginSimplePostDoesNotReachAgent`). Mensagem `system` continua texto (`TestOpenAISystemMessageDoesNotRaisePrivilege`). O timeout do broker que já existe nega.
 - **Named pipe no Windows.** Recusado. Verificado pelos testes em `listen_test.go` e `cmd/zero-bridge/main_test.go`.
 
 ## Mitigações que já estão na árvore
@@ -92,7 +92,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 | Export de observabilidade | `internal/observability/export.go` | HTTPS por padrão. Texto puro exige `OTEL_EXPORTER_OTLP_INSECURE=true`. O payload é rota, método, status, método ACP e um flag de erro. Prompt, caminho, token e id de sessão são descartados. `bridge/obs` usa o mesmo opt-in |
 | O confinamento da imagem está no Compose, não na imagem | `docker-compose.yml` | `read_only`, `cap_drop: ALL` e `no-new-privileges` estão lá. `acpfake` não é copiado. Veja [CONTAINER.pt_BR.md](deploy/CONTAINER.pt_BR.md) |
 | Named pipe | `npipe:` sai 2 em `listen.go` | Não está implementado. O título da issue 21 nomeia um named pipe; a árvore recusa |
-| Ingress OpenAI | contrato nesta nota | Issue 34. Os handlers seguem este contrato. Este commit é o contrato, não o handler |
+| Ingress OpenAI | `bridge/internal/openai`, `bridge/internal/server/openai_http.go` | Issue 34. Content-Type, Origin, Host, recusa de campo, tetos e o teto de prompts estão em `openai_test.go` |
 | Teto de frame ACP no upstream | PR 944 do Twigpine/zero ainda aberta em 2026-10-19 | Issue 9. A ponte não limita os frames do filho |
 | Data de status do plano | bloco de status de `docs/plans/PLAN_ZERO_BRIDGE.md` em 2026-10-19 | S7 a S10, S16, S18, S21 e S24 a S28 batem com as issues fechadas. S29 continua ausente |
 

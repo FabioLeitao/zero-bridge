@@ -59,7 +59,7 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 - **Path outside the workspace.** `internal/workroot` checks the workspace and extra directories. Verified by `root_test.go` and session tests that reject a relative workspace.
 - **A2A send without a user role, or a non-text part.** The handler rejects those. **Gap:** no test in `bridge/` calls the handler.
 - **Plugin peer that is not allowlisted.** `a2a_discover` and `a2a_call` tests refuse a non-configured host and `allowed: false`. Verified in `plugin/a2a`.
-- **OpenAI client pointed at the bridge.** The contract is the next section. A simple cross-origin POST without a token must be 403 and must not reach the agent. A `system` or `developer` message is conversation text.
+- **OpenAI client pointed at the bridge.** A simple cross-origin POST without a token is 403 and does not reach the agent (`TestOpenAICrossOriginSimplePostDoesNotReachAgent`). A `system` message stays text (`TestOpenAISystemMessageDoesNotRaisePrivilege`). Timeout on the existing broker denies.
 - **Named pipe on Windows.** Refused. Verified by `Test` in `listen_test.go` and `cmd/zero-bridge/main_test.go`.
 
 ## Mitigations already in the tree
@@ -92,7 +92,7 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 | Observability export | `internal/observability/export.go` | HTTPS by default. Plaintext needs `OTEL_EXPORTER_OTLP_INSECURE=true`. The payload is route, method, status, ACP method, and an error flag. A prompt, a path, a token, and a session id are dropped. `bridge/obs` uses the same opt-in |
 | Image confinement is compose, not the image | `docker-compose.yml` | `read_only`, `cap_drop: ALL`, and `no-new-privileges` are set there. `acpfake` is not copied. See [CONTAINER.md](deploy/CONTAINER.md) |
 | Named pipe | `npipe:` exits 2 in `listen.go` | Not implemented. Issue 21's title names a named pipe; the tree refuses it |
-| OpenAI ingress | contract in this note | Issue 34. Handlers follow this contract. This commit is the contract, not the handler |
+| OpenAI ingress | `bridge/internal/openai`, `bridge/internal/server/openai_http.go` | Issue 34. Content-Type, Origin, Host, field rejection, caps, and the prompt cap are covered by `openai_test.go` |
 | Upstream ACP frame cap | Twigpine/zero PR 944 still open on 2026-10-19 | Issue 9. The bridge does not cap the child's frames |
 | Plan status date | `docs/plans/PLAN_ZERO_BRIDGE.md` status block is 2026-10-19 | S7 through S10, S16, S18, S21, and S24 through S28 match the closed issues. S29 is still absent |
 

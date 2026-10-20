@@ -120,7 +120,7 @@ func runArgs(args []string, stderr io.Writer) int {
 		return 2
 	}
 	if listen.Network == "tcp" && token == "" {
-		fmt.Fprintf(stderr, "zero-bridge: warning: no token on TCP %s; any local user who can open this port can call the API, including POST /a2a/message/send\n", listen.Addr)
+		fmt.Fprintf(stderr, "zero-bridge: warning: no token on TCP %s; any local user who can open this port can call the API, including POST /a2a/message/send and POST /v1/chat/completions\n", listen.Addr)
 	}
 	logger := log.New(stderr, "", log.LstdFlags)
 	if cfg.otlpEndpoint == "" {

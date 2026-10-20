@@ -54,7 +54,7 @@ O nome e a versão do agente, e os nomes e as descrições dos modos, vêm do ag
 - As respostas não mandam `Access-Control-Allow-Origin`.
 - Uma permissão só é allow quando o agente ofereceu `allow_once` com option id `allow`. Qualquer outro allow vira deny efetivo. Timeout, abort e stop negam. Não viram allow.
 - A página insere texto do modelo e das tools só com `textContent` e `createTextNode`.
-- Sem token, o TCP em loopback continua aberto a qualquer usuário local que alcance a porta, inclusive `POST /a2a/message/send`. A subida imprime esse aviso. A autorização não muda: token vazio ainda aceita o pedido. O socket Unix continua descartando outro uid e não imprime o aviso de TCP. `--token-file` (ou `ZERO_BRIDGE_TOKEN`) protege `/v1/*` e as rotas A2A. Acesso externo é um proxy reverso mais esse token. A ponte continua recusando `--listen` fora de loopback. Guia: [docs/deploy/CADDY.pt_BR.md](docs/deploy/CADDY.pt_BR.md).
+- Sem token, o TCP em loopback continua aberto a qualquer usuário local que alcance a porta, inclusive `POST /a2a/message/send` e `POST /v1/chat/completions`. A subida imprime esse aviso. A autorização não muda: token vazio ainda aceita o pedido. O socket Unix continua descartando outro uid e não imprime o aviso de TCP. `--token-file` (ou `ZERO_BRIDGE_TOKEN`) protege `/v1/*` e as rotas A2A. Acesso externo é um proxy reverso mais esse token. A ponte continua recusando `--listen` fora de loopback. Guia: [docs/deploy/CADDY.pt_BR.md](docs/deploy/CADDY.pt_BR.md).
 
 ```bash
 curl --unix-socket "${XDG_RUNTIME_DIR}/zero-bridge/bridge.sock" \

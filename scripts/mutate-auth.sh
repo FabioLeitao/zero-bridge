@@ -81,6 +81,18 @@ mutants = [
         [("internal/server/server.go", "\treturn s.hasBearer(r) || s.sessionOK(r)\n", "\tif r.Method == http.MethodPost {\n\t\treturn true\n\t}\n\treturn s.hasBearer(r) || s.sessionOK(r)\n")],
     ),
     (
+        "openai-content-type-skipped",
+        "internal/server",
+        "TestOpenAIRejectsContentTypeHostAndForeignOrigin",
+        [("internal/server/openai_http.go", "\tif !requireJSONContentType(r) {\n", "\tif false && !requireJSONContentType(r) {\n")],
+    ),
+    (
+        "openai-prompt-cap-removed",
+        "internal/server",
+        "TestOpenAISessionPromptCap",
+        [("internal/server/openai_http.go", "if slot == nil || slot.prompts >= openaiPromptsPerSession {", "if slot == nil || false && slot.prompts >= openaiPromptsPerSession {")],
+    ),
+    (
         "short-token-accepted",
         "internal/auth",
         "TestLoadFile",

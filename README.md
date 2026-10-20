@@ -54,7 +54,7 @@ The agent name, version, and mode names and descriptions come from the agent. Th
 - Responses do not send `Access-Control-Allow-Origin`.
 - A permission is allowed only when the agent offered `allow_once` with option id `allow`. Any other allow choice is an effective deny. Timeout, abort, and stop deny. They never become an allow.
 - The page inserts model and tool text with `textContent` and `createTextNode` only.
-- Without a token, TCP loopback stays open to any local user who can open the port, including `POST /a2a/message/send`. Startup prints that warning. Authorization does not change: an empty token still allows the request. A Unix socket still drops another uid and does not print the TCP warning. `--token-file` (or `ZERO_BRIDGE_TOKEN`) guards `/v1/*` and the A2A routes. External access is a reverse proxy plus that token. The bridge still refuses a non-loopback `--listen`. Guide: [docs/deploy/CADDY.md](docs/deploy/CADDY.md).
+- Without a token, TCP loopback stays open to any local user who can open the port, including `POST /a2a/message/send` and `POST /v1/chat/completions`. Startup prints that warning. Authorization does not change: an empty token still allows the request. A Unix socket still drops another uid and does not print the TCP warning. `--token-file` (or `ZERO_BRIDGE_TOKEN`) guards `/v1/*` and the A2A routes. External access is a reverse proxy plus that token. The bridge still refuses a non-loopback `--listen`. Guide: [docs/deploy/CADDY.md](docs/deploy/CADDY.md).
 
 ```bash
 curl --unix-socket "${XDG_RUNTIME_DIR}/zero-bridge/bridge.sock" \

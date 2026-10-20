@@ -42,7 +42,7 @@ If the proxy forwards the port in `Host` (`bridge.example:443`), the allowlist e
 
 ## What the token guards
 
-With no token, TCP loopback stays open to any local user who can open the port, including `POST /a2a/message/send`. The process prints that warning at startup and still accepts the request. A Unix socket does not print the TCP warning.
+With no token, TCP loopback stays open to any local user who can open the port, including `POST /a2a/message/send` and `POST /v1/chat/completions`. The process prints that warning at startup and still accepts the request. A Unix socket does not print the TCP warning.
 
 With a token set, `/v1/*`, the A2A routes, and the UI actions need `Authorization: Bearer <token>` or a login cookie. `GET /health` stays public and its body is only `{"ok":true}`. `GET /`, `/app.js`, and `/style.css` stay public. `POST /v1/login` and `GET /v1/auth/status` are the other exceptions.
 

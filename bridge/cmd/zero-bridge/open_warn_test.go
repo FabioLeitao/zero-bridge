@@ -16,7 +16,7 @@ func TestTCPWithoutTokenWarns(t *testing.T) {
 		t.Fatal("server stayed up")
 	}
 	got := stderr.String()
-	if !strings.Contains(got, "no token") || !strings.Contains(got, "POST /a2a/message/send") || !strings.Contains(got, "local user") {
+	if !strings.Contains(got, "no token") || !strings.Contains(got, "POST /a2a/message/send") || !strings.Contains(got, "POST /v1/chat/completions") || !strings.Contains(got, "local user") {
 		t.Fatalf("stderr %q", got)
 	}
 }

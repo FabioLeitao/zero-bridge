@@ -42,7 +42,7 @@ Se o proxy repassa a porta no `Host` (`bridge.example:443`), a entrada da lista 
 
 ## O que o token protege
 
-Sem token, o TCP em loopback fica aberto a qualquer usuário local que alcance a porta, inclusive `POST /a2a/message/send`. O processo imprime esse aviso na subida e ainda aceita o pedido. O socket Unix não imprime o aviso de TCP.
+Sem token, o TCP em loopback fica aberto a qualquer usuário local que alcance a porta, inclusive `POST /a2a/message/send` e `POST /v1/chat/completions`. O processo imprime esse aviso na subida e ainda aceita o pedido. O socket Unix não imprime o aviso de TCP.
 
 Com token, `/v1/*`, as rotas A2A e as ações da UI exigem `Authorization: Bearer <token>` ou o cookie de login. `GET /health` continua público e o corpo é só `{"ok":true}`. `GET /`, `/app.js` e `/style.css` continuam públicos. `POST /v1/login` e `GET /v1/auth/status` são as outras exceções.
 
