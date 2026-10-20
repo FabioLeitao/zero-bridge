@@ -1,0 +1,101 @@
+# Threat model
+
+English (canonical). Portuguese: [THREAT_MODEL.pt_BR.md](THREAT_MODEL.pt_BR.md).
+
+This note records the trust boundaries of zero-bridge as of `15ecaa95` on 2026-10-19. It is not an acceptance test. A control is **verified** only when this tree contains the check named below. Anything else is an **assumption** or a **gap**.
+
+Related: [README.md](../README.md), [Caddy](deploy/CADDY.md). The slice list is `docs/plans/PLAN_ZERO_BRIDGE.md` (status block dated 2026-10-15, behind this tree).
+
+## How to read the labels
+
+**Verified** means a file in this repository implements the control and a test or a direct read of that file was checked for this note. **Assumption** means the behavior is likely from reading the code, but this pass did not execute that path. **Gap** means the control is missing, untested, or contradicted by a closed issue.
+
+## Assets
+
+| Asset | Why it matters | Where it lives |
+| --- | --- | --- |
+| Bridge token | Unlocks `/v1/*` and, when set, the A2A routes | `--token-file` or `ZERO_BRIDGE_TOKEN`; not in the agent environment |
+| Login cookie `zb_session` | Browser equivalent of the bearer token | Process memory; gone on restart |
+| Session prompt and tool arguments | Operator and workspace content | Agent stdin, SSE, and the permission card |
+| Workspace files | The agent can be asked to read and write them | Paths checked by `internal/workroot` |
+| Unix socket path | Reaching it is enough to talk HTTP to the bridge | Mode `0600`; parent directory must be `0700` |
+| Audit file | Records auth events | `--audit-log`, created `0600` |
+
+## Trust boundaries
+
+1. **Browser and web UI.** Static files from the bridge. The page inserts text with `textContent` and `createTextNode`.
+2. **Bridge HTTP and SSE.** Loopback TCP by default. Routes under `/v1/*`, plus `GET /.well-known/agent-card.json` and `POST /a2a/message/send`.
+3. **ACP agent.** A child process. Default argv is `zero` `acp`. `--agent-cmd` and `--agent-arg` replace that argv with no shell.
+4. **A2A ingress.** The two routes above, on the same listener as the UI.
+5. **A2A egress.** Plugin tools `a2a_discover`, `a2a_call`, and `a2a_list` in `plugin/a2a`. They run as the agent's tools, not inside `bridge/`.
+6. **OpenAI-compatible ingress (planned).** S29, issue 34. Not in this tree. No `/v1/models` and no `/v1/chat/completions`.
+7. **Unix socket and named pipe.** `unix:<absolute path>` is implemented on Linux. `npipe:` is refused. A Windows named pipe is not implemented.
+8. **Reverse proxy.** Caddy, or another proxy, terminates TLS and forwards to loopback. The bridge does not terminate TLS.
+9. **Container.** `Dockerfile` builds a non-root image. Runtime confinement is not encoded in the image.
+
+## STRIDE
+
+One row per boundary. Empty cells are not a claim of safety. They mean this pass did not write a separate abuse case for that letter.
+
+| Boundary | Spoofing | Tampering | Repudiation | Information disclosure | Denial of service | Elevation of privilege |
+| --- | --- | --- | --- | --- | --- | --- |
+| Browser / UI | Hostile tool title rendered as text | Page script cannot become Node | Cookie is HttpOnly; no per-click audit in the page | Prompt text is on the page for whoever can open it | Many SSE clients | UI has no extra privilege beyond the cookie |
+| HTTP / SSE | Empty token accepts any local caller | Host and Origin checks | Audit log has no token and no session id | Redaction is pattern-based | Body caps and auth-failure window | Cookie or bearer is the whole credential |
+| ACP agent | Child is whatever `--agent-cmd` names | Bridge does not sandbox the child | Agent logs are outside the bridge audit | Prompt is written to the child stdin | Large ACP frames are the child's problem (S13) | Client `fs` and `terminal` stay off |
+| A2A ingress | Same credential as `/v1/*` when a token is set | JSON-RPC method must be `message/send` | No A2A-specific audit line found | Agent card exposes agent name and version | `A2AMaxBodyBytes` default 1 MiB, hard cap 16 MiB | A send becomes `session/prompt` on the same agent |
+| A2A egress | Peer URL comes from plugin config, not from the model alone | `allowed: false` refuses the peer | Plugin process has its own stdout | Discover and call responses return to the agent | Plugin HTTP client timeouts were not measured here | A bad peer URL is an outbound call from the tool user |
+| OpenAI ingress (planned) | Not built | Not built | Not built | Not built | Not built | Issue 34 says default policy deny, never auto-approve |
+| Unix socket / named pipe | Peer uid must match; `npipe:` refused | Symlink socket and open directory refused | Same HTTP audit as TCP | `/v1/info` must not contain the socket path | Same HTTP limits | Foreign uid is refused |
+| Proxy / Caddy | Public name is `--allowed-host` and `--public-origin` | Proxy can set `X-Forwarded-*` only if `--trust-proxy` | Proxy logs are outside this repo | TLS is the proxy's job | Proxy `read_timeout` and body cap are in the Caddy guide | Proxy compromise is full access to loopback |
+| Container | Image runs as uid 10001 | Image still contains a shell via Alpine | No image audit trail | `acpfake` is copied into the runtime image | Healthcheck targets a fixed port | Comments mention read-only root; the image does not set it |
+
+## Abuse cases
+
+- **Another local user opens the TCP port.** With no token, `authorized` returns true for every path. Verified in `bridge/internal/server/server.go` (`currentToken() == ""`). On Linux, loopback TCP is not per-user. **Gap.** The Unix socket path refuses a foreign uid (`TestUnixRefusesForeignPeer`).
+- **Stolen bearer or cookie.** The bearer stays valid until the token file changes. Logout-all drops cookies and leaves the bearer. Verified in [CADDY.md](deploy/CADDY.md) and the auth handlers. **Assumption:** no test in this pass re-checked logout-all against a live bearer.
+- **Cross-site POST with a cookie.** Cookie requests on POST and DELETE need an allowed Origin. A Unix request with no Origin is bearer-only. Verified in `credentialOK` and `TestUnixAuthOriginAndBearer`.
+- **Prompt or secret in a log line.** `Redact` strips a bearer, an authorization header, and a provider-key shape, then the configured token. Verified by `TestRedact` and `TestRedactJSONValues`. **Gap:** other secret shapes are not covered.
+- **Tool approval bypass.** Inbound `session/request_permission` defaults to `reject_once`. Timeout denies. Verified by `TestPermissionDenied`, `TestPermissionTimeout`. The web card can still allow. That allow is the operator.
+- **Path outside the workspace.** `internal/workroot` checks the workspace and extra directories. Verified by `root_test.go` and session tests that reject a relative workspace.
+- **A2A send without a user role, or a non-text part.** The handler rejects those. **Gap:** no test in `bridge/` calls the handler.
+- **Plugin peer that is not allowlisted.** `a2a_discover` and `a2a_call` tests refuse a non-configured host and `allowed: false`. Verified in `plugin/a2a`.
+- **OpenAI client pointed at the bridge.** Nothing in this tree speaks that protocol. **Gap**, tracked as S29.
+- **Named pipe on Windows.** Refused. Verified by `Test` in `listen_test.go` and `cmd/zero-bridge/main_test.go`.
+
+## Mitigations already in the tree
+
+| Control | File | Test or check |
+| --- | --- | --- |
+| TCP listen is loopback only | `bridge/internal/server/listen.go` | `listen_test.go`, `main_test.go` |
+| `npipe:` refused | `listen.go` | `listen_test.go` |
+| Unix socket `0600`, parent `0700`, same uid, no symlink | `bridge/internal/server/unix_linux.go` | `unix_linux_test.go` |
+| Origin on the socket must be `--public-origin` | `server.go` `requestAllowed` | `TestUnixAuthOriginAndBearer` |
+| Token required when a public host or origin is set | `security.go` `validateExposure` | startup exit 2, covered by server tests |
+| Security headers and no `innerHTML` | `security.go`, `bridge/web/app.js` | `static_test.go` |
+| HttpOnly session cookie, SameSite Strict | `server.go` login handler | auth tests in `server_test.go` |
+| Auth failure window | `limits.go` | `limits_test.go`, `TestBearerRateLimitConcurrentWrongToken` |
+| Permission default deny and timeout deny | `acpclient/handlers.go`, permissions broker | `client_test.go`, `perm_test.go` |
+| Client filesystem and terminal capabilities off | `acpclient` initialize params | `client_test.go`, `adddir_spike_test.go` |
+| Workspace allowlist | `internal/workroot/root.go` | `root_test.go` |
+| Log redaction of bearer and configured token | `redact.go` | `redact_test.go` |
+| Audit file mode `0600` | `internal/auth/audit.go` | `audit_test.go` |
+| Agent does not inherit `ZERO_BRIDGE_TOKEN` | `cmd/zero-bridge/main.go` | **Assumption:** read in `main.go`; not re-run here |
+| UI preferences in `localStorage` are the session filter and the archive flag, not the token | `bridge/web/app.js` `readPref` | **Verified** by reading `app.js`. No browser run in this pass |
+
+## Gaps
+
+| Gap | Evidence | Notes |
+| --- | --- | --- |
+| No token on loopback TCP | `authorized` in `server.go` | Any local process, including another uid, can call `message/send` and `/v1/*` |
+| A2A ingress has no bridge test | `go test ./... -cover` shows `bridge/a2a` at 0.0% | Handlers exist; S7 issue 3 is closed |
+| No fuzz targets | `func Fuzz` absent under `bridge/` | Listen, JSON-RPC, prompt, limits, redact |
+| Observability export | `cmd/zero-bridge/main.go` sets `NoopObserver` | `bridge/obs/main.go` uses `WithInsecure` OTLP. Issue 12 is closed |
+| Image ships `acpfake` | `Dockerfile` runtime `COPY` | Read-only root and dropped capabilities are comments |
+| Named pipe | `ResolveListen` error string | Issue 21 is closed with named pipe in the title |
+| OpenAI ingress | absent | Issue 34. Treat as a future boundary, not a present control |
+| Upstream ACP frame cap | Twigpine/zero PR 944 still open on 2026-10-19 | Issue 9. The bridge does not cap the child's frames |
+| Plan status date | `docs/plans/PLAN_ZERO_BRIDGE.md` says 2026-10-15 and "S7 not built" | S7 through S10, S21, and S28 are on this tree. The plan table is stale |
+
+## What this pass did not do
+
+No exploit was run. `make e2e` and `make mutate` were not run. The desktop repository was read only far enough to compare issues 23, 24, 25, and 26 with its tree. Container image was not built, so the `wget` healthcheck is unread at runtime. **Assumption:** Alpine may provide `wget` through busybox even though the `apk add` line does not name it.
