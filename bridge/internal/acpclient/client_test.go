@@ -233,15 +233,19 @@ func TestUnknownInboundMethod(t *testing.T) {
 }
 
 func TestCallTimeout(t *testing.T) {
-	pr, pw := io.Pipe()
-	c := AttachPipes(pr, pw, exec.Command("sleep", "60"))
+	// Separate pipes. One pipe in both directions feeds the request back into
+	// readLoop while Close writes that same pipe.
+	stdoutR, stdoutW := io.Pipe()
+	stdinR, stdinW := io.Pipe()
+	go func() { _, _ = io.Copy(io.Discard, stdinR) }()
+	c := AttachPipes(stdoutR, stdinW, exec.Command("sleep", "60"))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	err := c.Call(ctx, "initialize", map[string]any{}, &struct{}{})
 	if err == nil {
 		t.Fatal("expected timeout")
 	}
-	_ = pw.Close()
+	_ = stdoutW.Close()
 	_ = c.Close()
 }
 
