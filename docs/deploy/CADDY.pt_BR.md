@@ -25,7 +25,8 @@ Suba a ponte com `--token-file` **ou** a variável `ZERO_BRIDGE_TOKEN`. Os dois 
 | `--token-file` | Caminho do arquivo de token acima. |
 | `--allowed-host host[:port]` | Repetível. `Host` exato, sem distinção de maiúsculas, além do host de loopback. |
 | `--public-origin scheme://host[:port]` | Repetível. `Origin` exato (esquema, host e porta). |
-| `--trust-proxy` | Confia em `X-Forwarded-Proto` para o cookie `Secure`, e no primeiro endereço de `X-Forwarded-For` como chave do limite de login. Desligado por padrão. |
+| `--trust-proxy` | Confia em `X-Forwarded-Proto` para o cookie `Secure`, e no primeiro endereço de `X-Forwarded-For` como chave do limite de login. Desligado por padrão. Também exige token. |
+| `--require-token` | Desligada por padrão. Sai **2** antes de escutar quando nenhum token resolve. `ZERO_BRIDGE_REQUIRE_TOKEN=1` ou `true` liga. `--trust-proxy` e `--public-origin` ligam. |
 | `--audit-log` | Arquivo opcional de auditoria. Criado em `0600`. Um arquivo existente que o grupo ou os outros possam ler é recusado. |
 | `--config` | Arquivo de limites (`session-ttl`, `session-idle`, `max-sessions`, `auth-fail-window`, `auth-fail-limit`). Flag, depois ambiente, depois esse arquivo, depois o padrão. |
 | `--session-ttl` | Vida absoluta do cookie. Padrão `12h`, teto `720h`. |
@@ -34,7 +35,7 @@ Suba a ponte com `--token-file` **ou** a variável `ZERO_BRIDGE_TOKEN`. Os dois 
 | `--auth-fail-window` | Janela compartilhada de login e Bearer. Padrão `1m`, piso `1s`, teto `1h`. |
 | `--auth-fail-limit` | Falhas guardadas nessa janela. Padrão `5`, teto `100`. |
 
-Qualquer `--allowed-host` ou `--public-origin` sem token sai **2**: `token required when exposed via proxy`. Lista vazia mantém o check de Host em loopback.
+`--require-token`, `--trust-proxy` ou `--public-origin` sem token resolvido sai **2** antes de escutar: `token required (--require-token, --trust-proxy, or --public-origin); set --token-file or ZERO_BRIDGE_TOKEN`. A linha não traz segredo. `--listen 127.0.0.1:8765` simples sem token ainda sobe e imprime o aviso de TCP. `--allowed-host` sem token ainda sai **2** na montagem do servidor: `token required when exposed via proxy`. Lista vazia mantém o check de Host em loopback.
 
 `--allowed-host` cobre só o cabeçalho `Host`. Não autoriza um `Origin`. Com `--allowed-host` e **sem** `--public-origin`, um `POST /v1/login` que manda `Origin: https://…` recebe **403**. Inclua `--public-origin` com o esquema, o host e a porta que o navegador usa.
 

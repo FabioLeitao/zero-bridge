@@ -51,7 +51,7 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 
 ## Abuse cases
 
-- **Another local user opens the TCP port.** With no token, `authorized` returns true for every path, including `POST /a2a/message/send`. Verified in `bridge/internal/server/server.go` (`currentToken() == ""`) and `TestA2AMessageSendWithoutTokenStaysAllowed`. On Linux, loopback TCP is not per-user. Startup prints a warning and does not change that rule (`TestTCPWithoutTokenWarns`). A Unix socket does not print it. The Unix socket path refuses a foreign uid (`TestUnixRefusesForeignPeer`).
+- **Another local user opens the TCP port.** With no token, `authorized` returns true for every path, including `POST /a2a/message/send`. Verified in `bridge/internal/server/server.go` (`currentToken() == ""`) and `TestA2AMessageSendWithoutTokenStaysAllowed`. On Linux, loopback TCP is not per-user. Startup prints a warning and does not change that rule (`TestTCPWithoutTokenWarns`). A Unix socket does not print it. The Unix socket path refuses a foreign uid (`TestUnixRefusesForeignPeer`). A published start (`--require-token`, `--trust-proxy`, or `--public-origin`) with no resolved token exits **2** before listen (`TestRequireTokenRefusesBeforeListen`). Plain loopback without those flags still warns and starts (`TestPlainListenWithoutTokenStillWarns`).
 - **Stolen bearer or cookie.** The bearer stays valid until the token file changes. Logout-all drops cookies and leaves the bearer. Verified in [CADDY.md](deploy/CADDY.md) and the auth handlers. **Assumption:** no test in this pass re-checked logout-all against a live bearer.
 - **Cross-site POST with a cookie.** Cookie requests on POST and DELETE need an allowed Origin. A Unix request with no Origin is bearer-only. Verified in `credentialOK` and `TestUnixAuthOriginAndBearer`.
 - **Prompt or secret in a log line.** `Redact` strips a bearer, an authorization header, and a provider-key shape, then the configured token. Verified by `TestRedact` and `TestRedactJSONValues`. **Gap:** other secret shapes are not covered.
@@ -71,6 +71,7 @@ One row per boundary. Empty cells are not a claim of safety. They mean this pass
 | Unix socket `0600`, parent `0700`, same uid, no symlink | `bridge/internal/server/unix_linux.go` | `unix_linux_test.go` |
 | Origin on the socket must be `--public-origin` | `server.go` `requestAllowed` | `TestUnixAuthOriginAndBearer` |
 | Token required when a public host or origin is set | `security.go` `validateExposure` | startup exit 2, covered by server tests |
+| Published start without a token exits 2 before listen | `cmd/zero-bridge/main.go` `tokenRequired` | `TestRequireTokenRefusesBeforeListen`, `TestPlainListenWithoutTokenStillWarns`, `TestRequireTokenWithTokenRejectsAnonymous` |
 | Security headers and no `innerHTML` | `security.go`, `bridge/web/app.js` | `static_test.go` |
 | HttpOnly session cookie, SameSite Strict | `server.go` login handler | auth tests in `server_test.go` |
 | Auth failure window | `limits.go` | `limits_test.go`, `TestBearerRateLimitConcurrentWrongToken` |

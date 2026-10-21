@@ -51,7 +51,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 
 ## Casos de abuso
 
-- **Outro usuário local abre a porta TCP.** Sem token, `authorized` devolve verdadeiro para todo caminho, inclusive `POST /a2a/message/send`. Verificado em `bridge/internal/server/server.go` (`currentToken() == ""`) e em `TestA2AMessageSendWithoutTokenStaysAllowed`. No Linux, TCP de loopback não é por usuário. A subida imprime um aviso e não muda essa regra (`TestTCPWithoutTokenWarns`). O socket Unix não imprime o aviso. O socket Unix recusa uid estrangeiro (`TestUnixRefusesForeignPeer`).
+- **Outro usuário local abre a porta TCP.** Sem token, `authorized` devolve verdadeiro para todo caminho, inclusive `POST /a2a/message/send`. Verificado em `bridge/internal/server/server.go` (`currentToken() == ""`) e em `TestA2AMessageSendWithoutTokenStaysAllowed`. No Linux, TCP de loopback não é por usuário. A subida imprime um aviso e não muda essa regra (`TestTCPWithoutTokenWarns`). O socket Unix não imprime o aviso. O socket Unix recusa uid estrangeiro (`TestUnixRefusesForeignPeer`). Uma partida publicada (`--require-token`, `--trust-proxy` ou `--public-origin`) sem token resolvido sai **2** antes de escutar (`TestRequireTokenRefusesBeforeListen`). Loopback simples sem essas flags ainda avisa e sobe (`TestPlainListenWithoutTokenStillWarns`).
 - **Bearer ou cookie roubado.** O bearer vale até o arquivo de token mudar. Logout-all derruba os cookies e deixa o bearer. Verificado em [CADDY.pt_BR.md](deploy/CADDY.pt_BR.md) e nos handlers de autenticação. **Suposição:** esta passada não reexecutou logout-all contra um bearer vivo.
 - **POST cruzado com cookie.** Pedido com cookie em POST e DELETE exige Origin permitido. Pedido no socket sem Origin é só bearer. Verificado em `credentialOK` e `TestUnixAuthOriginAndBearer`.
 - **Prompt ou segredo numa linha de log.** `Redact` tira bearer, cabeçalho authorization e o formato de chave de provedor, e depois o token configurado. Verificado por `TestRedact` e `TestRedactJSONValues`. **Lacuna:** outros formatos de segredo ficam de fora.
@@ -71,6 +71,7 @@ Uma linha por fronteira. Célula vazia não é afirmação de segurança. Signif
 | Socket Unix `0600`, pai `0700`, mesmo uid, sem symlink | `bridge/internal/server/unix_linux.go` | `unix_linux_test.go` |
 | Origin no socket tem de ser `--public-origin` | `server.go` `requestAllowed` | `TestUnixAuthOriginAndBearer` |
 | Token obrigatório quando há host ou origin público | `security.go` `validateExposure` | saída 2 na subida, coberta por testes do server |
+| Partida publicada sem token sai 2 antes de escutar | `cmd/zero-bridge/main.go` `tokenRequired` | `TestRequireTokenRefusesBeforeListen`, `TestPlainListenWithoutTokenStillWarns`, `TestRequireTokenWithTokenRejectsAnonymous` |
 | Cabeçalhos de segurança e sem `innerHTML` | `security.go`, `bridge/web/app.js` | `static_test.go` |
 | Cookie de sessão HttpOnly, SameSite Strict | `server.go` handler de login | testes de auth em `server_test.go` |
 | Janela de falha de autenticação | `limits.go` | `limits_test.go`, `TestBearerRateLimitConcurrentWrongToken` |

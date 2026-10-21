@@ -32,7 +32,7 @@ O Dockerfile não aplica isso. O Compose aplica. Um tmpfs fica em `/tmp` porque 
 
 ## Token
 
-Monte o arquivo de token somente leitura em `/var/lib/zerobridge/.local/state/zero-bridge/token.txt`. Não grave o token na imagem. O modo do arquivo no host é `0600`. O comando da imagem e o `Exec` do Quadlet passam `--token-file` com esse caminho. O Compose e o pod kube não têm comando próprio, então usam o comando da imagem. `ZERO_BRIDGE_TOKEN_FILE` não é lido.
+Monte o arquivo de token somente leitura em `/var/lib/zerobridge/.local/state/zero-bridge/token.txt`. Não grave o token na imagem. O modo do arquivo no host é `0600`. O comando da imagem e o `Exec` do Quadlet passam `--token-file` com esse caminho e `--require-token`. O Compose e o pod kube não têm comando próprio, então usam o comando da imagem. `ZERO_BRIDGE_TOKEN_FILE` não é lido. Sem token resolvido, `--require-token` faz o processo sair **2** antes de escutar.
 
 ## Telemetria
 
