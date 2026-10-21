@@ -415,6 +415,9 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 			i++
 			zeroBin = args[i]
 			zeroBinSet = true
+		default:
+			// Name the token only. The next argv may be a secret value.
+			return cfg, fmt.Errorf("unknown argument %s", args[i])
 		}
 	}
 	switch cfg.profile {
