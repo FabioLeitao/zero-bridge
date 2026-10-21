@@ -33,6 +33,7 @@ func runAgent(r io.Reader, w io.Writer) {
 	lines := make(chan []byte)
 	go readLines(r, lines)
 	src := &lineSrc{ch: lines}
+	var created []persistedSession
 	for {
 		line, err := src.ReadBytes('\n')
 		if err != nil {
@@ -57,7 +58,25 @@ func runAgent(r io.Reader, w io.Writer) {
 				_ = os.WriteFile(path, append(line, '\n'), 0o600)
 			}
 			n := nextSessionID.Add(1)
-			body := map[string]any{"sessionId": fmt.Sprintf("sess-acptest-%d", n)}
+			var newReq struct {
+				Params struct {
+					Cwd   string `json:"cwd"`
+					Title string `json:"title"`
+				} `json:"params"`
+			}
+			_ = json.Unmarshal(line, &newReq)
+			title := newReq.Params.Title
+			if title == "" {
+				title = newReq.Params.Cwd
+			}
+			id := fmt.Sprintf("sess-acptest-%d", n)
+			created = append([]persistedSession{{
+				id:      id,
+				cwd:     newReq.Params.Cwd,
+				title:   title,
+				updated: "2026-10-21T00:00:00Z",
+			}}, created...)
+			body := map[string]any{"sessionId": id}
 			if ids := os.Getenv("ZB_FAKE_MODE_IDS"); ids != "" {
 				var modes []map[string]string
 				for _, id := range strings.Split(ids, ",") {
@@ -115,7 +134,7 @@ func runAgent(r io.Reader, w io.Writer) {
 				} `json:"params"`
 			}
 			_ = json.Unmarshal(line, &listReq)
-			sessions, next := listPage(listReq.Params.Cwd, listReq.Params.Cursor)
+			sessions, next := listPage(listReq.Params.Cwd, listReq.Params.Cursor, listRows(created))
 			writeResp(w, env.ID, map[string]any{"sessions": sessions, "nextCursor": next})
 		case "session/load":
 			if os.Getenv("ZB_FAKE_LOAD_ERROR") == "1" {
@@ -128,7 +147,7 @@ func runAgent(r io.Reader, w io.Writer) {
 				} `json:"params"`
 			}
 			_ = json.Unmarshal(line, &loadReq)
-			sess, ok := findPersisted(loadReq.Params.SessionID)
+			sess, ok := findPersisted(loadReq.Params.SessionID, created)
 			if !ok {
 				writeErr(w, env.ID, -32602, "unknown session")
 				continue
@@ -145,7 +164,7 @@ func runAgent(r io.Reader, w io.Writer) {
 				} `json:"params"`
 			}
 			_ = json.Unmarshal(line, &resumeReq)
-			if _, ok := findPersisted(resumeReq.Params.SessionID); !ok {
+			if _, ok := findPersisted(resumeReq.Params.SessionID, created); !ok {
 				writeErr(w, env.ID, -32602, "unknown session")
 				continue
 			}
@@ -166,7 +185,7 @@ func runAgent(r io.Reader, w io.Writer) {
 			if path := os.Getenv("ZB_FAKE_CAPTURE_PROMPT"); path != "" {
 				_ = os.WriteFile(path, append(line, '\n'), 0o600)
 			}
-			if sess, ok := findPersisted(sid); ok && sess.viewOnly {
+			if sess, ok := findPersisted(sid, created); ok && sess.viewOnly {
 				msg := "session is view-only"
 				if os.Getenv("ZB_FAKE_VIEWONLY_SECRET") == "1" {
 					msg += " Bearer secret-token"
@@ -270,7 +289,10 @@ func runAgent(r io.Reader, w io.Writer) {
 	}
 }
 
-// persistedSession is a fake catalog entry. session/new ids are not added here.
+// persistedSession is one row the fake can list, load, and resume.
+// The fixed catalog does not include session/new ids. Those ids stay in the
+// agent process. ZB_FAKE_LIST=created lists them newest first, in place of
+// the catalog. Without that env, session/list stays the catalog.
 type persistedSession struct {
 	id       string
 	cwd      string
@@ -303,7 +325,19 @@ func persistedCatalog() []persistedSession {
 	return rows
 }
 
-func findPersisted(id string) (persistedSession, bool) {
+func listRows(created []persistedSession) []persistedSession {
+	if os.Getenv("ZB_FAKE_LIST") == "created" {
+		return created
+	}
+	return persistedCatalog()
+}
+
+func findPersisted(id string, created []persistedSession) (persistedSession, bool) {
+	for _, s := range created {
+		if s.id == id {
+			return s, true
+		}
+	}
 	for _, s := range persistedCatalog() {
 		if s.id == id {
 			return s, true
@@ -314,9 +348,9 @@ func findPersisted(id string) (persistedSession, bool) {
 
 const sessionPageSize = 2
 
-func listPage(cwd, cursor string) ([]map[string]any, string) {
+func listPage(cwd, cursor string, rows []persistedSession) ([]map[string]any, string) {
 	var filtered []persistedSession
-	for _, s := range persistedCatalog() {
+	for _, s := range rows {
 		if cwd == "" || s.cwd == cwd {
 			filtered = append(filtered, s)
 		}
