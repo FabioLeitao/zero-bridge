@@ -1,0 +1,5 @@
+version: "2"
+run:
+  # Language version from the go line. The toolchain line is the compiler.
+  # golangci-lint v2.12.2 treats the toolchain as the target and refuses Go 1.27.
+  go: "1.22"

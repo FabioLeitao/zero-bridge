@@ -13,6 +13,8 @@ cd bridge
 go run ./cmd/zero-bridge --listen 127.0.0.1:8765
 ```
 
+`bridge/go.mod` pins `toolchain go1.27.3`. The first `go build` or `go run` on an older host may download that toolchain (about 250 MB) from `proxy.golang.org`.
+
 Open http://127.0.0.1:8765/. Flags:
 
 | Flag | Default | Role |
