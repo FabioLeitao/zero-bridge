@@ -176,14 +176,16 @@ func TestQueueOverflow(t *testing.T) {
 	b := New(time.Second)
 	b.Clock = newClock()
 	go func() { _ = b.Wait("s", params(both)) }()
-	time.Sleep(10 * time.Millisecond)
+	// The first Wait has to be exposed before the queue can fill.
+	// Pending is the signal; a fixed sleep races the goroutines.
+	waitReq(t, b)
 	var extra []chan any
 	for i := 0; i < queueLimit; i++ {
 		ch := make(chan any, 1)
 		extra = append(extra, ch)
 		go func() { ch <- b.Wait("s", params(both)) }()
 	}
-	time.Sleep(30 * time.Millisecond)
+	waitQueued(t, b, queueLimit)
 	overflow := make(chan any, 1)
 	go func() { overflow <- b.Wait("s", params(both)) }()
 	select {
