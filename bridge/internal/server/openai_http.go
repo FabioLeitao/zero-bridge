@@ -72,6 +72,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		openai.WriteError(w, &openai.Error{Status: http.StatusForbidden, Type: "permission_error", Code: "forbidden", Message: "forbidden"})
 		return
 	}
+	s.noteIngress(r, "/v1/chat/completions")
 	r.Body = http.MaxBytesReader(w, r.Body, openai.MaxBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -171,6 +172,7 @@ func (s *Server) finishChat(w http.ResponseWriter, r *http.Request, hub *session
 	var res struct {
 		StopReason string `json:"stopReason"`
 	}
+	s.notePromptSubmitted()
 	err := s.acpCall(r.Context(), "session/prompt", map[string]any{
 		"sessionId": sessionID,
 		"prompt":    []map[string]any{{"type": "text", "text": chat.Transcript()}},
@@ -228,6 +230,7 @@ func (s *Server) openOpenAISession(ctx context.Context) (string, error) {
 	s.mu.Lock()
 	s.sessions[res.SessionID] = hub
 	s.mu.Unlock()
+	s.noteSessionCreated()
 	return res.SessionID, nil
 }
 

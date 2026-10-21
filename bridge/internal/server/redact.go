@@ -4,17 +4,18 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+
+	"zero-bridge/bridge/internal/redact"
 )
 
 var (
-	reSk         = regexp.MustCompile(`sk-[A-Za-z0-9_-]+`)
 	reBearer     = regexp.MustCompile(`Bearer\s+[^\s"'\\]+`)
 	reAuthHeader = regexp.MustCompile(`(?i)authorization:\s*[^\s"'\\]+`)
 )
 
 // Redact removes likely secrets from error text shown to clients or logs.
 func Redact(s string) string {
-	s = reSk.ReplaceAllString(s, "[redacted]")
+	s = redact.Apply(s)
 	s = reBearer.ReplaceAllString(s, "[redacted]")
 	s = reAuthHeader.ReplaceAllString(s, "authorization: [redacted]")
 	return s

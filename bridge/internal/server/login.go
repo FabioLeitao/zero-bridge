@@ -350,6 +350,34 @@ func (s *Server) recordAudit(kind auth.Kind, r *http.Request, reason string) {
 	_ = s.audit.Record(ev)
 }
 
+// noteSessionCreated records that a session exists. The id and the workspace
+// path stay out of the line.
+func (s *Server) noteSessionCreated() {
+	s.recordAudit(auth.KindSessionCreated, nil, "ok")
+}
+
+// notePromptSubmitted records that a prompt was sent to the agent. The text
+// stays out of the line.
+func (s *Server) notePromptSubmitted() {
+	s.recordAudit(auth.KindPromptSubmitted, nil, "ok")
+}
+
+// noteIngress records the fixed route and the credential kind. It does not
+// copy the URL, which on other routes carries a session id.
+func (s *Server) noteIngress(r *http.Request, route string) {
+	s.recordAudit(auth.KindIngress, nil, route+" "+credentialKind(r))
+}
+
+func credentialKind(r *http.Request) string {
+	if tok, ok := presentedBearer(r); ok && tok != "" {
+		return "bearer"
+	}
+	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
+		return "cookie"
+	}
+	return "none"
+}
+
 func newSessionID() (string, error) {
 	var b [32]byte
 	if _, err := rand.Read(b[:]); err != nil {
