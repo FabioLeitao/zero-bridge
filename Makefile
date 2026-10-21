@@ -1,7 +1,7 @@
 # Local gate for zero-bridge. Future CI calls `make check` and does not grow a second list.
 # Pinned tools run with `go run pkg@version`. Nothing is installed globally.
 # Versions follow the Zero upstream Makefile (read 2026-10-14).
-# GOTOOLCHAIN=go1.26.9 may download that toolchain from the network the first
+# GOTOOLCHAIN=go1.26.10 may download that toolchain from the network the first
 # time an analyzer target runs. Offline: warm the cache once, with network,
 # via `make lint-static`. vet, build, and test stay on the local Go.
 DEADCODE_VERSION := v0.46.0
@@ -13,9 +13,9 @@ BRIDGE := $(ROOT)/bridge
 GO_VERSION := $(shell awk '/^go /{print $$2; exit}' $(BRIDGE)/go.mod)
 # go.mod says "go 1.22", a language version, not a toolchain (go1.22.x).
 # The pinned staticcheck inside golangci-lint v2.12.2 panics on Go 1.27's
-# std package poll. Analyzers use Go 1.26.9, the Zero upstream/main toolchain
-# these tool pins were read against.
-TOOL_GO_TOOLCHAIN := go1.26.9
+# std package poll. Analyzers use Go 1.26.10, not the host Go. go1.26.9
+# reports GO-2026-6809 in crypto/x509.
+TOOL_GO_TOOLCHAIN := go1.26.10
 GO_FILES := $(shell git -C $(ROOT) ls-files 'bridge/*.go' 'bridge/**/*.go')
 
 .DEFAULT_GOAL := help
