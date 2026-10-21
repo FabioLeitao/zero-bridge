@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	"zero-bridge/bridge/internal/redact"
 )
 
 // Kind is the audit event name. The set is closed so a caller cannot invent
@@ -31,7 +33,7 @@ const (
 
 // Event is one audit record. It has no token, no token prefix, and no session
 // id. Those values must not be copied into Source, Path, or Reason either;
-// Record scrubs long hex runs before the line is written.
+// Record applies the shared secret-shape list and then scrubs long hex runs.
 type Event struct {
 	Time   time.Time `json:"time"`
 	Kind   Kind      `json:"kind"`
@@ -51,14 +53,11 @@ type Closer interface {
 	Close() error
 }
 
-var (
-	hexRun = regexp.MustCompile(`[A-Fa-f0-9]{32,}`)
-	skRun  = regexp.MustCompile(`sk-[A-Za-z0-9_-]+`)
-)
+var hexRun = regexp.MustCompile(`[A-Fa-f0-9]{32,}`)
 
 func scrub(s string) string {
+	s = redact.Apply(s)
 	s = hexRun.ReplaceAllString(s, "[redacted]")
-	s = skRun.ReplaceAllString(s, "[redacted]")
 	return s
 }
 
