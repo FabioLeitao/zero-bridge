@@ -112,6 +112,31 @@ run_one() {
 run_one open
 run_one token
 
+run_stop() {
+	local port rc=0
+	port=$(pick_port)
+	if [[ "$port" == 8765 || "$port" == 8766 ]]; then
+		echo "e2e: refusing operator port $port" >&2
+		exit 1
+	fi
+	local -a args=(--listen "127.0.0.1:${port}" --zero-bin "$tmp/acpfake" --permission-timeout 3s --state-dir "$tmp/state-stop")
+	ZB_FAKE_HOLD_PROMPT=1 \
+		"$tmp/zero-bridge" "${args[@]}" >"$tmp/server-stop.log" 2>&1 &
+	pid=$!
+	printf '%s\n' "$pid" >"$tmp/pid"
+	wait_health "$port"
+	ZB_E2E_STOP=1 node "$root/bridge/web/e2e/check.mjs" "http://127.0.0.1:${port}/" || rc=$?
+	stop_bridge
+	if [[ "$rc" -ne 0 ]]; then
+		echo "e2e: check.mjs failed in mode stop" >&2
+		tail -n 40 "$tmp/server-stop.log" >&2 || true
+		exit "$rc"
+	fi
+	echo "e2e: ok (stop, 127.0.0.1:${port})"
+}
+
+run_stop
+
 run_scale() {
 	local port rc=0
 	port=$(pick_port)

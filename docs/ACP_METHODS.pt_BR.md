@@ -25,6 +25,7 @@ O `TestAdditionalDirectoriesSpike` envia `protocolVersion` 1 ao binário `zero` 
 | `session/load` | ponte para o agente | `server.go` | `TestLoadReplayAndResume` |
 | `session/resume` | ponte para o agente | `server.go` | `TestLoadReplayAndResume` |
 | `session/prompt` | ponte para o agente | `server.go`, `openai_http.go` | `TestDirectPromptCall`, `TestA2APromptReachesAgent` |
+| `session/cancel` | ponte para o agente, notificação | `server.go` `cancelPrompt`, `app.js` | `TestCancelEndsHeldPrompt`, `TestCancelRouteEndsHeldPrompt`, `TestCancelAnswersPendingPermission` |
 | `session/list` | ponte para o agente | `server.go`, `list.go` | `TestListSessions`, `TestListSearchArchiveAndPin` |
 | `session/set_mode` | ponte para o agente | `server.go` | `TestSessionMode` |
 | `session/set_config_option` | ponte para o agente | `server.go` `handleConfigOption` | lacuna. Nenhum teste envia este método. |
@@ -43,4 +44,4 @@ Quando a ponte chama um método que o fake não implementa, `bridge/internal/acp
 
 ## Fora desta árvore
 
-`session/cancel` não é enviado e não é atendido. A desconexão cancela o contexto do prompt. Ela não chama um método ACP de cancelamento.
+A desconexão de um pedido OpenAI cancela o contexto desse pedido. Ela não envia `session/cancel`.

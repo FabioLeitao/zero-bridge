@@ -195,6 +195,19 @@ func (c *Client) Done() <-chan struct{} { return c.readDone }
 // StderrSnippet returns captured stderr from the child (redacted by caller if needed).
 func (c *Client) StderrSnippet() string { return c.stderr.String() }
 
+// Notify writes a JSON-RPC notification. session/cancel is one: it has no id.
+func (c *Client) Notify(method string, params any) error {
+	msg := rpcMessage{JSONRPC: jsonRPCVersion, Method: method}
+	if params != nil {
+		b, err := json.Marshal(params)
+		if err != nil {
+			return err
+		}
+		msg.Params = b
+	}
+	return c.writeMessage(msg)
+}
+
 // Call performs a JSON-RPC request and waits for the matching response.
 func (c *Client) Call(ctx context.Context, method string, params any, result any) error {
 	id, ch := c.registerPending()

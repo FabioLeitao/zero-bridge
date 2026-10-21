@@ -343,6 +343,20 @@ func protocolNumber(v any) (int, bool) {
 	return int(n), true
 }
 
+// cancelPrompt tells the agent to stop the running turn. The prompt call
+// stays open until the agent answers it. OpenAI disconnect only cancels the
+// HTTP request context; it does not send this notification.
+func (s *Server) cancelPrompt(sessionID string) error {
+	if s.perms != nil {
+		s.perms.CancelSession(sessionID)
+	}
+	c, err := s.acpClient()
+	if err != nil {
+		return err
+	}
+	return c.Notify("session/cancel", map[string]string{"sessionId": sessionID})
+}
+
 func (s *Server) acpClient() (*acpclient.Client, error) {
 	s.acpMu.RLock()
 	c := s.acp
@@ -432,6 +446,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{id}/load", s.handleLoad)
 	mux.HandleFunc("POST /v1/sessions/{id}/resume", s.handleResume)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompt", s.handlePrompt)
+	mux.HandleFunc("POST /v1/sessions/{id}/cancel", s.handleCancel)
 	mux.HandleFunc("POST /v1/sessions/{id}/mode", s.handleMode)
 	mux.HandleFunc("POST /v1/sessions/{id}/mode/recommend", s.handleModeRecommend)
 	mux.HandleFunc("POST /v1/sessions/{id}/config_option", s.handleConfigOption)
@@ -1884,6 +1899,28 @@ func (s *Server) runPrompt(sessionID string, hub *sessionHub, text string, image
 	}
 	s.applyState(sessionID, sessionstate.Event{Kind: sessionstate.KindStop, Stop: res.StopReason})
 	hub.emit(map[string]any{"type": "stop", "stopReason": res.StopReason})
+}
+
+func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
+	if !requireJSONContentType(r) {
+		s.writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "content-type must be application/json"})
+		return
+	}
+	id := r.PathValue("id")
+	hub := s.sessionHub(id)
+	if hub == nil {
+		s.writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found"})
+		return
+	}
+	if !hub.promptInProgress() {
+		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+	if err := s.cancelPrompt(id); err != nil {
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{"error": "request failed"})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {

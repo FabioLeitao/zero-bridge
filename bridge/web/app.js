@@ -57,6 +57,7 @@ const ui = {
   mode: "Modo",
   message: "Mensagem",
   send: "Enviar",
+  stop: "Parar",
   planLabel: "Plano",
   permissionsLabel: "Permissões",
   logLabel: "Conversa",
@@ -163,6 +164,8 @@ const autoModeTextEl = document.getElementById("auto-mode-text");
 const autoModeApplyBtn = document.getElementById("auto-mode-apply");
 const imagePreviewEl = document.getElementById("image-preview");
 const imageInputEl = document.getElementById("image-input");
+let promptLive = false;
+let cancelSent = false;
 
 function applyChrome() {
   sidebarToggleEl.textContent = ui.sessions;
@@ -188,7 +191,7 @@ function applyChrome() {
   logoutAllBtn.textContent = ui.logoutAll;
   modeLabelEl.textContent = ui.mode;
   document.querySelector("label[for=text]").textContent = ui.message;
-  sendBtn.textContent = ui.send;
+  paintComposer();
   sidebarEl.setAttribute("aria-label", ui.sessions);
   planEl.setAttribute("aria-label", ui.planLabel);
   permEl.setAttribute("aria-label", ui.permissionsLabel);
@@ -215,6 +218,23 @@ let sessionStatusLevel = "basic";
 let sessionStates = {};
 
 let sessionId = "";
+
+function composerLabel(running) {
+  const lang = String(document.documentElement.lang || "pt-BR").toLowerCase();
+  const english = lang === "en" || lang.indexOf("en-") === 0;
+  if (running) {
+    return english ? "Stop" : ui.stop;
+  }
+  return english ? "Send" : ui.send;
+}
+
+function paintComposer() {
+  const label = composerLabel(promptLive);
+  sendBtn.textContent = label;
+  sendBtn.setAttribute("aria-label", label);
+  sendBtn.disabled = false;
+  textEl.required = !promptLive;
+}
 let authRequired = false;
 let listGen = 0;
 let caps = {
@@ -821,6 +841,9 @@ function clearView() {
   seen = new Set();
   assistant = null;
   thoughtBody = null;
+  promptLive = false;
+  cancelSent = false;
+  paintComposer();
   showLogHint();
 }
 
@@ -1561,7 +1584,9 @@ function render(msg) {
     } else {
       note(message);
     }
-    sendBtn.disabled = false;
+    promptLive = false;
+    cancelSent = false;
+    paintComposer();
     setModeEnabled(true);
     // Return focus to composer on error
     textEl.focus();
@@ -1580,7 +1605,9 @@ function render(msg) {
     announce(ui.turnEnded);
     assistant = null;
     thoughtBody = null;
-    sendBtn.disabled = false;
+    promptLive = false;
+    cancelSent = false;
+    paintComposer();
     setModeEnabled(true);
     // Return focus to composer after turn
     textEl.focus();
@@ -1973,7 +2000,7 @@ modeEl.addEventListener("change", function () {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode: mode })
   }).then(function (res) {
-    if (sendBtn.disabled) {
+    if (promptLive) {
       return;
     }
     setModeEnabled(true);
@@ -1981,7 +2008,7 @@ modeEl.addEventListener("change", function () {
       note(ui.modeFailed);
     }
   }).catch(function (err) {
-    if (!sendBtn.disabled) {
+    if (!promptLive) {
       setModeEnabled(true);
     }
     note(String(err && err.message ? err.message : err));
@@ -2194,6 +2221,24 @@ document.getElementById("new-session-custom").addEventListener("click", function
 
 form.addEventListener("submit", function (ev) {
   ev.preventDefault();
+  if (promptLive) {
+    if (!sessionId || cancelSent) {
+      return;
+    }
+    cancelSent = true;
+    api("/v1/sessions/" + encodeURIComponent(sessionId) + "/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}"
+    }).then(function (res) {
+      if (!res.ok) {
+        cancelSent = false;
+      }
+    }).catch(function () {
+      cancelSent = false;
+    });
+    return;
+  }
   if (!sessionId) {
     note(ui.noSession);
     return;
@@ -2210,10 +2255,12 @@ form.addEventListener("submit", function (ev) {
   images.forEach(function (img) {
     addLine("user", "[image: " + img.mimeType + "]");
   });
-  sendBtn.disabled = true;
   setModeEnabled(false);
   assistant = null;
   thoughtBody = null;
+  promptLive = true;
+  cancelSent = false;
+  paintComposer();
   api("/v1/sessions/" + encodeURIComponent(sessionId) + "/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2225,7 +2272,8 @@ form.addEventListener("submit", function (ev) {
     }
     if (!res.ok) {
       note(ui.promptFailed);
-      sendBtn.disabled = false;
+      promptLive = false;
+      paintComposer();
       setModeEnabled(true);
       return;
     }
@@ -2233,7 +2281,8 @@ form.addEventListener("submit", function (ev) {
     clearImages();
   }).catch(function (err) {
     note(String(err && err.message ? err.message : err));
-    sendBtn.disabled = false;
+    promptLive = false;
+    paintComposer();
     setModeEnabled(true);
   });
 });
