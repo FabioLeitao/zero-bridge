@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"zero-bridge/bridge/internal/acpclient"
+	"zero-bridge/bridge/internal/auth"
 	"zero-bridge/bridge/internal/permissions"
 	"zero-bridge/bridge/internal/sessionstate"
 )
@@ -47,6 +48,14 @@ func (s *Server) onPermission(ev permissions.Event) {
 			"reqId":    ev.ReqID,
 			"decision": ev.Decision,
 		})
+		switch ev.Decision {
+		case "allow":
+			s.recordAudit(auth.KindPermissionAllow, nil, "allow")
+		case "deny":
+			s.recordAudit(auth.KindPermissionDeny, nil, "deny")
+		case "expired":
+			s.recordAudit(auth.KindPermissionExpire, nil, "expired")
+		}
 	}
 }
 

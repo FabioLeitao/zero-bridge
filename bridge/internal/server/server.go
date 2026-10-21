@@ -871,6 +871,7 @@ func (s *Server) handleA2AMessageSend(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	s.noteIngress(r, "/a2a/message/send")
 
 	var params struct {
 		Message struct {
@@ -949,6 +950,7 @@ func (s *Server) handleA2AMessageSend(w http.ResponseWriter, r *http.Request) {
 	var res struct {
 		StopReason string `json:"stopReason"`
 	}
+	s.notePromptSubmitted()
 	err = s.acpCall(r.Context(), "session/prompt", map[string]any{
 		"sessionId": sessionID,
 		"prompt": []map[string]any{
@@ -997,6 +999,9 @@ func (s *Server) getOrCreateA2ASession(ctx context.Context, c *acpclient.Client)
 	}
 	if err := json.Unmarshal(res, &result); err != nil {
 		return "", err
+	}
+	if result.SessionID != "" {
+		s.noteSessionCreated()
 	}
 	return result.SessionID, nil
 }
@@ -1330,6 +1335,7 @@ func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.sessions[res.SessionID] = hub
 	s.mu.Unlock()
+	s.noteSessionCreated()
 	out := map[string]any{"sessionId": res.SessionID}
 	if res.Modes != nil {
 		ids := make([]string, 0, len(res.Modes.AvailableModes))
@@ -1873,6 +1879,7 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 		// would replace them with U+FFFD.
 	}
 	observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusAccepted, time.Since(start).Seconds()*1000)
+	s.notePromptSubmitted()
 	s.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
 	s.applyState(id, sessionstate.Event{Kind: sessionstate.KindPrompt})
 	go s.runPrompt(id, hub, body.Text, body.Images)

@@ -29,6 +29,12 @@ const (
 	KindTokenReloaded     Kind = "token_reloaded"
 	KindTokenReloadFailed Kind = "token_reload_failed"
 	KindModeRouted        Kind = "mode_routed"
+	KindPermissionAllow   Kind = "permission_allow"
+	KindPermissionDeny    Kind = "permission_deny"
+	KindPermissionExpire  Kind = "permission_expire"
+	KindPromptSubmitted   Kind = "prompt_submitted"
+	KindSessionCreated    Kind = "session_created"
+	KindIngress           Kind = "ingress"
 )
 
 // Event is one audit record. It has no token, no token prefix, and no session
