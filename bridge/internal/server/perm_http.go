@@ -48,14 +48,45 @@ func (s *Server) onPermission(ev permissions.Event) {
 			"reqId":    ev.ReqID,
 			"decision": ev.Decision,
 		})
-		switch ev.Decision {
-		case "allow":
-			s.recordAudit(auth.KindPermissionAllow, nil, "allow")
-		case "deny":
-			s.recordAudit(auth.KindPermissionDeny, nil, "deny")
-		case "expired":
-			s.recordAudit(auth.KindPermissionExpire, nil, "expired")
+		s.auditResolvedPermission(ev)
+	}
+}
+
+// notePermission records an HTTP allow or deny. Path is the route template,
+// so the session id and the request id in the real URL stay out of the line.
+func (s *Server) notePermission(r *http.Request, decision string) {
+	if s.audit == nil || r == nil {
+		return
+	}
+	kind := auth.KindPermissionDeny
+	if decision == "allow" {
+		kind = auth.KindPermissionAllow
+	}
+	_ = s.audit.Record(auth.Event{
+		Time:   s.now(),
+		Kind:   kind,
+		Source: s.clientKey(r),
+		Method: r.Method,
+		Path:   "/v1/sessions/{id}/permissions/{reqId}",
+		Reason: decision,
+	})
+}
+
+// auditResolvedPermission records a decision the HTTP handler did not claim.
+// Expire, and a deny from another session, still produce their own line.
+func (s *Server) auditResolvedPermission(ev permissions.Event) {
+	if ev.Decision == "allow" || ev.Decision == "deny" {
+		if _, ok := s.permClaim.Load(ev.SessionID + "\x00" + ev.ReqID); ok {
+			return
 		}
+	}
+	switch ev.Decision {
+	case "allow":
+		s.recordAudit(auth.KindPermissionAllow, nil, "allow")
+	case "deny":
+		s.recordAudit(auth.KindPermissionDeny, nil, "deny")
+	case "expired":
+		s.recordAudit(auth.KindPermissionExpire, nil, "expired")
 	}
 }
 
@@ -99,10 +130,14 @@ func (s *Server) handlePermission(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
+	s.permClaim.Store(id+"\x00"+reqID, struct{}{})
+	defer s.permClaim.Delete(id + "\x00" + reqID)
 	switch got := s.perms.Resolve(id, reqID, body.Decision); got {
 	case "ok":
+		s.notePermission(r, body.Decision)
 		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "ok:deny":
+		s.notePermission(r, "deny")
 		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "effective": "deny"})
 	case "bad":
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "decision must be allow or deny"})

@@ -101,15 +101,19 @@ type Server struct {
 	workspaceOwned bool
 	roots          *workroot.Set
 	perms          *permissions.Broker
-	login          *loginState
-	loginDelay     time.Duration
-	audit          auth.Sink
-	meta           *sessionmeta.Store
-	tokenMu        sync.RWMutex
-	token          string
-	prevToken      string
-	reloadDone     chan struct{}
-	openai         openaiGate
+	// permClaim marks one session and request id whose allow or deny the HTTP
+	// handler will record. The key is sessionID, a NUL, and reqID. It is not a
+	// count: another session's expire or deny still records its own line.
+	permClaim  sync.Map
+	login      *loginState
+	loginDelay time.Duration
+	audit      auth.Sink
+	meta       *sessionmeta.Store
+	tokenMu    sync.RWMutex
+	token      string
+	prevToken  string
+	reloadDone chan struct{}
+	openai     openaiGate
 }
 
 // New builds a Server; call Boot before serving.
