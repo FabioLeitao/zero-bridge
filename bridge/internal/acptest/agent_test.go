@@ -330,3 +330,119 @@ func TestMainDoesNotRunWithoutEnv(t *testing.T) {
 	// MaybeMain is a no-op in normal test runs.
 	MaybeMain()
 }
+
+func TestSessionListOmitsCreatedWithoutEnv(t *testing.T) {
+	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/tmp/zbridge-ws-a","title":"kept-out"}}` + "\n" +
+		`{"jsonrpc":"2.0","id":2,"method":"session/list","params":{"cwd":"/tmp/zbridge-ws-a"}}` + "\n")
+	var out bytes.Buffer
+	runAgent(in, &out)
+	lines := splitLines(t, out.String())
+	if len(lines) != 2 {
+		t.Fatalf("lines %d", len(lines))
+	}
+	if strings.Contains(lines[1], "kept-out") {
+		t.Fatalf("created title leaked into the catalog: %s", lines[1])
+	}
+	var page struct {
+		Result struct {
+			Sessions []struct {
+				SessionID string `json:"sessionId"`
+			} `json:"sessions"`
+			NextCursor string `json:"nextCursor"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Result.Sessions) != 2 || page.Result.Sessions[0].SessionID != "sess-a1" || page.Result.NextCursor != "sess-a2" {
+		t.Fatalf("catalog page %+v", page.Result)
+	}
+}
+
+func TestCreatedSessionsListedNewestFirst(t *testing.T) {
+	t.Setenv("ZB_FAKE_LIST", "created")
+	stdinR, stdinW := io.Pipe()
+	stdoutR, stdoutW := io.Pipe()
+	go func() {
+		runAgent(stdinR, stdoutW)
+		_ = stdoutW.Close()
+	}()
+	t.Cleanup(func() { _ = stdinW.Close() })
+	sc := bufio.NewScanner(stdoutR)
+	write := func(line string) {
+		t.Helper()
+		if _, err := io.WriteString(stdinW, line+"\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readID := func(id float64) (map[string]any, string) {
+		t.Helper()
+		var seen strings.Builder
+		for sc.Scan() {
+			line := sc.Text()
+			seen.WriteString(line)
+			seen.WriteByte('\n')
+			var msg map[string]any
+			if json.Unmarshal([]byte(line), &msg) != nil {
+				t.Fatalf("line %s", line)
+			}
+			got, _ := msg["id"].(float64)
+			if got == id {
+				return msg, seen.String()
+			}
+		}
+		t.Fatalf("response %v: %v", id, sc.Err())
+		return nil, ""
+	}
+	sessionID := func(msg map[string]any) string {
+		t.Helper()
+		res, _ := msg["result"].(map[string]any)
+		id, _ := res["sessionId"].(string)
+		if id == "" {
+			t.Fatalf("session/new %v", msg)
+		}
+		return id
+	}
+	write(`{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/tmp/created-a","title":"first"}}`)
+	firstID := sessionID(func() map[string]any { msg, _ := readID(1); return msg }())
+	write(`{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/tmp/created-b","title":"second"}}`)
+	secondID := sessionID(func() map[string]any { msg, _ := readID(2); return msg }())
+	write(`{"jsonrpc":"2.0","id":3,"method":"session/list","params":{}}`)
+	listed, _ := readID(3)
+	res, _ := listed["result"].(map[string]any)
+	raw, _ := res["sessions"].([]any)
+	if len(raw) < 2 {
+		t.Fatalf("list %v", listed)
+	}
+	type row struct {
+		SessionID string `json:"sessionId"`
+		Title     string `json:"title"`
+		Cwd       string `json:"cwd"`
+	}
+	var sessions []row
+	b, _ := json.Marshal(raw)
+	if err := json.Unmarshal(b, &sessions); err != nil {
+		t.Fatal(err)
+	}
+	if sessions[0].SessionID != secondID || sessions[0].Title != "second" || sessions[0].Cwd != "/tmp/created-b" {
+		t.Fatalf("newest session = %+v, want id %s title second cwd /tmp/created-b", sessions[0], secondID)
+	}
+	if sessions[1].SessionID != firstID || sessions[1].Title != "first" || sessions[1].Cwd != "/tmp/created-a" {
+		t.Fatalf("older session = %+v, want id %s title first cwd /tmp/created-a", sessions[1], firstID)
+	}
+	for _, s := range sessions {
+		if s.SessionID == "sess-a1" {
+			t.Fatalf("catalog replaced the created list: %+v", sessions)
+		}
+	}
+	write(`{"jsonrpc":"2.0","id":4,"method":"session/load","params":{"sessionId":"` + secondID + `"}}`)
+	_, loadText := readID(4)
+	if !strings.Contains(loadText, "replay-user") || strings.Contains(loadText, "unknown session") {
+		t.Fatalf("load %s", loadText)
+	}
+	write(`{"jsonrpc":"2.0","id":5,"method":"session/resume","params":{"sessionId":"` + secondID + `"}}`)
+	resumed, resumeText := readID(5)
+	if resumed["result"] == nil || strings.Contains(resumeText, "unknown session") {
+		t.Fatalf("resume %s", resumeText)
+	}
+}
