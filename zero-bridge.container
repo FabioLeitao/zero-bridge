@@ -34,7 +34,6 @@ Volume=${WORKSPACE_PATH:-/HOST_PATH_TO_WORKSPACE}:/workspace:ro,z
 Volume=${EXTRA_PATH:-/HOST_PATH_TO_EXTRA}:/extra:ro,z
 
 # Environment
-Environment=ZERO_BRIDGE_TOKEN_FILE=/var/lib/zerobridge/.local/state/zero-bridge/token.txt
 Environment=OTLP_ENDPOINT=http://otel-collector:4318
 Environment=OTEL_SERVICE_NAME=zero-bridge
 Environment=OTEL_SAMPLE=0.1
@@ -44,7 +43,7 @@ HealthCheckInterval=30
 HealthCheckTimeout=3
 HealthCheckStartPeriod=10
 HealthCheckRetries=3
-Exec=/usr/local/bin/zero-bridge --listen 127.0.0.1:8765
+Exec=/usr/local/bin/zero-bridge --listen 127.0.0.1:8765 --token-file /var/lib/zerobridge/.local/state/zero-bridge/token.txt
 
 [Install]
 WantedBy=multi-user.target

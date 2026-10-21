@@ -66,8 +66,6 @@ spec:
           drop: ["ALL"]
         readOnlyRootFilesystem: true
       env:
-        - name: ZERO_BRIDGE_TOKEN_FILE
-          value: /var/lib/zerobridge/.local/state/zero-bridge/token.txt
         - name: OTLP_ENDPOINT
           value: "http://otel-collector:4318"
         - name: OTEL_SERVICE_NAME
