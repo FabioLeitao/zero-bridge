@@ -73,6 +73,7 @@ type cliConfig struct {
 	allowedHosts   []string
 	publicOrigins  []string
 	trustProxy     bool
+	requireToken   bool
 	exitWithParent bool
 	agent          acpclient.Command
 	profile        string
@@ -107,6 +108,10 @@ func runArgs(args []string, stderr io.Writer) int {
 	token, err := loadToken(cfg.tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "zero-bridge: %v\n", err)
+		return 2
+	}
+	if token == "" && tokenRequired(cfg) {
+		fmt.Fprintf(stderr, "zero-bridge: %s\n", requireTokenMessage)
 		return 2
 	}
 	var fileLimits map[string]string
@@ -320,6 +325,8 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 			cfg.initTimeout = d
 		case "--trust-proxy":
 			cfg.trustProxy = true
+		case "--require-token":
+			cfg.requireToken = true
 		case "--exit-with-parent":
 			cfg.exitWithParent = true
 		case "--allowed-host":
@@ -437,6 +444,22 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 	}
 	cfg.agent = resolved
 	return cfg, nil
+}
+
+// requireTokenMessage is the refusal when a published bridge has no token.
+// It names the flags that fix the start and contains no secret.
+const requireTokenMessage = "token required (--require-token, --trust-proxy, or --public-origin); set --token-file or ZERO_BRIDGE_TOKEN"
+
+func tokenRequired(cfg cliConfig) bool {
+	if cfg.requireToken || cfg.trustProxy || len(cfg.publicOrigins) > 0 {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ZERO_BRIDGE_REQUIRE_TOKEN"))) {
+	case "1", "true":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseFloat(s string) (float64, error) {

@@ -34,6 +34,7 @@ func TestParseCLIMissingValuesAndBadNumbers(t *testing.T) {
 		"--permission-timeout", "2s",
 		"--otel-sample", "0.25",
 		"--trust-proxy",
+		"--require-token",
 		"--allowed-host", "bridge.test",
 		"--public-origin", "https://bridge.test",
 		"--session-ttl", "1h",
@@ -41,7 +42,7 @@ func TestParseCLIMissingValuesAndBadNumbers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.permTimeout.String() != "2s" || cfg.otelSample != 0.25 || !cfg.trustProxy || cfg.initTimeout.String() != "30s" || cfg.exitWithParent {
+	if cfg.permTimeout.String() != "2s" || cfg.otelSample != 0.25 || !cfg.trustProxy || !cfg.requireToken || cfg.initTimeout.String() != "30s" || cfg.exitWithParent {
 		t.Fatalf("cfg %+v", cfg)
 	}
 	withParent, err := parseCLI([]string{"--agent-cmd", "/bin/true", "--exit-with-parent"}, &bytes.Buffer{})
