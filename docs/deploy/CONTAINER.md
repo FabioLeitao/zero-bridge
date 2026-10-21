@@ -32,7 +32,7 @@ The Dockerfile does not apply them. Compose does. A tmpfs is mounted at `/tmp` b
 
 ## Token
 
-Mount the token file read-only. Do not bake the token into the image. The file mode on the host is `0600`.
+Mount the token file read-only at `/var/lib/zerobridge/.local/state/zero-bridge/token.txt`. Do not bake the token into the image. The file mode on the host is `0600`. The image command and the Quadlet `Exec` pass `--token-file` with that path. Compose and the kube pod have no command of their own, so they use the image command. `ZERO_BRIDGE_TOKEN_FILE` is not read.
 
 ## Telemetry
 
