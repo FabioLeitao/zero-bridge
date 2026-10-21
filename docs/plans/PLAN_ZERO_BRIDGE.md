@@ -653,7 +653,7 @@ The operator order (2026-10-14) is the sequence in the global rules: S20, merged
 **Acceptance**
 
 - When `promptCapabilities.image` is true, the composer sends a pasted or dropped image as an ACP image block.
-- Caps stay finite: bytes per image, images per prompt, and a MIME allowlist of PNG, JPEG, WebP, and GIF. No SVG. A magic-byte check. No EXIF rendering. Nothing written to disk. No image bytes in logs.
+- Caps stay finite: 4 MiB decoded per image (hard cap 16 MiB) and 4 images per prompt. The HTTP body cap includes the 4/3 base64 expansion, so four images at the decoded cap fit. A fifth image is `too many images`. A larger decoded image is `exceeds limit`. A body past the cap is `body too large`. MIME allowlist of PNG, JPEG, WebP, and GIF. No SVG. A magic-byte check. No EXIF rendering. Nothing written to disk. No image bytes in logs. The image block sent to the agent keeps the submitted base64.
 - The control is hidden when the agent does not advertise images. The headless check uses the fake agent only.
 
 **Stop:** Do not call a model to prove the attachment.

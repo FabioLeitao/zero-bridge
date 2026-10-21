@@ -1742,6 +1742,22 @@ func validateWorkspace(p string) error {
 	return nil
 }
 
+// promptBodyLimit is the HTTP body cap for a prompt. Each image is base64
+// on the wire, so the cap is the text slot plus 4/3 of the decoded cap,
+// not the decoded cap times the image count.
+func promptBodyLimit(maxImage int64, maxImages int) int64 {
+	if maxImage < 0 {
+		maxImage = 0
+	}
+	if maxImages < 0 {
+		maxImages = 0
+	}
+	b64 := ((maxImage + 2) / 3) * 4
+	const perImage int64 = 128
+	const envelope int64 = 256
+	return envelope + maxImage + int64(maxImages)*(b64+perImage)
+}
+
 func (s *Server) validateImage(data []byte, mime string) error {
 	if int64(len(data)) > s.cfg.MaxImageBytes {
 		return fmt.Errorf("image size %d exceeds limit %d", len(data), s.cfg.MaxImageBytes)
@@ -1807,8 +1823,9 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "prompt already in progress"})
 		return
 	}
-	// Allow up to max images + text in body.
-	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxImageBytes*int64(s.cfg.MaxImages+1))
+	// The decoded cap is MaxImageBytes. The body is base64, which is 4/3
+	// of that, plus a text slot. Four images at the cap must fit.
+	r.Body = http.MaxBytesReader(w, r.Body, promptBodyLimit(s.cfg.MaxImageBytes, s.cfg.MaxImages))
 	var body struct {
 		Text   string            `json:"text"`
 		Images []ImageAttachment `json:"images,omitempty"`
@@ -1816,7 +1833,12 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		hub.endPrompt()
 		observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusBadRequest, time.Since(start).Seconds()*1000)
-		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		msg := "invalid json"
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			msg = "body too large"
+		}
+		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": msg})
 		return
 	}
 	if body.Text == "" && len(body.Images) == 0 {
@@ -1846,7 +1868,9 @@ func (s *Server) handlePrompt(w http.ResponseWriter, r *http.Request) {
 			s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("image %d: %v", i, err)})
 			return
 		}
-		body.Images[i].Data = string(data) // Store decoded bytes for runPrompt
+		// data is checked and discarded. img.Data stays the base64 text
+		// the agent reads. Raw bytes are not valid UTF-8, and encoding/json
+		// would replace them with U+FFFD.
 	}
 	observability.RecordHTTPMetric("/v1/sessions/{id}/prompt", "POST", http.StatusAccepted, time.Since(start).Seconds()*1000)
 	s.writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
