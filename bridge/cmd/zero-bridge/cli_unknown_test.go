@@ -26,11 +26,18 @@ func TestUnknownFlagExitsNamingTheArgument(t *testing.T) {
 			t.Fatalf("%s code %d stderr %q", flag, code, msg)
 		}
 	}
+	const canary = "SEGREDO_CANARIO"
 	var stderr bytes.Buffer
-	code := runArgs([]string{"--agent-cmd", "/bin/true", "stray-argument"}, &stderr)
+	code := runArgs([]string{"--agent-cmd", "/bin/true", "--tokn=" + canary}, &stderr)
 	msg := stderr.String()
-	if code != 2 || !strings.Contains(msg, "stray-argument") {
-		t.Fatalf("stray code %d stderr %q", code, msg)
+	if code != 2 || !strings.Contains(msg, "--tokn") || strings.Contains(msg, canary) {
+		t.Fatalf("glued code %d stderr %q", code, msg)
+	}
+	stderr.Reset()
+	code = runArgs([]string{"--agent-cmd", "/bin/true", canary}, &stderr)
+	msg = stderr.String()
+	if code != 2 || strings.Contains(msg, canary) || !strings.Contains(msg, "unexpected positional argument") {
+		t.Fatalf("positional code %d stderr %q", code, msg)
 	}
 }
 

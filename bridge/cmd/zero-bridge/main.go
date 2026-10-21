@@ -262,6 +262,16 @@ func openSessionMeta(dir string, logger *log.Logger) *sessionmeta.Store {
 	return st
 }
 
+// unknownArgument names a rejected argv without a value that may be a secret.
+// A flag keeps the text before the first "=". A positional value is not echoed.
+func unknownArgument(arg string) string {
+	if !strings.HasPrefix(arg, "-") {
+		return "unexpected positional argument"
+	}
+	name, _, _ := strings.Cut(arg, "=")
+	return "unknown argument " + name
+}
+
 func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 	cfg := cliConfig{
 		listen:      "127.0.0.1:8765",
@@ -416,8 +426,7 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 			zeroBin = args[i]
 			zeroBinSet = true
 		default:
-			// Name the token only. The next argv may be a secret value.
-			return cfg, fmt.Errorf("unknown argument %s", args[i])
+			return cfg, fmt.Errorf("%s", unknownArgument(args[i]))
 		}
 	}
 	switch cfg.profile {
