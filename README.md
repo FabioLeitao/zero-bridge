@@ -27,6 +27,7 @@ Open http://127.0.0.1:8765/. Flags:
 | `--zero-bin` | deprecated | Alias of `--agent-cmd <bin> --agent-arg acp`. Stderr names the replacement. It cannot be combined with `--agent-cmd` or `--agent-arg`. |
 | `--permission-timeout` | `60s` | How long an exposed permission request waits before the bridge denies it. |
 | `--init-timeout` | `30s` | How long `initialize` may stay silent. `0`, a negative duration, or a non-duration exits **2**. A peer that never answers exits **1** with `initialize timed out`. |
+| `--exit-with-parent` | off | Watch the parent pid recorded at start. If that pid is gone, or `getppid` changes, shut down the same way as SIGTERM, which removes a unix socket this process created. Off by default, so a bridge started by nohup, systemd, or a shell that exits keeps running. Linux and macOS. Windows refuses the flag. |
 | `--token-file` | none | Token file, mode `0600`. Do not set it together with `ZERO_BRIDGE_TOKEN`. `SIGHUP` reloads this file only. |
 | `--audit-log` | none | Extra audit file, mode `0600`, append-only. An existing file that is more open is refused. |
 | `--config` | none | Limit file. A flag wins, then the environment, then this file, then the default. |
@@ -47,7 +48,7 @@ The agent name, version, and mode names and descriptions come from the agent. Th
 ## Security
 
 - `--listen` is a loopback TCP address (`127.0.0.1`, `localhost`, or `::1`) or `unix:<absolute path>`. Any other TCP host exits **2**. `npipe:` exits **2**. A Windows named pipe is not implemented.
-- `unix:<absolute path>` creates a missing parent at `0700` and the socket at `0600` with `os.Chmod` after bind. The parent is already private to this user, so that interval is not open to anyone else. An existing parent that is more open, owned by someone else, or a symlink is refused. A path that exists and is not a stale socket of this user is left in place. Shutdown removes only the socket this process created.
+- `unix:<absolute path>` creates a missing parent at `0700` and the socket at `0600` with `os.Chmod` after bind. The parent is already private to this user, so that interval is not open to anyone else. An existing parent that is more open, owned by someone else, or a symlink is refused. A path that exists and is not a stale socket of this user is left in place. Shutdown removes only the socket this process created. `--exit-with-parent` runs that same shutdown when the parent pid recorded at start is gone. The flag stays off unless the caller sets it.
 - On that socket, `Host` is ignored. An `Origin` is accepted only when `--public-origin` names it. A request with no `Origin` is Bearer only. Cookie CSRF still applies to POST and DELETE. Linux reads `SO_PEERCRED` and drops another uid. `GET /v1/info` reports `"listen":"unix"` and does not include the path.
 - On TCP, `Host` must be `127.0.0.1:<port>` or `localhost:<port>`. If `Origin` is present, it must match that host and port. Otherwise the response is **403**.
 - JSON bodies need `Content-Type: application/json` (`415` otherwise).
