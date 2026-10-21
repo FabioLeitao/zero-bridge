@@ -27,6 +27,7 @@ Abra http://127.0.0.1:8765/. Flags:
 | `--zero-bin` | obsoleta | Alias de `--agent-cmd <bin> --agent-arg acp`. O stderr nomeia a substituição. Não combina com `--agent-cmd` nem com `--agent-arg`. |
 | `--permission-timeout` | `60s` | Quanto uma permissão já exposta espera antes de a ponte negar. |
 | `--init-timeout` | `30s` | Quanto o `initialize` pode ficar em silêncio. `0`, duração negativa ou valor que não é duração sai com código **2**. Um peer que nunca responde sai com **1** e `initialize timed out`. |
+| `--exit-with-parent` | desligada | Observa o pid do pai gravado na partida. Se esse pid sumir, ou se `getppid` mudar, encerra pelo mesmo caminho do SIGTERM, que apaga o socket unix que este processo criou. Desligada por padrão, então uma bridge iniciada por nohup, systemd ou um shell que sai continua. Linux e macOS. No Windows a flag é recusada. |
 | `--token-file` | nenhum | Arquivo de token, modo `0600`. Não combine com `ZERO_BRIDGE_TOKEN`. `SIGHUP` relê só esse arquivo. |
 | `--audit-log` | nenhum | Arquivo extra de auditoria, modo `0600`, só append. Um arquivo existente mais aberto é recusado. |
 | `--config` | nenhum | Arquivo de limites. A flag ganha, depois o ambiente, depois esse arquivo, depois o padrão. |
@@ -47,7 +48,7 @@ O nome e a versão do agente, e os nomes e as descrições dos modos, vêm do ag
 ## Segurança
 
 - `--listen` é um endereço TCP de loopback (`127.0.0.1`, `localhost` ou `::1`) ou `unix:<caminho absoluto>`. Outro host TCP sai com código **2**. `npipe:` sai **2**. Named pipe do Windows não está implementado.
-- `unix:<caminho absoluto>` cria o diretório pai ausente em `0700` e o socket em `0600` com `os.Chmod` depois do bind. O pai já é privado deste usuário, então esse intervalo não fica aberto a mais ninguém. Um pai existente mais aberto, de outro dono ou symlink é recusado. Um caminho que existe e não é um socket velho deste usuário permanece. O desligamento remove só o socket que este processo criou.
+- `unix:<caminho absoluto>` cria o diretório pai ausente em `0700` e o socket em `0600` com `os.Chmod` depois do bind. O pai já é privado deste usuário, então esse intervalo não fica aberto a mais ninguém. Um pai existente mais aberto, de outro dono ou symlink é recusado. Um caminho que existe e não é um socket velho deste usuário permanece. O desligamento remove só o socket que este processo criou. `--exit-with-parent` dispara esse mesmo desligamento quando o pid do pai gravado na partida some. A flag fica desligada se quem chama não a passar.
 - Nesse socket, `Host` é ignorado. Um `Origin` só é aceito quando `--public-origin` o nomeia. Um pedido sem `Origin` exige Bearer. O CSRF do cookie continua valendo em POST e DELETE. No Linux, `SO_PEERCRED` descarta outro uid. `GET /v1/info` informa `"listen":"unix"` e não inclui o caminho.
 - No TCP, `Host` tem de ser `127.0.0.1:<porta>` ou `localhost:<porta>`. Se houver `Origin`, tem de ser o mesmo host e a mesma porta. Caso contrário a resposta é **403**.
 - Corpos JSON exigem `Content-Type: application/json` (`415` se não for).

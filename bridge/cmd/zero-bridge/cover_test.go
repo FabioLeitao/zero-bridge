@@ -41,8 +41,12 @@ func TestParseCLIMissingValuesAndBadNumbers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.permTimeout.String() != "2s" || cfg.otelSample != 0.25 || !cfg.trustProxy || cfg.initTimeout.String() != "30s" {
+	if cfg.permTimeout.String() != "2s" || cfg.otelSample != 0.25 || !cfg.trustProxy || cfg.initTimeout.String() != "30s" || cfg.exitWithParent {
 		t.Fatalf("cfg %+v", cfg)
+	}
+	withParent, err := parseCLI([]string{"--agent-cmd", "/bin/true", "--exit-with-parent"}, &bytes.Buffer{})
+	if err != nil || !withParent.exitWithParent {
+		t.Fatalf("exit with parent %+v %v", withParent.exitWithParent, err)
 	}
 	short, err := parseCLI([]string{"--agent-cmd", "/bin/true", "--init-timeout", "1s"}, &bytes.Buffer{})
 	if err != nil || short.initTimeout.String() != "1s" {
