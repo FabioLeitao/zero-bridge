@@ -47,7 +47,6 @@ services:
       # Optional: additional directories for the agent
       - ${EXTRA_PATH:-/HOST_PATH_TO_EXTRA}:/extra:ro
     environment:
-      - ZERO_BRIDGE_TOKEN_FILE=/var/lib/zerobridge/.local/state/zero-bridge/token.txt
       # Telemetry. The collector in this file speaks HTTP, so plaintext export is explicit.
       - OTLP_ENDPOINT=http://otel-collector:4318
       - OTEL_EXPORTER_OTLP_INSECURE=true
