@@ -73,6 +73,7 @@ type cliConfig struct {
 	allowedHosts   []string
 	publicOrigins  []string
 	trustProxy     bool
+	exitWithParent bool
 	agent          acpclient.Command
 	profile        string
 	stateDir       string
@@ -96,6 +97,12 @@ func runArgs(args []string, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "zero-bridge: %v\n", err)
 		return 2
+	}
+	if cfg.exitWithParent {
+		if err := exitWithParentSupported(); err != nil {
+			fmt.Fprintf(stderr, "zero-bridge: %v\n", err)
+			return 2
+		}
 	}
 	token, err := loadToken(cfg.tokenFile)
 	if err != nil {
@@ -199,6 +206,12 @@ func runArgs(args []string, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if cfg.exitWithParent {
+		if err := armExitWithParent(stop); err != nil {
+			fmt.Fprintf(stderr, "zero-bridge: %v\n", err)
+			return 2
+		}
+	}
 	if err := srv.Boot(ctx); err != nil {
 		fmt.Fprintf(stderr, "zero-bridge: boot: %v\n", err)
 		return 1
@@ -307,6 +320,8 @@ func parseCLI(args []string, stderr io.Writer) (cliConfig, error) {
 			cfg.initTimeout = d
 		case "--trust-proxy":
 			cfg.trustProxy = true
+		case "--exit-with-parent":
+			cfg.exitWithParent = true
 		case "--allowed-host":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("missing value for --allowed-host")
