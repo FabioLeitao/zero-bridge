@@ -638,7 +638,7 @@ A ordem do operador (2026-10-14) é a sequência das regras globais: S20, mergea
 **Aceite**
 
 - Quando `promptCapabilities.image` é verdadeiro, o compositor envia uma imagem colada ou largada como bloco de imagem ACP.
-- Os tetos ficam finitos: bytes por imagem, imagens por prompt, e allowlist de MIME PNG, JPEG, WebP e GIF. Sem SVG. Checagem de magic byte. Sem renderizar EXIF. Nada escrito em disco. Sem bytes de imagem no log.
+- Os tetos ficam finitos: 4 MiB decodificados por imagem (teto rígido 16 MiB) e 4 imagens por prompt. O teto do corpo HTTP inclui a expansão base64 de 4/3, então quatro imagens no teto decodificado cabem. A quinta imagem é `too many images`. Uma imagem decodificada maior é `exceeds limit`. Um corpo acima do teto é `body too large`. Allowlist de MIME PNG, JPEG, WebP e GIF. Sem SVG. Checagem de magic byte. Sem renderizar EXIF. Nada escrito em disco. Sem bytes de imagem no log. O bloco de imagem enviado ao agente guarda o base64 enviado.
 - O controle fica oculto quando o agente não anuncia imagem. O check headless usa só o agente falso.
 
 **Parada:** não chamar um modelo para provar o anexo.

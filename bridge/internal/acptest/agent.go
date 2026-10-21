@@ -49,6 +49,9 @@ func runAgent(r io.Reader, w io.Writer) {
 		}
 		switch env.Method {
 		case "initialize":
+			if path := os.Getenv("ZB_FAKE_CAPTURE_INIT"); path != "" {
+				_ = os.WriteFile(path, append(line, '\n'), 0o600)
+			}
 			writeResp(w, env.ID, fakeInitializeResult())
 			if os.Getenv("ZB_FAKE_AGENT_EXIT") == "1" {
 				os.Exit(0)
