@@ -65,4 +65,4 @@ EXPOSE 8765
 
 # Default command
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["zero-bridge", "--listen", "127.0.0.1:8765", "--token-file", "/var/lib/zerobridge/.local/state/zero-bridge/token.txt"]
+CMD ["zero-bridge", "--listen", "127.0.0.1:8765", "--token-file", "/var/lib/zerobridge/.local/state/zero-bridge/token.txt", "--require-token"]

@@ -25,7 +25,8 @@ Start the bridge with `--token-file` **or** the environment variable `ZERO_BRIDG
 | `--token-file` | Path of the token file above. |
 | `--allowed-host host[:port]` | Repeatable. Exact `Host` match, case-insensitive, in addition to the loopback listen host. |
 | `--public-origin scheme://host[:port]` | Repeatable. Exact `Origin` match (scheme, host, and port). |
-| `--trust-proxy` | Trust `X-Forwarded-Proto` for the `Secure` cookie, and the first `X-Forwarded-For` address as the login rate-limit key. Off by default. |
+| `--trust-proxy` | Trust `X-Forwarded-Proto` for the `Secure` cookie, and the first `X-Forwarded-For` address as the login rate-limit key. Off by default. It also requires a token. |
+| `--require-token` | Off by default. Exit **2** before listen when no token resolves. `ZERO_BRIDGE_REQUIRE_TOKEN=1` or `true` turns it on. `--trust-proxy` and `--public-origin` turn it on. |
 | `--audit-log` | Optional audit file. Created at `0600`. An existing file that group or others can read is refused. |
 | `--config` | Limit file (`session-ttl`, `session-idle`, `max-sessions`, `auth-fail-window`, `auth-fail-limit`). Flag, then environment, then this file, then the default. |
 | `--session-ttl` | Absolute cookie life. Default `12h`, cap `720h`. |
@@ -34,7 +35,7 @@ Start the bridge with `--token-file` **or** the environment variable `ZERO_BRIDG
 | `--auth-fail-window` | Shared login and Bearer window. Default `1m`, floor `1s`, cap `1h`. |
 | `--auth-fail-limit` | Failures kept in that window. Default `5`, cap `100`. |
 
-Any `--allowed-host` or `--public-origin` without a token exits **2**: `token required when exposed via proxy`. An empty list keeps the loopback Host check.
+`--require-token`, `--trust-proxy`, or `--public-origin` with no resolved token exits **2** before listen: `token required (--require-token, --trust-proxy, or --public-origin); set --token-file or ZERO_BRIDGE_TOKEN`. The line contains no secret. Plain `--listen 127.0.0.1:8765` without a token still starts and prints the TCP warning. `--allowed-host` without a token still exits **2** from server setup: `token required when exposed via proxy`. An empty allowlist keeps the loopback Host check.
 
 `--allowed-host` is the `Host` header only. It does not authorize an `Origin`. With `--allowed-host` and **no** `--public-origin`, a `POST /v1/login` that sends `Origin: https://…` is **403**. Add `--public-origin` with the exact scheme, host, and port the browser uses.
 
