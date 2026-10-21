@@ -1,33 +1,27 @@
 # Local gate for zero-bridge. Future CI calls `make check` and does not grow a second list.
 # Pinned tools run with `go run pkg@version`. Nothing is installed globally.
 # Versions follow the Zero upstream Makefile (read 2026-10-14).
-# GOTOOLCHAIN=go1.26.10 may download that toolchain from the network the first
-# time an analyzer target runs. Offline: warm the cache once, with network,
-# via `make lint-static`. Analyzers stay on TOOL_GO_TOOLCHAIN.
-# bridge/go.mod pins toolchain go1.27.3. The first vet, build, or test on an
-# older host may download that toolchain (about 250 MB).
+# bridge/go.mod pins toolchain go1.27.3. The first vet, build, test, or
+# analyzer run on an older host may download that toolchain (about 250 MB).
+# golangci-lint v2.15.0 ships staticcheck v0.8.2 (2026-10-12). v2.12.2
+# panicked in the Go 1.27 poll package, so the analyzers used a second toolchain.
 DEADCODE_VERSION := v0.46.0
-GOLANGCI_LINT_VERSION := v2.12.2
+GOLANGCI_LINT_VERSION := v2.15.0
 GOVULNCHECK_VERSION := v1.3.0
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 BRIDGE := $(ROOT)/bridge
 GO_VERSION := $(shell awk '/^go /{print $$2; exit}' $(BRIDGE)/go.mod)
 # go.mod says "go 1.22", a language version, not a toolchain (go1.22.x).
-# The pinned staticcheck inside golangci-lint v2.12.2 panics on Go 1.27's
-# std package poll. Analyzers use Go 1.26.10, not the host Go. go1.26.9
-# reports GO-2026-6809 in crypto/x509.
-TOOL_GO_TOOLCHAIN := go1.26.10
 GO_FILES := $(shell git -C $(ROOT) ls-files 'bridge/*.go' 'bridge/**/*.go')
 
 .DEFAULT_GOAL := help
 .PHONY: help fmt fmt-check vet build test test-quick lint-static deadcode vulncheck vulncheck-binary tidy-check diff-check hygiene hooks e2e mutate sbom check check-advisory
 
-lint-static deadcode vulncheck: export GOTOOLCHAIN = $(TOOL_GO_TOOLCHAIN)
 lint-static deadcode vulncheck: export GOWORK = off
 
 help:
-	@echo "Pinned: deadcode $(DEADCODE_VERSION), golangci-lint $(GOLANGCI_LINT_VERSION), govulncheck $(GOVULNCHECK_VERSION); analyzer toolchain $(TOOL_GO_TOOLCHAIN); go.mod language $(GO_VERSION)"
+	@echo "Pinned: deadcode $(DEADCODE_VERSION), golangci-lint $(GOLANGCI_LINT_VERSION), govulncheck $(GOVULNCHECK_VERSION); analyzers use the bridge/go.mod toolchain; go.mod language $(GO_VERSION)"
 	@echo "Targets: fmt, fmt-check, vet, build, test, test-quick, lint-static, deadcode, vulncheck, vulncheck-binary, tidy-check, diff-check, hygiene, hooks, e2e, mutate, sbom, check, check-advisory"
 	@echo "hooks installs .githooks for this clone. A fresh clone does not do that. Skipping the hooks is forbidden."
 	@echo "e2e starts its own bridge on a free port. mutate is the slow pre-PR layer, not pre-commit."
@@ -64,13 +58,13 @@ vulncheck: vulncheck-binary
 	cd $(BRIDGE) && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 	cd $(BRIDGE)/obs && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
-# Build with the go.mod toolchain, not TOOL_GO_TOOLCHAIN. The temp binary
-# is removed when the recipe exits. A stale pin fails this scan.
+# Build and scan with the go.mod toolchain. The temp binary is removed
+# when the recipe exits.
 vulncheck-binary:
 	dir=$$(mktemp -d); \
 	trap 'rm -rf "$$dir"' EXIT; \
 	cd $(BRIDGE) && GOTOOLCHAIN=auto go build -o "$$dir/zero-bridge" ./cmd/zero-bridge && \
-	GOTOOLCHAIN=$(TOOL_GO_TOOLCHAIN) go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) -mode=binary "$$dir/zero-bridge"
+	GOTOOLCHAIN=auto go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) -mode=binary "$$dir/zero-bridge"
 
 # Go 1.23+: -diff exits non-zero when tidy would edit, and it does not write.
 tidy-check:
