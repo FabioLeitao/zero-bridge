@@ -91,9 +91,7 @@ func TestAllowNeverWidens(t *testing.T) {
 	b.Clock = newClock()
 	done := make(chan any, 1)
 	go func() { done <- b.Wait("s", params(both)) }()
-	time.Sleep(20 * time.Millisecond)
-	p := b.Pending("s")
-	if b.Resolve("s", p.ReqID, "allow") != "ok" {
+	if b.Resolve("s", waitReq(t, b), "allow") != "ok" {
 		t.Fatal("resolve")
 	}
 	if got := optionID(<-done); got != "allow" {
@@ -103,9 +101,7 @@ func TestAllowNeverWidens(t *testing.T) {
 	b2.Clock = newClock()
 	done2 := make(chan any, 1)
 	go func() { done2 <- b2.Wait("s", params(alwaysOnly)) }()
-	time.Sleep(20 * time.Millisecond)
-	p = b2.Pending("s")
-	if got := b2.Resolve("s", p.ReqID, "allow"); got != "ok:deny" {
+	if got := b2.Resolve("s", waitReq(t, b2), "allow"); got != "ok:deny" {
 		t.Fatalf("resolve2 %s", got)
 	}
 	if got := optionID(<-done2); got != "deny" {
@@ -117,8 +113,7 @@ func TestDoubleResolve(t *testing.T) {
 	b := New(time.Second)
 	b.Clock = newClock()
 	go func() { _ = b.Wait("s", params(both)) }()
-	time.Sleep(20 * time.Millisecond)
-	id := b.Pending("s").ReqID
+	id := waitReq(t, b)
 	if b.Resolve("s", id, "deny") != "ok" {
 		t.Fatal("first")
 	}
@@ -136,7 +131,7 @@ func TestTimeout(t *testing.T) {
 	b.Clock = clk
 	done := make(chan any, 1)
 	go func() { done <- b.Wait("s", params(both)) }()
-	time.Sleep(20 * time.Millisecond)
+	waitReq(t, b)
 	clk.Advance()
 	if got := optionID(<-done); got != "deny" {
 		t.Fatalf("option %s", got)
@@ -151,11 +146,10 @@ func TestQueueOneExposed(t *testing.T) {
 	b := New(time.Second)
 	b.Clock = newClock()
 	go func() { _ = b.Wait("s", params(both)) }()
-	time.Sleep(20 * time.Millisecond)
-	first := b.Pending("s").ReqID
+	first := waitReq(t, b)
 	secondDone := make(chan any, 1)
 	go func() { secondDone <- b.Wait("s", params(both)) }()
-	time.Sleep(20 * time.Millisecond)
+	waitQueued(t, b, 1)
 	if b.Pending("s").ReqID != first || b.Pending("s").Queued != 1 {
 		t.Fatalf("pending %+v", b.Pending("s"))
 	}
@@ -163,8 +157,7 @@ func TestQueueOneExposed(t *testing.T) {
 		t.Fatal("other session")
 	}
 	_ = b.Resolve("s", first, "deny")
-	time.Sleep(20 * time.Millisecond)
-	second := b.Pending("s").ReqID
+	second := waitReqNot(t, b, first).ReqID
 	if second == "" || second == first {
 		t.Fatal("not promoted")
 	}
@@ -204,7 +197,7 @@ func TestStopAborts(t *testing.T) {
 	b.Clock = newClock()
 	done := make(chan any, 1)
 	go func() { done <- b.Wait("s", params(both)) }()
-	time.Sleep(20 * time.Millisecond)
+	waitReq(t, b)
 	b.Stop()
 	if got := optionID(<-done); got != "deny" {
 		t.Fatalf("option %s", got)

@@ -2,6 +2,8 @@ module zero-bridge/bridge/obs
 
 go 1.26.0
 
+toolchain go1.27.3
+
 require (
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.45.0

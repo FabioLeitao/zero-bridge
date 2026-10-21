@@ -1,0 +1,35 @@
+permissions:
+  contents: read
+
+# Contract tests for a clean checkout. The suite drives cmd/acpfake.
+# make e2e is not a step. It needs Node >= 22 and /usr/bin/google-chrome.
+# This runner does not provide that browser. The absence is not a passing skip.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: setup go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: bridge/go.mod
+
+      - name: test
+        working-directory: bridge
+        run: umask 022 && go test ./... -count=1 -timeout 10m
