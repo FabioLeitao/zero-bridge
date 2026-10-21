@@ -43,7 +43,7 @@ HealthCheckInterval=30
 HealthCheckTimeout=3
 HealthCheckStartPeriod=10
 HealthCheckRetries=3
-Exec=/usr/local/bin/zero-bridge --listen 127.0.0.1:8765 --token-file /var/lib/zerobridge/.local/state/zero-bridge/token.txt
+Exec=/usr/local/bin/zero-bridge --listen 127.0.0.1:8765 --token-file /var/lib/zerobridge/.local/state/zero-bridge/token.txt --require-token
 
 [Install]
 WantedBy=multi-user.target

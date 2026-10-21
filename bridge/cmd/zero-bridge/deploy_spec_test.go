@@ -73,6 +73,9 @@ func TestDeploySpecsNameOnlyReadEnvAndLoadToken(t *testing.T) {
 		if !tokenFlag(start.args) {
 			t.Fatalf("%s start does not pass --token-file %s: %q", start.name, deployTokenPath, start.args)
 		}
+		if !hasFlag(start.args, "--require-token") {
+			t.Fatalf("%s start does not pass --require-token: %q", start.name, start.args)
+		}
 	}
 }
 
@@ -191,6 +194,15 @@ func serviceBlock(text, header string) string {
 func tokenFlag(args []string) bool {
 	for i := 0; i < len(args)-1; i++ {
 		if args[i] == "--token-file" && args[i+1] == deployTokenPath {
+			return true
+		}
+	}
+	return false
+}
+
+func hasFlag(args []string, flag string) bool {
+	for _, arg := range args {
+		if arg == flag {
 			return true
 		}
 	}
